@@ -1,4 +1,4 @@
-# Candlestack
+# CandleStack
 
 Configurable pipeline for pattern analysis in financial time series.
 
@@ -7,7 +7,7 @@ Slovak University of Technology in Bratislava (STU FEI).
 
 ## About
 
-Candlestack is a modular experimentation environment for financial time series.
+CandleStack is a modular experimentation environment for financial time series.
 In a web interface the user assembles a full experiment from three interchangeable layers:
 
 1. **Preprocessing and data representation**: Renko, Kagi, time windows, normalization, segmentation.
