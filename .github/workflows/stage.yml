@@ -13,7 +13,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  no-ai-signs:
+    uses: CandleStack-FEI-STU/.github/.github/workflows/no-ai-signs.yml@main
+    permissions:
+      contents: read
+
   build:
+    needs: no-ai-signs
     uses: ./.github/workflows/build.yml
     permissions:
       contents: read

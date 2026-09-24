@@ -14,13 +14,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  no-ai-signs:
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
       contains(github.event.pull_request.labels.*.name, 'preview') &&
       github.event.action != 'closed' &&
       github.event.action != 'unlabeled' &&
       (github.event.action != 'labeled' || github.event.label.name == 'preview')
+    uses: CandleStack-FEI-STU/.github/.github/workflows/no-ai-signs.yml@main
+    permissions:
+      contents: read
+
+  build:
+    needs: no-ai-signs
     uses: ./.github/workflows/build.yml
     permissions:
       contents: read

@@ -1,0 +1,15 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  # Always the first job: no AI attribution in commits or the pull request.
+  no-ai-signs:
+    uses: CandleStack-FEI-STU/.github/.github/workflows/no-ai-signs.yml@main
+    permissions:
+      contents: read
