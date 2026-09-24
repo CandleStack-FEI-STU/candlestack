@@ -60,8 +60,10 @@ def db():
 # --- collection ------------------------------------------------------------------------
 
 def http_json(url, timeout=10):
+    # Cloudflare's browser integrity check rejects the default Python-urllib user agent.
+    request = urllib.request.Request(url, headers={"User-Agent": "candlestack-ops/1.0"})
     started = time.monotonic()
-    with urllib.request.urlopen(url, timeout=timeout) as resp:
+    with urllib.request.urlopen(request, timeout=timeout) as resp:
         body = json.loads(resp.read().decode())
     return body, int((time.monotonic() - started) * 1000)
 
