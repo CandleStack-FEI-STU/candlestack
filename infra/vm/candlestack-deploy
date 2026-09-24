@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Forced command for the deploy user's SSH keys (see deploy_authorized_keys).
+# Every key has a scope and can only run these commands for its own environments:
+#
+#   scope    command
+#   prod     up prod <image@digest> <version>
+#   stage    up stage <image@digest> <version>   |   edge
+#   preview  up pr-<N> <image@digest> <version>  |   down pr-<N>
+#
+# "up" reads a GHCR token from stdin and uses it only for this one pull.
+# "edge" updates the checkout to origin/main and reloads the edge Caddy.
+set -euo pipefail
+
+scope=${1:?scope}
+read -r action env image version _ <<<"${SSH_ORIGINAL_COMMAND:-}"
+repo=/opt/candlestack
+image_re='^ghcr\.io/candlestack-fei-stu/candlestack/[a-z0-9._-]+@sha256:[0-9a-f]{64}$'
+
+fail() {
+  echo "candlestack-deploy: $*" >&2
+  exit 1
+}
+
+may_touch() {
+  case "$scope" in
+    prod) [ "$1" = prod ] ;;
+    stage) [ "$1" = stage ] ;;
+    preview) [[ $1 =~ ^pr-[0-9]{1,6}$ ]] ;;
+    *) return 1 ;;
+  esac
+}
+
+compose() {
+  docker compose -p "$env" -f "$repo/infra/env/compose.yaml" "$@"
+}
+
+case "${action:-}" in
+  up)
+    may_touch "$env" || fail "the $scope key may not deploy '$env'"
+    [[ $image =~ $image_re ]] || fail "image must be a GHCR digest reference: '$image'"
+    [[ $version =~ ^[A-Za-z0-9._-]{1,64}$ ]] || fail "bad version: '$version'"
+    read -r token || fail "expected a GHCR token on stdin"
+    DOCKER_CONFIG=$(mktemp -d)
+    export DOCKER_CONFIG
+    trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+    docker login ghcr.io --username deploy --password-stdin <<<"$token" >/dev/null
+    docker pull --quiet "$image"
+    ENV_NAME=$env IMAGE=$image APP_VERSION=$version compose up --detach --remove-orphans
+    ;;
+  down)
+    [ "$scope" = preview ] && may_touch "$env" || fail "the $scope key may not remove '$env'"
+    ENV_NAME=$env IMAGE=none APP_VERSION=none compose down --remove-orphans
+    ;;
+  edge)
+    [ "$scope" = stage ] || fail "only the stage key updates the edge"
+    git -C "$repo" fetch --quiet --depth 1 origin main
+    git -C "$repo" reset --quiet --hard FETCH_HEAD
+    docker compose -f "$repo/infra/edge/compose.yaml" up --detach
+    docker compose -f "$repo/infra/edge/compose.yaml" exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+    ;;
+  *)
+    fail "unknown command: '${SSH_ORIGINAL_COMMAND:-}'"
+    ;;
+esac

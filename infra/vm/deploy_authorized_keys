@@ -1,0 +1,5 @@
+# Public keys of the GitHub Actions deploy jobs. Each key may only run candlestack-deploy
+# for its own scope; the private keys live in the GitHub environments' DEPLOY_SSH_KEY secrets.
+restrict,command="/opt/candlestack/infra/vm/candlestack-deploy prod" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBAkgKqauXZIzoNhw87HxZGirwkspoKDVyEri2ox75qk candlestack-deploy-prod
+restrict,command="/opt/candlestack/infra/vm/candlestack-deploy stage" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJr4MWLgu6NPsdC5XT9/bpSMauuIVRkrJHtnjV+2XxeG candlestack-deploy-stage
+restrict,command="/opt/candlestack/infra/vm/candlestack-deploy preview" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKuyMaTRIfRxmvOB1juJ/IgAcqLLLhASMbYgSjImkwVM candlestack-deploy-preview

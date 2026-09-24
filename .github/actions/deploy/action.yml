@@ -1,0 +1,87 @@
+name: Deploy to the VM
+description: >-
+  Runs one infra/vm/candlestack-deploy command on the VM over SSH through the Cloudflare
+  Tunnel, then optionally waits until a health URL reports the expected value.
+
+inputs:
+  command:
+    description: candlestack-deploy command, e.g. "up stage <image@digest> <version>"
+    required: true
+  ssh-key:
+    description: Private deploy key of the environment (DEPLOY_SSH_KEY)
+    required: true
+  known-hosts:
+    description: known_hosts line for ssh.candlestack.tech (DEPLOY_KNOWN_HOSTS)
+    required: true
+  access-client-id:
+    description: Cloudflare Access service token id, if the SSH hostname is behind Access
+    required: false
+  access-client-secret:
+    description: Cloudflare Access service token secret
+    required: false
+  ghcr-token:
+    description: Token the VM uses once to pull the image (sent on stdin, not stored)
+    required: false
+  health-url:
+    description: URL to poll after the command
+    required: false
+  health-expect:
+    description: Text the health response must contain
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - name: Install cloudflared
+      shell: bash
+      run: |
+        curl -fsSL -o "$RUNNER_TEMP/cloudflared.deb" \
+          https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+        sudo dpkg -i "$RUNNER_TEMP/cloudflared.deb" >/dev/null
+
+    - name: Configure SSH
+      shell: bash
+      env:
+        SSH_KEY: ${{ inputs.ssh-key }}
+        KNOWN_HOSTS: ${{ inputs.known-hosts }}
+      run: |
+        install -d -m 700 ~/.ssh
+        printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy
+        chmod 600 ~/.ssh/deploy
+        printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+        cat > ~/.ssh/config <<'EOF'
+        Host candlestack
+          HostName ssh.candlestack.tech
+          User deploy
+          IdentityFile ~/.ssh/deploy
+          IdentitiesOnly yes
+          StrictHostKeyChecking yes
+          ProxyCommand cloudflared access ssh --hostname %h
+        EOF
+
+    - name: Run ${{ inputs.command }}
+      shell: bash
+      env:
+        COMMAND: ${{ inputs.command }}
+        GHCR_TOKEN: ${{ inputs.ghcr-token }}
+        TUNNEL_SERVICE_TOKEN_ID: ${{ inputs.access-client-id }}
+        TUNNEL_SERVICE_TOKEN_SECRET: ${{ inputs.access-client-secret }}
+      run: printf '%s\n' "$GHCR_TOKEN" | ssh candlestack "$COMMAND"
+
+    - name: Wait until healthy
+      if: inputs.health-url != ''
+      shell: bash
+      env:
+        URL: ${{ inputs.health-url }}
+        EXPECT: ${{ inputs.health-expect }}
+      run: |
+        for _ in $(seq 1 30); do
+          body=$(curl -fsS --max-time 5 "$URL" || true)
+          if [[ $body == *"$EXPECT"* ]]; then
+            echo "$body"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "::error::$URL did not report '$EXPECT' (last response: ${body:-none})"
+        exit 1

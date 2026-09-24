@@ -1,0 +1,57 @@
+name: Release
+
+# A v* tag on a commit of main promotes the image that stage already runs for that
+# commit to prod (app.candlestack.tech). Nothing is rebuilt. The production
+# environment requires the tech lead's approval before the job starts.
+on:
+  push:
+    tags: ['v*']
+
+permissions: {}
+
+concurrency:
+  group: prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://app.candlestack.tech
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/candlestack-fei-stu/candlestack/placeholder
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Find the stage image of this commit and tag it
+        id: image
+        run: |
+          if ! manifest=$(docker buildx imagetools inspect "$IMAGE:sha-$GITHUB_SHA" --format '{{json .Manifest}}'); then
+            echo "::error::No image for $GITHUB_SHA. Tag a commit of main that has been deployed to stage."
+            exit 1
+          fi
+          digest=$(jq -r .digest <<<"$manifest")
+          docker buildx imagetools create --tag "$IMAGE:$GITHUB_REF_NAME" "$IMAGE@$digest"
+          echo "image=$IMAGE@$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy prod
+        uses: ./.github/actions/deploy
+        with:
+          command: up prod ${{ steps.image.outputs.image }} ${{ github.ref_name }}
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          health-url: https://app.candlestack.tech/api/health
+          health-expect: '"version":"${{ github.ref_name }}"'

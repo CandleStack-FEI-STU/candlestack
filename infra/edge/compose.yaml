@@ -9,7 +9,7 @@ services:
     ports:
       - "127.0.0.1:80:80"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy:/etc/caddy:ro
       - caddy_data:/data
     networks:
       - edge
