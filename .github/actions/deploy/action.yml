@@ -74,9 +74,16 @@ runs:
       env:
         URL: ${{ inputs.health-url }}
         EXPECT: ${{ inputs.health-expect }}
+        ACCESS_ID: ${{ inputs.access-client-id }}
+        ACCESS_SECRET: ${{ inputs.access-client-secret }}
       run: |
+        # stage and previews sit behind Cloudflare Access; the service token lets this check in.
+        auth=()
+        if [[ -n $ACCESS_ID ]]; then
+          auth=(-H "CF-Access-Client-Id: $ACCESS_ID" -H "CF-Access-Client-Secret: $ACCESS_SECRET")
+        fi
         for _ in $(seq 1 30); do
-          body=$(curl -fsS --max-time 5 "$URL" || true)
+          body=$(curl -fsS --max-time 5 "${auth[@]}" "$URL" || true)
           if [[ $body == *"$EXPECT"* ]]; then
             echo "$body"
             exit 0
