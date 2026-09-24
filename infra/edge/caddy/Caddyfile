@@ -15,6 +15,11 @@
 		reverse_proxy stage-app:8080
 	}
 
+	@ops host ops.candlestack.tech
+	handle @ops {
+		reverse_proxy ops-web:8080
+	}
+
 	# pr-<N>-preview.candlestack.tech -> the pr-<N> environment
 	@preview vars_regexp preview {host} ^(pr-[0-9]+)-preview\.candlestack\.tech$
 	handle @preview {

@@ -3,6 +3,16 @@ name: Build image
 on:
   workflow_call:
     inputs:
+      name:
+        description: Image name under ghcr.io/candlestack-fei-stu/candlestack/
+        required: false
+        type: string
+        default: placeholder
+      context:
+        description: Docker build context
+        required: false
+        type: string
+        default: infra/placeholder
       tag:
         description: Image tag to push
         required: true
@@ -27,7 +37,7 @@ jobs:
     outputs:
       image: ${{ steps.ref.outputs.image }}
     env:
-      IMAGE: ghcr.io/candlestack-fei-stu/candlestack/placeholder
+      IMAGE: ghcr.io/candlestack-fei-stu/candlestack/${{ inputs.name }}
     steps:
       - uses: actions/checkout@v7
 
@@ -42,13 +52,13 @@ jobs:
       - id: build
         uses: docker/build-push-action@v7
         with:
-          context: infra/placeholder
+          context: ${{ inputs.context }}
           platforms: linux/amd64
           push: true
           tags: ${{ env.IMAGE }}:${{ inputs.tag }}
           build-args: APP_COMMIT=${{ inputs.commit }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ inputs.name }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.name }}
 
       - id: ref
         run: echo "image=$IMAGE@${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"

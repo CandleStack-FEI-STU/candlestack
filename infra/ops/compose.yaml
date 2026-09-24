@@ -1,0 +1,51 @@
+# ops.candlestack.tech: status page for the team (behind Cloudflare Access).
+# Deployed from main by infra/vm/candlestack-deploy ("ops <image@digest>").
+name: ops
+
+services:
+  ops:
+    image: ${IMAGE:?}
+    restart: unless-stopped
+    environment:
+      DOCKER_URL: http://socket-proxy:2375
+      PROD_URL: https://app.candlestack.tech
+      VM_LABEL: AWS t3.small · eu-north-1
+    volumes:
+      - ops_data:/data
+    mem_limit: 128m
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      edge:
+        aliases:
+          - ops-web
+      docker: {}
+
+  # Read-only view of the Docker API: container list and stats, nothing else.
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.5.0
+    restart: unless-stopped
+    environment:
+      CONTAINERS: 1
+      POST: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    mem_limit: 64m
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - docker
+
+networks:
+  edge:
+    external: true
+  docker:
+    internal: true
+
+volumes:
+  ops_data:

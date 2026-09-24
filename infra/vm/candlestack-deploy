@@ -4,11 +4,12 @@
 #
 #   scope    command
 #   prod     up prod <image@digest> <version>
-#   stage    up stage <image@digest> <version>   |   edge
+#   stage    up stage <image@digest> <version>   |   edge   |   ops <image@digest>
 #   preview  up pr-<N> <image@digest> <version>  |   down pr-<N>
 #
-# "up" reads a GHCR token from stdin and uses it only for this one pull.
+# "up" and "ops" read a GHCR token from stdin and use it only for this one pull.
 # "edge" updates the checkout to origin/main and reloads the edge Caddy.
+# "ops" (re)starts the ops page from infra/ops/compose.yaml of that checkout.
 set -euo pipefail
 
 scope=${1:?scope}
@@ -34,17 +35,21 @@ compose() {
   docker compose -p "$env" -f "$repo/infra/env/compose.yaml" "$@"
 }
 
+pull() {
+  [[ $1 =~ $image_re ]] || fail "image must be a GHCR digest reference: '$1'"
+  read -r token || fail "expected a GHCR token on stdin"
+  DOCKER_CONFIG=$(mktemp -d)
+  export DOCKER_CONFIG
+  trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+  docker login ghcr.io --username deploy --password-stdin <<<"$token" >/dev/null
+  docker pull --quiet "$1"
+}
+
 case "${action:-}" in
   up)
     may_touch "$env" || fail "the $scope key may not deploy '$env'"
-    [[ $image =~ $image_re ]] || fail "image must be a GHCR digest reference: '$image'"
     [[ $version =~ ^[A-Za-z0-9._-]{1,64}$ ]] || fail "bad version: '$version'"
-    read -r token || fail "expected a GHCR token on stdin"
-    DOCKER_CONFIG=$(mktemp -d)
-    export DOCKER_CONFIG
-    trap 'rm -rf "$DOCKER_CONFIG"' EXIT
-    docker login ghcr.io --username deploy --password-stdin <<<"$token" >/dev/null
-    docker pull --quiet "$image"
+    pull "$image"
     ENV_NAME=$env IMAGE=$image APP_VERSION=$version compose up --detach --remove-orphans
     ;;
   down)
@@ -57,6 +62,12 @@ case "${action:-}" in
     git -C "$repo" reset --quiet --hard FETCH_HEAD
     docker compose -f "$repo/infra/edge/compose.yaml" up --detach
     docker compose -f "$repo/infra/edge/compose.yaml" exec -T caddy caddy reload --config /etc/caddy/Caddyfile
+    ;;
+  ops)
+    [ "$scope" = stage ] || fail "only the stage key deploys the ops page"
+    image=$env # "ops <image@digest>": the image is the first argument
+    pull "$image"
+    IMAGE=$image docker compose -p ops -f "$repo/infra/ops/compose.yaml" up --detach --remove-orphans
     ;;
   *)
     fail "unknown command: '${SSH_ORIGINAL_COMMAND:-}'"
