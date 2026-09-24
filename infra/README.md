@@ -7,7 +7,7 @@ prod, stage and pull-request preview environments.
 Internet -> Cloudflare (TLS) -> Tunnel -> cloudflared on the VM -> edge Caddy -> environment
 ```
 
-The VM has no open inbound ports. `app`, `stage`, `ops` and `*` under `candlestack.tech`
+The VM has no open inbound ports. `app`, `stage` and `*` under `candlestack.tech`
 are proxied CNAMEs to the tunnel, so moving to another server does not touch DNS: boot a
 new VM with the same tunnel credentials and turn the old one off.
 
@@ -22,6 +22,15 @@ new VM with the same tunnel credentials and turn the old one off.
 stage, previews and https://ops.candlestack.tech (the team status page) are behind Cloudflare
 Access: members of the `CandleStack-FEI-STU` GitHub organization sign in with GitHub. prod is
 public. Any new subdomain is team-only by default (Access application `*.candlestack.tech`).
+
+## Monitoring
+
+https://ops.candlestack.tech is a Cloudflare Worker in its own repository,
+[CandleStack-FEI-STU/ops](https://github.com/CandleStack-FEI-STU/ops), so it keeps working and
+records the outage when this VM is down. Every minute it checks prod and stage from outside and
+reads `https://vm.candlestack.tech/api/snapshot`, served by the server agent (`agent/`): host
+CPU, memory and disk, containers and the health of every preview. The agent keeps no history
+and holds no secrets; its JSON is a contract with the ops repository (schema 1).
 
 Each commit of `main` is built once. A release does not rebuild: it deploys the exact image
 (same digest) that stage already runs for the tagged commit. Removing the `preview` label or
@@ -54,7 +63,7 @@ Behind it, the `deploy` user has one key per environment, and each key is forced
 | `cloudflared/config.yml` | Tunnel ingress: SSH for deployments, everything else to the edge |
 | `edge/` | Caddy that routes each hostname to its environment |
 | `env/compose.yaml` | One environment (prod, stage or `pr-<N>`) |
-| `ops/` | Status page: collector and page in one Python process, SQLite history, read-only Docker proxy |
+| `agent/` | Server agent for ops: host metrics, containers and preview health as JSON, read-only Docker proxy |
 | `placeholder/` | Placeholder app shown until the real application exists |
 
 ## Create the VM on AWS

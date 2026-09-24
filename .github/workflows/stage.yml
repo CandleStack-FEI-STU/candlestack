@@ -1,7 +1,7 @@
 name: Stage
 
 # Every push to main is built once and deployed to stage.candlestack.tech,
-# together with the edge proxy and the ops page (ops.candlestack.tech).
+# together with the edge proxy and the server agent (vm.candlestack.tech, read by ops).
 # The same image is later promoted to prod by a v* tag (release.yml).
 on:
   push:
@@ -29,20 +29,20 @@ jobs:
       tag: sha-${{ github.sha }}
       commit: ${{ github.sha }}
 
-  build-ops:
+  build-agent:
     needs: no-ai-signs
     uses: ./.github/workflows/build.yml
     permissions:
       contents: read
       packages: write
     with:
-      name: ops
-      context: infra/ops
+      name: agent
+      context: infra/agent
       tag: sha-${{ github.sha }}
       commit: ${{ github.sha }}
 
   deploy:
-    needs: [build, build-ops]
+    needs: [build, build-agent]
     runs-on: ubuntu-latest
     environment:
       name: staging
@@ -62,16 +62,16 @@ jobs:
           access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
-      - name: Deploy the ops page
+      - name: Deploy the server agent
         uses: ./.github/actions/deploy
         with:
-          command: ops ${{ needs.build-ops.outputs.image }}
+          command: agent ${{ needs.build-agent.outputs.image }}
           ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
           known-hosts: ${{ vars.DEPLOY_KNOWN_HOSTS }}
           access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
-          health-url: https://ops.candlestack.tech/api/health
+          health-url: https://vm.candlestack.tech/api/health
           health-expect: '"status":"ok"'
 
       - name: Deploy stage

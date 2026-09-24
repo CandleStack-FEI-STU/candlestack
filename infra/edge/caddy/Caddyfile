@@ -15,9 +15,10 @@
 		reverse_proxy stage-app:8080
 	}
 
-	@ops host ops.candlestack.tech
-	handle @ops {
-		reverse_proxy ops-web:8080
+	# The server agent; ops.candlestack.tech itself is a Cloudflare Worker.
+	@vm host vm.candlestack.tech
+	handle @vm {
+		reverse_proxy vm-agent:8080
 	}
 
 	# pr-<N>-preview.candlestack.tech -> the pr-<N> environment

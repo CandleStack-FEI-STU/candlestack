@@ -4,12 +4,12 @@
 #
 #   scope    command
 #   prod     up prod <image@digest> <version>
-#   stage    up stage <image@digest> <version>   |   edge   |   ops <image@digest>
+#   stage    up stage <image@digest> <version>   |   edge   |   agent <image@digest>
 #   preview  up pr-<N> <image@digest> <version>  |   down pr-<N>
 #
-# "up" and "ops" read a GHCR token from stdin and use it only for this one pull.
+# "up" and "agent" read a GHCR token from stdin and use it only for this one pull.
 # "edge" updates the checkout to origin/main and reloads the edge Caddy.
-# "ops" (re)starts the ops page from infra/ops/compose.yaml of that checkout.
+# "agent" (re)starts the server agent from infra/agent/compose.yaml of that checkout.
 set -euo pipefail
 
 scope=${1:?scope}
@@ -63,11 +63,11 @@ case "${action:-}" in
     docker compose -f "$repo/infra/edge/compose.yaml" up --detach
     docker compose -f "$repo/infra/edge/compose.yaml" exec -T caddy caddy reload --config /etc/caddy/Caddyfile
     ;;
-  ops)
-    [ "$scope" = stage ] || fail "only the stage key deploys the ops page"
-    image=$env # "ops <image@digest>": the image is the first argument
+  agent)
+    [ "$scope" = stage ] || fail "only the stage key deploys the server agent"
+    image=$env # "agent <image@digest>": the image is the first argument
     pull "$image"
-    IMAGE=$image docker compose -p ops -f "$repo/infra/ops/compose.yaml" up --detach --remove-orphans
+    IMAGE=$image docker compose -p agent -f "$repo/infra/agent/compose.yaml" up --detach --remove-orphans
     ;;
   *)
     fail "unknown command: '${SSH_ORIGINAL_COMMAND:-}'"

@@ -1,18 +1,17 @@
-# ops.candlestack.tech: status page for the team (behind Cloudflare Access).
-# Deployed from main by infra/vm/candlestack-deploy ("ops <image@digest>").
-name: ops
+# Server agent: host metrics, containers and previews for ops.candlestack.tech, served at
+# vm.candlestack.tech/api/snapshot (behind Cloudflare Access). The page and its history
+# live in the ops Worker: github.com/CandleStack-FEI-STU/ops.
+# Deployed from main by infra/vm/candlestack-deploy ("agent <image@digest>").
+name: agent
 
 services:
-  ops:
+  agent:
     image: ${IMAGE:?}
     restart: unless-stopped
     environment:
       DOCKER_URL: http://socket-proxy:2375
-      PROD_URL: https://app.candlestack.tech
       VM_LABEL: AWS t3.small · eu-north-1
-    volumes:
-      - ops_data:/data
-    mem_limit: 128m
+    mem_limit: 64m
     read_only: true
     tmpfs:
       - /tmp
@@ -23,7 +22,7 @@ services:
     networks:
       edge:
         aliases:
-          - ops-web
+          - vm-agent
       docker: {}
 
   # Read-only view of the Docker API: container list and stats, nothing else.
@@ -46,6 +45,3 @@ networks:
     external: true
   docker:
     internal: true
-
-volumes:
-  ops_data:
