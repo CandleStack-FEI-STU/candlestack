@@ -19,6 +19,7 @@ import threading
 import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -63,6 +64,15 @@ def docker(path):
 _prev_cpu = {}  # container id -> (container total usage, system usage)
 
 
+def started_at(container_id):
+    """Unix seconds of the container's last start; a restart changes it, a new container too."""
+    try:
+        value = docker(f"/containers/{container_id}/json")["State"]["StartedAt"]
+        return int(datetime.strptime(value[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc).timestamp())
+    except Exception:
+        return None
+
+
 def container_stats(c):
     labels = c.get("Labels", {})
     row = {
@@ -72,6 +82,10 @@ def container_stats(c):
         "up": re.sub(r"^Up\s+", "", c.get("Status", "")),
         "cpu": None,
         "mem": None,
+        # For deploy, redeploy and restart events on ops.
+        "created": c.get("Created"),
+        "started": started_at(c["Id"]),
+        "version": labels.get("candlestack.version"),
     }
     try:
         s = docker(f"/containers/{c['Id']}/stats?stream=false&one-shot=true")

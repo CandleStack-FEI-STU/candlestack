@@ -9,6 +9,9 @@ services:
     environment:
       APP_ENV: ${ENV_NAME:?}
       APP_VERSION: ${APP_VERSION:?}
+    # Read by the server agent: ops tells deploys (new version) from redeploys (same version).
+    labels:
+      candlestack.version: ${APP_VERSION:?}
     mem_limit: 128m
     read_only: true
     tmpfs:
