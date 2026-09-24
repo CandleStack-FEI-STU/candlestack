@@ -1,0 +1,27 @@
+# One environment (prod, stage or pr-<N>) as its own compose project, started by
+# infra/vm/candlestack-deploy on the VM:
+#   ENV_NAME=stage IMAGE=<image@digest> APP_VERSION=<version> docker compose -p stage -f infra/env/compose.yaml up -d
+# The edge Caddy reaches the app as <ENV_NAME>-app:8080 on the shared "edge" network.
+services:
+  app:
+    image: ${IMAGE:?}
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${ENV_NAME:?}
+      APP_VERSION: ${APP_VERSION:?}
+    mem_limit: 128m
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      edge:
+        aliases:
+          - ${ENV_NAME}-app
+
+networks:
+  edge:
+    external: true

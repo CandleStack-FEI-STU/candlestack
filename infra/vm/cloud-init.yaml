@@ -1,0 +1,58 @@
+#cloud-config
+# Provider-neutral bootstrap for the CandleStack VM (Ubuntu 24.04).
+# The provider script (e.g. aws-create.sh) replaces the __PLACEHOLDERS__ before boot.
+# Result: Docker, the edge Caddy, a Cloudflare Tunnel and the deploy user; no inbound ports needed.
+
+hostname: candlestack-vm
+package_update: true
+package_upgrade: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - git
+  - curl
+
+swap:
+  filename: /swapfile
+  size: 2G
+  maxsize: 2G
+
+write_files:
+  - path: /etc/docker/daemon.json
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": { "max-size": "10m", "max-file": "3" }
+      }
+  - path: /etc/cloudflared/credentials.json
+    permissions: "0600"
+    encoding: b64
+    content: __TUNNEL_CREDENTIALS_B64__
+  - path: /etc/systemd/system/cloudflared.service
+    content: |
+      [Unit]
+      Description=Cloudflare Tunnel
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      ExecStart=/usr/bin/cloudflared --no-autoupdate --config /opt/candlestack/infra/cloudflared/config.yml tunnel run
+      Restart=always
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - install -d -m 0755 /usr/share/keyrings
+  - curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /usr/share/keyrings/cloudflare-main.gpg
+  - echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main' > /etc/apt/sources.list.d/cloudflared.list
+  - apt-get update && apt-get install -y cloudflared
+  - git clone --depth 1 --branch __GIT_REF__ https://github.com/CandleStack-FEI-STU/candlestack.git /opt/candlestack
+  # deploy: used by GitHub Actions over SSH; its keys can only run infra/vm/candlestack-deploy.
+  - useradd --create-home --shell /bin/bash --groups docker --password '*' deploy
+  - install -d -o deploy -g deploy -m 700 /home/deploy/.ssh
+  - install -o deploy -g deploy -m 600 /opt/candlestack/infra/vm/deploy_authorized_keys /home/deploy/.ssh/authorized_keys
+  - chown -R deploy:deploy /opt/candlestack
+  - docker compose -f /opt/candlestack/infra/edge/compose.yaml up -d
+  - systemctl daemon-reload && systemctl enable --now cloudflared

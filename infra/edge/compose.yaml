@@ -1,0 +1,22 @@
+# Edge proxy shared by all environments. Only cloudflared on the host reaches it,
+# so it listens on localhost and speaks plain HTTP (TLS ends at Cloudflare).
+name: edge
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:80:80"
+    volumes:
+      - ./caddy:/etc/caddy:ro
+      - caddy_data:/data
+    networks:
+      - edge
+
+networks:
+  edge:
+    name: edge
+
+volumes:
+  caddy_data:

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>CandleStack · {{env "APP_ENV"}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #fafaf9; --ink: #141414; --muted: #686868; --rule: #e7e5e2; --accent: #0f766e;
+    --grid: rgb(28 25 23 / 0.07);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d0f11; --ink: #ecedee; --muted: #9ba1a6; --rule: #23272b; --accent: #3cc7a6;
+      --grid: rgb(230 232 234 / 0.045);
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background-color: var(--bg);
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 40px 40px;
+    color: var(--ink);
+    font: 16px/1.5 'Geist', ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  a:hover { color: var(--accent); }
+  main {
+    width: min(560px, 100% - 32px);
+    margin: 0 auto;
+    padding: 96px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+  .brand { font-weight: 600; }
+  .env {
+    display: inline-block;
+    font: 500 13px/1 'Geist Mono', ui-monospace, monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    padding: 6px 10px;
+  }
+  h1 { margin: 12px 0 0; font-size: 40px; line-height: 1.1; font-weight: 600; letter-spacing: -0.02em; }
+  p { margin: 12px 0 0; color: var(--muted); }
+  dl { margin: 0; border-top: 1px solid var(--rule); }
+  dl div { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+  dt { color: var(--muted); }
+  dd { margin: 0; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 14px; overflow-wrap: anywhere; text-align: right; }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">CandleStack</div>
+  <section>
+    <span class="env">{{env "APP_ENV"}}</span>
+    <h1>Nothing to see yet</h1>
+    <p>This environment runs a placeholder until the application is deployed.</p>
+  </section>
+  <dl>
+    <div><dt>Environment</dt><dd>{{env "APP_ENV"}}</dd></div>
+    <div><dt>Version</dt><dd>{{env "APP_VERSION"}}</dd></div>
+    <div><dt>Commit</dt><dd><a href="https://github.com/CandleStack-FEI-STU/candlestack/commit/{{env "APP_COMMIT"}}">{{env "APP_COMMIT"}}</a></dd></div>
+    <div><dt>Health</dt><dd><a href="/api/health">/api/health</a></dd></div>
+  </dl>
+</main>
+</body>
+</html>

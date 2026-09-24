@@ -1,0 +1,80 @@
+name: Preview
+
+# A pull request with the "preview" label gets its own environment at
+# pr-<N>-preview.candlestack.tech, redeployed on every push. Removing the label or
+# closing the pull request removes the environment. Pull requests from forks never deploy.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled, closed]
+
+permissions: {}
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  no-ai-signs:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(github.event.pull_request.labels.*.name, 'preview') &&
+      github.event.action != 'closed' &&
+      github.event.action != 'unlabeled' &&
+      (github.event.action != 'labeled' || github.event.label.name == 'preview')
+    uses: CandleStack-FEI-STU/.github/.github/workflows/no-ai-signs.yml@main
+    permissions:
+      contents: read
+
+  build:
+    needs: no-ai-signs
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      tag: pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+      commit: ${{ github.event.pull_request.head.sha }}
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: preview
+      url: https://pr-${{ github.event.pull_request.number }}-preview.candlestack.tech
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/deploy
+        with:
+          command: up pr-${{ github.event.pull_request.number }} ${{ needs.build.outputs.image }} pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          health-url: https://pr-${{ github.event.pull_request.number }}-preview.candlestack.tech/api/health
+          health-expect: ${{ github.event.pull_request.head.sha }}
+
+  remove:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      ((github.event.action == 'closed' && contains(github.event.pull_request.labels.*.name, 'preview')) ||
+       (github.event.action == 'unlabeled' && github.event.label.name == 'preview'))
+    runs-on: ubuntu-latest
+    environment:
+      name: preview
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/deploy
+        with:
+          command: down pr-${{ github.event.pull_request.number }}
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}

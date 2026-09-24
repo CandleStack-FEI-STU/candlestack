@@ -1,0 +1,31 @@
+{
+	auto_https off
+}
+
+:80 {
+	header X-Robots-Tag "noindex, nofollow"
+
+	@prod host app.candlestack.tech
+	handle @prod {
+		reverse_proxy prod-app:8080
+	}
+
+	@stage host stage.candlestack.tech
+	handle @stage {
+		reverse_proxy stage-app:8080
+	}
+
+	# pr-<N>-preview.candlestack.tech -> the pr-<N> environment
+	@preview vars_regexp preview {host} ^(pr-[0-9]+)-preview\.candlestack\.tech$
+	handle @preview {
+		reverse_proxy {re.preview.1}-app:8080
+	}
+
+	handle {
+		respond "Not found" 404
+	}
+
+	handle_errors 502 {
+		respond "Nothing is deployed at {host}" 502
+	}
+}
