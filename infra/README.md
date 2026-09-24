@@ -19,6 +19,10 @@ new VM with the same tunnel credentials and turn the old one off.
 | stage | https://stage.candlestack.tech | every push to `main` | none |
 | preview | `https://pr-<N>-preview.candlestack.tech` | a pull request has the `preview` label | none |
 
+stage, previews and https://ops.candlestack.tech (the team status page) are behind Cloudflare
+Access: members of the `CandleStack-FEI-STU` GitHub organization sign in with GitHub. prod is
+public. Any new subdomain is team-only by default (Access application `*.candlestack.tech`).
+
 Each commit of `main` is built once. A release does not rebuild: it deploys the exact image
 (same digest) that stage already runs for the tagged commit. Removing the `preview` label or
 closing the pull request removes its environment. Pull requests from forks never deploy.
@@ -50,6 +54,7 @@ Behind it, the `deploy` user has one key per environment, and each key is forced
 | `cloudflared/config.yml` | Tunnel ingress: SSH for deployments, everything else to the edge |
 | `edge/` | Caddy that routes each hostname to its environment |
 | `env/compose.yaml` | One environment (prod, stage or `pr-<N>`) |
+| `ops/` | Status page: collector and page in one Python process, SQLite history, read-only Docker proxy |
 | `placeholder/` | Placeholder app shown until the real application exists |
 
 ## Create the VM on AWS
