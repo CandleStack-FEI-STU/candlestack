@@ -12,5 +12,9 @@ ENV APP_COMMIT=$APP_COMMIT \
 COPY Caddyfile /etc/caddy/Caddyfile
 COPY site /srv
 
+# The upstream binary carries cap_net_bind_service, which cannot be executed once the
+# container drops all capabilities. Port 8080 needs none, so copy it without the file caps.
+RUN cp /usr/bin/caddy /usr/bin/caddy.nocap && mv /usr/bin/caddy.nocap /usr/bin/caddy
+
 USER 65534:65534
 EXPOSE 8080
