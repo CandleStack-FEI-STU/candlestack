@@ -36,6 +36,12 @@ def env_name(env):
     return ENV_NAMES.get(env, f"Preview {env}")
 
 
+def short_version(version):
+    """main-<40 hex> and pr-9-<40 hex> read better as "main · 4330c32"."""
+    match = re.match(r"^(.*)-([0-9a-f]{40})$", version or "")
+    return f"{match[1]} · {match[2][:7]}" if match else version
+
+
 # --- storage ---------------------------------------------------------------------------
 
 SCHEMA = """
@@ -157,7 +163,7 @@ def record_transitions(conn, now, results):
                 minutes = max(1, round((now - cur["down_since"]) / 60))
                 event(env, f"{env_name(env)} recovered after {minutes} min", "health check")
             if prev and cur["version"] and r["version"] != cur["version"]:
-                event(env, f"{env_name(env)} deployed {r['version']}", "deploy")
+                event(env, f"{env_name(env)} deployed {short_version(r['version'])}", "deploy")
             cur.update(fails=0, down_since=None, version=r["version"])
         else:
             cur["fails"] += 1
