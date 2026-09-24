@@ -1,0 +1,8 @@
+# Cloudflare Tunnel "candlestack-vm". The VM opens no inbound ports: cloudflared
+# connects out to Cloudflare and forwards every request to the edge Caddy.
+# DNS: app, stage, ops and * (pr-<N>) are proxied CNAMEs to <tunnel id>.cfargotunnel.com.
+tunnel: 8cbd2a1f-f294-4534-bb63-f491bed7a51a
+credentials-file: /etc/cloudflared/credentials.json
+
+ingress:
+  - service: http://127.0.0.1:80

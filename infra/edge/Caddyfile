@@ -1,0 +1,8 @@
+{
+	auto_https off
+}
+
+:80 {
+	header X-Robots-Tag "noindex, nofollow"
+	respond "CandleStack edge is up: {host}" 200
+}
