@@ -160,7 +160,7 @@ def sampler():
 
 class Handler(BaseHTTPRequestHandler):
     def send(self, code, body):
-        data = json.dumps(body).encode()
+        data = json.dumps(body, separators=(",", ":")).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(data)))
