@@ -68,3 +68,9 @@ name = "Other modules import core only through its package root"
 type = "protected"
 protected_modules = ["candlestack.core.*"]
 allowed_importers = ["candlestack.core"]
+
+[[tool.importlinter.contracts]]
+name = "Other modules import data only through its package root"
+type = "protected"
+protected_modules = ["candlestack.data.*"]
+allowed_importers = ["candlestack.data"]
