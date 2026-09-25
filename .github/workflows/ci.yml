@@ -7,9 +7,184 @@ on:
 
 permissions: {}
 
+# A new push to a pull request cancels its running CI; runs on main always finish.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # Always the first job: no AI attribution in commits or the pull request.
   no-ai-signs:
     uses: CandleStack-FEI-STU/.github/.github/workflows/no-ai-signs.yml@main
     permissions:
       contents: read
+
+  # Decides which suites run: the backend jobs only when something they test changed.
+  changes:
+    needs: no-ai-signs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      backend: ${{ steps.diff.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          # A pull request is checked out as its merge commit: the first parent is the base.
+          if [[ $EVENT == pull_request ]]; then
+            base=HEAD^1
+          else
+            base=$BEFORE
+          fi
+          if [[ $base =~ ^0*$ ]] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "No usable base ($base): running everything."
+            backend=true
+          elif git diff --name-only "$base" HEAD |
+              grep -qE '^(backend/|docs/openapi\.json$|compose[^/]*\.yaml$|\.github/workflows/ci\.yml$)'; then
+            backend=true
+          else
+            backend=false
+          fi
+          echo "backend=$backend" | tee -a "$GITHUB_OUTPUT"
+
+  lint:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          cache-dependency-glob: backend/uv.lock
+
+      - run: uv sync --locked
+      - run: uv run ruff check --output-format=github .
+      - run: uv run ruff format --check .
+      - run: uv run ty check --output-format=github
+      - run: uv run lint-imports
+
+  unit:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          cache-dependency-glob: backend/uv.lock
+
+      - run: uv sync --locked
+      # Unit and contract tests (the docs/openapi.json snapshot among them).
+      - run: uv run pytest -n auto
+
+  integration:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
+    env:
+      REDIS_URL: redis://localhost:6379/0
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          cache-dependency-glob: backend/uv.lock
+
+      - run: uv sync --locked
+      - run: uv run pytest -m integration
+
+  e2e:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      E2E_PORT: 18000
+      E2E_BASE_URL: http://127.0.0.1:18000
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Built here with a layer cache, then started by compose from the loaded image.
+      - name: Build the image
+        uses: docker/build-push-action@v7
+        with:
+          context: backend
+          load: true
+          tags: candlestack-backend:e2e
+          build-args: APP_COMMIT=${{ github.sha }}
+          cache-from: type=gha,scope=backend-e2e
+          cache-to: type=gha,mode=max,scope=backend-e2e
+
+      - name: Start the stack
+        run: docker compose -f tests/e2e/compose.yaml up -d --wait
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          cache-dependency-glob: backend/uv.lock
+
+      - run: uv sync --locked
+      - run: uv run pytest -m e2e
+
+      - name: Logs of the stack
+        if: failure()
+        run: docker compose -f tests/e2e/compose.yaml logs
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose -f tests/e2e/compose.yaml down --volumes
+
+  # The one required check besides no-ai-signs: green when every job passed or was skipped.
+  ci:
+    name: ci
+    if: always()
+    needs: [no-ai-signs, changes, lint, unit, integration, e2e]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          if [[ " $RESULTS " == *" failure "* || " $RESULTS " == *" cancelled "* ]]; then
+            exit 1
+          fi
