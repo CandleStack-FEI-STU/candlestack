@@ -69,12 +69,13 @@
   <section>
     <span class="env">{{env "APP_ENV"}}</span>
     <h1>Nothing to see yet</h1>
-    <p>This environment runs a placeholder until the application is deployed.</p>
+    <p>The web interface comes later; the API already runs here.</p>
   </section>
   <dl>
     <div><dt>Environment</dt><dd>{{env "APP_ENV"}}</dd></div>
     <div><dt>Version</dt><dd>{{env "APP_VERSION"}}</dd></div>
     <div><dt>Commit</dt><dd><a href="https://github.com/CandleStack-FEI-STU/candlestack/commit/{{env "APP_COMMIT"}}">{{env "APP_COMMIT"}}</a></dd></div>
+    <div><dt>API reference</dt><dd><a href="/api/v1/docs">/api/v1/docs</a></dd></div>
     <div><dt>Health</dt><dd><a href="/api/health">/api/health</a></dd></div>
   </dl>
 </main>

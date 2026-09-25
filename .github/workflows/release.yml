@@ -1,7 +1,7 @@
 name: Release
 
-# A v* tag on a commit of main promotes the image that stage already runs for that
-# commit to prod (app.candlestack.tech). Nothing is rebuilt. The production
+# A v* tag on a commit of main promotes the backend and frontend images that stage already
+# runs for that commit to prod (app.candlestack.tech). Nothing is rebuilt. The production
 # environment requires the tech lead's approval before the job starts.
 on:
   push:
@@ -23,7 +23,7 @@ jobs:
       contents: read
       packages: write
     env:
-      IMAGE: ghcr.io/candlestack-fei-stu/candlestack/placeholder
+      REGISTRY: ghcr.io/candlestack-fei-stu/candlestack
     steps:
       - uses: actions/checkout@v7
 
@@ -33,25 +33,41 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Find the stage image of this commit and tag it
-        id: image
+      - name: Find the stage images of this commit and tag them
+        id: images
         run: |
-          if ! manifest=$(docker buildx imagetools inspect "$IMAGE:sha-$GITHUB_SHA" --format '{{json .Manifest}}'); then
-            echo "::error::No image for $GITHUB_SHA. Tag a commit of main that has been deployed to stage."
-            exit 1
-          fi
-          digest=$(jq -r .digest <<<"$manifest")
-          docker buildx imagetools create --tag "$IMAGE:$GITHUB_REF_NAME" "$IMAGE@$digest"
-          echo "image=$IMAGE@$digest" >> "$GITHUB_OUTPUT"
+          # Both images must exist before either is tagged.
+          declare -A digests
+          for name in backend frontend; do
+            if ! manifest=$(docker buildx imagetools inspect "$REGISTRY/$name:sha-$GITHUB_SHA" --format '{{json .Manifest}}'); then
+              echo "::error::No $name image for $GITHUB_SHA. Tag a commit of main that has been deployed to stage."
+              exit 1
+            fi
+            digests[$name]=$(jq -r .digest <<<"$manifest")
+          done
+          for name in backend frontend; do
+            image=$REGISTRY/$name@${digests[$name]}
+            docker buildx imagetools create --tag "$REGISTRY/$name:$GITHUB_REF_NAME" "$image"
+            echo "$name=$image" >> "$GITHUB_OUTPUT"
+          done
 
       - name: Deploy prod
         uses: ./.github/actions/deploy
         with:
-          command: up prod ${{ steps.image.outputs.image }} ${{ github.ref_name }}
+          command: >-
+            up prod ${{ github.ref_name }}
+            ${{ steps.images.outputs.backend }} ${{ steps.images.outputs.frontend }}
           ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
           known-hosts: ${{ vars.DEPLOY_KNOWN_HOSTS }}
           access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          env-secrets: |
+            ALPACA_KEY_ID=${{ secrets.ALPACA_KEY_ID }}
+            ALPACA_SECRET_KEY=${{ secrets.ALPACA_SECRET_KEY }}
           health-url: https://app.candlestack.tech/api/health
           health-expect: '"version":"${{ github.ref_name }}"'
+
+      # prod is public: no Access token, so this also checks that anyone can reach it.
+      - name: Smoke test
+        run: .github/scripts/smoke.sh https://app.candlestack.tech

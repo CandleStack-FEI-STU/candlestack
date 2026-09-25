@@ -3,17 +3,20 @@
 # Every key has a scope and can only run these commands for its own environments:
 #
 #   scope    command
-#   prod     up prod <image@digest> <version>
-#   stage    up stage <image@digest> <version>   |   edge   |   agent <image@digest>
-#   preview  up pr-<N> <image@digest> <version>  |   down pr-<N>
+#   prod     up prod <version> <backend@digest> <frontend@digest>
+#   stage    up stage <version> <backend@digest> <frontend@digest>   |   edge   |   agent <image@digest>
+#   preview  up pr-<N> <version> <backend@digest> <frontend@digest>  |   down pr-<N>
 #
-# "up" and "agent" read a GHCR token from stdin and use it only for this one pull.
+# "up" and "agent" read a GHCR token from the first line of stdin and use it only for this
+# one pull. "up" then reads the backend's secrets as KEY=VALUE lines (only ALPACA_KEY_ID and
+# ALPACA_SECRET_KEY) and passes them to compose in its environment: no file, never printed.
 # "edge" updates the checkout to origin/main and reloads the edge Caddy.
 # "agent" (re)starts the server agent from infra/agent/compose.yaml of that checkout.
 set -euo pipefail
+export LC_ALL=C # byte-wise character ranges in the input checks below
 
 scope=${1:?scope}
-read -r action env image version _ <<<"${SSH_ORIGINAL_COMMAND:-}"
+read -r action env version backend frontend _ <<<"${SSH_ORIGINAL_COMMAND:-}"
 repo=/opt/candlestack
 image_re='^ghcr\.io/candlestack-fei-stu/candlestack/[a-z0-9._-]+@sha256:[0-9a-f]{64}$'
 
@@ -31,30 +34,85 @@ may_touch() {
   esac
 }
 
+# Redis is a cache: maxmemory, and the container limit a little above it.
+redis_memory() {
+  case "$1" in
+    prod) REDIS_MAXMEMORY=256mb REDIS_MEM_LIMIT=288m ;;
+    stage) REDIS_MAXMEMORY=128mb REDIS_MEM_LIMIT=160m ;;
+    *) REDIS_MAXMEMORY=64mb REDIS_MEM_LIMIT=96m ;;
+  esac
+  export REDIS_MAXMEMORY REDIS_MEM_LIMIT
+}
+
 compose() {
   docker compose -p "$env" -f "$repo/infra/env/compose.yaml" "$@"
 }
 
-pull() {
+# Every backend build brings a new layer of about 250 MB. Images no container uses any more
+# (earlier versions, removed previews) go, so the disk does not fill up; a deploy pulls what
+# it needs again anyway.
+prune_images() {
+  docker image prune --all --force >/dev/null
+}
+
+check_image() {
   [[ $1 =~ $image_re ]] || fail "image must be a GHCR digest reference: '$1'"
+}
+
+read_token() {
   read -r token || fail "expected a GHCR token on stdin"
+}
+
+# The lines after the token, until EOF. Nothing read here is ever printed.
+read_secrets() {
+  local line key value
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -n "$line" ] || continue
+    [[ $line == *=* ]] || fail "expected KEY=VALUE lines after the token on stdin"
+    key=${line%%=*}
+    value=${line#*=}
+    [[ $key =~ ^(ALPACA_KEY_ID|ALPACA_SECRET_KEY)$ ]] ||
+      fail "only ALPACA_KEY_ID and ALPACA_SECRET_KEY may follow the token on stdin"
+    [[ $value =~ ^[!-~]{0,256}$ && $value != *[\"\'\`\\]* ]] ||
+      fail "$key must be at most 256 printable characters without spaces or quotes"
+    export "$key=$value"
+  done
+}
+
+# Logs in to GHCR with the token for this command only and pulls the images.
+pull() {
+  local image
   DOCKER_CONFIG=$(mktemp -d)
   export DOCKER_CONFIG
   trap 'rm -rf "$DOCKER_CONFIG"' EXIT
   docker login ghcr.io --username deploy --password-stdin <<<"$token" >/dev/null
-  docker pull --quiet "$1"
+  for image in "$@"; do
+    docker pull --quiet "$image"
+  done
 }
 
 case "${action:-}" in
   up)
     may_touch "$env" || fail "the $scope key may not deploy '$env'"
     [[ $version =~ ^[A-Za-z0-9._-]{1,64}$ ]] || fail "bad version: '$version'"
-    pull "$image"
-    ENV_NAME=$env IMAGE=$image APP_VERSION=$version compose up --detach --remove-orphans
+    check_image "$backend"
+    check_image "$frontend"
+    read_token
+    read_secrets
+    pull "$backend" "$frontend"
+    redis_memory "$env"
+    ENV_NAME=$env APP_VERSION=$version BACKEND_IMAGE=$backend FRONTEND_IMAGE=$frontend \
+      compose up --detach --remove-orphans
+    prune_images
     ;;
   down)
-    [ "$scope" = preview ] && may_touch "$env" || fail "the $scope key may not remove '$env'"
-    ENV_NAME=$env IMAGE=none APP_VERSION=none compose down --remove-orphans
+    [ "$scope" = preview ] || fail "only the preview key removes environments"
+    may_touch "$env" || fail "the $scope key may not remove '$env'"
+    # compose needs every variable of the file, even to remove the containers.
+    redis_memory "$env"
+    ENV_NAME=$env APP_VERSION=none BACKEND_IMAGE=none FRONTEND_IMAGE=none \
+      compose down --remove-orphans
+    prune_images
     ;;
   edge)
     [ "$scope" = stage ] || fail "only the stage key updates the edge"
@@ -66,6 +124,8 @@ case "${action:-}" in
   agent)
     [ "$scope" = stage ] || fail "only the stage key deploys the server agent"
     image=$env # "agent <image@digest>": the image is the first argument
+    check_image "$image"
+    read_token
     pull "$image"
     IMAGE=$image docker compose -p agent -f "$repo/infra/agent/compose.yaml" up --detach --remove-orphans
     ;;

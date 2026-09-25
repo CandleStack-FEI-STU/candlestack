@@ -25,18 +25,32 @@ jobs:
     permissions:
       contents: read
 
-  build:
+  build-backend:
     needs: no-ai-signs
     uses: ./.github/workflows/build.yml
     permissions:
       contents: read
       packages: write
     with:
+      name: backend
+      context: backend
+      tag: pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+      commit: ${{ github.event.pull_request.head.sha }}
+
+  build-frontend:
+    needs: no-ai-signs
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      name: frontend
+      context: frontend
       tag: pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
       commit: ${{ github.event.pull_request.head.sha }}
 
   deploy:
-    needs: build
+    needs: [build-backend, build-frontend]
     runs-on: ubuntu-latest
     environment:
       name: preview
@@ -47,16 +61,29 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: ./.github/actions/deploy
+      - name: Deploy the preview
+        uses: ./.github/actions/deploy
         with:
-          command: up pr-${{ github.event.pull_request.number }} ${{ needs.build.outputs.image }} pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          command: >-
+            up pr-${{ github.event.pull_request.number }}
+            pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+            ${{ needs.build-backend.outputs.image }} ${{ needs.build-frontend.outputs.image }}
           ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
           known-hosts: ${{ vars.DEPLOY_KNOWN_HOSTS }}
           access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
           ghcr-token: ${{ secrets.GITHUB_TOKEN }}
+          env-secrets: |
+            ALPACA_KEY_ID=${{ secrets.ALPACA_KEY_ID }}
+            ALPACA_SECRET_KEY=${{ secrets.ALPACA_SECRET_KEY }}
           health-url: https://pr-${{ github.event.pull_request.number }}-preview.candlestack.tech/api/health
           health-expect: ${{ github.event.pull_request.head.sha }}
+
+      - name: Smoke test
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: .github/scripts/smoke.sh https://pr-${{ github.event.pull_request.number }}-preview.candlestack.tech
 
   remove:
     if: >-

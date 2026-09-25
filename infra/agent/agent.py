@@ -44,7 +44,7 @@ def http_json(url, timeout=10):
 
 def check_preview(env):
     try:
-        body, ms = http_json(f"http://{env}-app:8080/api/health")
+        body, ms = http_json(f"http://{env}-backend:8000/api/health")
         version = body.get("version")
         return {
             "env": env,

@@ -2,17 +2,47 @@
 	auto_https off
 }
 
+# One environment: /api/* to its backend, everything else to its frontend.
+# Usage: import env <env name>
+(env) {
+	handle /api/* {
+		reverse_proxy {args[0]}-backend:8000
+	}
+	handle {
+		reverse_proxy {args[0]}-frontend:8080
+	}
+}
+
+# Transition to the backend + frontend layout: prod keeps running the old single prod-app
+# container until the first release with the new layout, and this file is deployed from main
+# before that. prod-app is a fallback that gets the requests only while the new upstream does
+# not answer. Remove the fallback (use "import env prod") after that first release.
+(prod-app-fallback) {
+	lb_policy first
+	lb_try_duration 3s
+	fail_duration 10s
+}
+
 :80 {
 	header X-Robots-Tag "noindex, nofollow"
 
 	@prod host app.candlestack.tech
 	handle @prod {
-		reverse_proxy prod-app:8080
+		handle /api/* {
+			reverse_proxy prod-backend:8000 prod-app:8080 {
+				import prod-app-fallback
+			}
+		}
+		handle {
+			reverse_proxy prod-frontend:8080 prod-app:8080 {
+				import prod-app-fallback
+			}
+		}
 	}
 
 	@stage host stage.candlestack.tech
 	handle @stage {
-		reverse_proxy stage-app:8080
+		import env stage
 	}
 
 	# The server agent; ops.candlestack.tech itself is a Cloudflare Worker.
@@ -24,7 +54,7 @@
 	# pr-<N>-preview.candlestack.tech -> the pr-<N> environment
 	@preview vars_regexp preview {host} ^(pr-[0-9]+)-preview\.candlestack\.tech$
 	handle @preview {
-		reverse_proxy {re.preview.1}-app:8080
+		import env {re.preview.1}
 	}
 
 	handle {
