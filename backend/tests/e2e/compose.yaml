@@ -1,12 +1,13 @@
 # The backend image with Redis, hardened like the deployed environments, for the e2e tests.
-# The host port and the project name come from E2E_PORT, so several stacks can run at once:
+# The host port, the project name and the image tag come from E2E_PORT, so several stacks
+# (each built from its own checkout) can run at once:
 #   E2E_PORT=18001 docker compose -f tests/e2e/compose.yaml up -d --build --wait
 # The e2e fixture (tests/e2e/conftest.py) does this itself unless E2E_BASE_URL is set.
 name: candlestack-e2e-${E2E_PORT:-18000}
 
 services:
   backend:
-    image: ${E2E_IMAGE:-candlestack-backend:e2e}
+    image: candlestack-backend:e2e-${E2E_PORT:-18000}
     build:
       context: ../..
       args:
