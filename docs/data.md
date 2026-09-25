@@ -24,7 +24,9 @@ and for the code behind them. Architecture and configuration: [architecture.md](
 
 Instrument id: `<market>:<symbol>`, for example `crypto:BTCUSDT`, `stock:AAPL`, `stock:BRK.B`.
 Parsing trims whitespace, lower-cases the market and upper-cases the symbol
-(`crypto:btcusdt` is `crypto:BTCUSDT`). Symbols are spelled as the source spells them.
+(`crypto:btcusdt` is `crypto:BTCUSDT`). Symbols are spelled as the source spells them: letters
+and digits of any script (Binance lists pairs such as `币安人生USDT`) and dots, at most 32
+characters.
 
 | Field | Crypto | Stock |
 | --- | --- | --- |
@@ -42,7 +44,7 @@ Parsing trims whitespace, lower-cases the market and upper-cases the symbol
 
 | Parameter | Rule |
 | --- | --- |
-| `q` | required; an empty query returns no items. Case-insensitive; `btc/usdt`, `btc-usdt` and `BTC USDT` all match `BTCUSDT` |
+| `q` | required; an empty query returns no items. Case-insensitive; separators are ignored in symbols: `btc/usdt`, `btc-usdt` and `BTC USDT` all match `BTCUSDT`, `brkb` matches `BRK.B` |
 | `market` | optional, `crypto` or `stock` |
 | `limit` | default 20, max 100 |
 
@@ -158,7 +160,9 @@ Candles are fetched and cached per calendar month (UTC) of one instrument and ti
   every aligned bin of the period; stocks, every session bin of the period.
 - Gaps are never filled, interpolated or forward-filled. They are reported in `meta.gaps`:
   `missing` is the total number of missing candles, `ranges` lists merged `[start, end)`
-  ranges, earliest first, at most 100.
+  ranges, earliest first, at most 100. Consecutive missing candles form one range, for stocks
+  also across a night or weekend; a range ends where its last missing candle ends (at most the
+  session close).
 - Typical causes: exchange maintenance and trading halts; minutes without any IEX trade
   (common for illiquid stocks at 1m, rare at 1h and above).
 - Candles with zero volume are kept as delivered.
