@@ -1,0 +1,70 @@
+[project]
+name = "candlestack"
+version = "0.1.0"
+description = "CandleStack backend: API for experiments on financial time series"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "fastapi>=0.141.1",
+    "granian>=2.8.3",
+    "httpx>=0.28.1",
+    "orjson>=3.12.0",
+    "polars>=1.44.2",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2.15.0",
+    "redis[hiredis]>=8.1.0",
+    "scalar-fastapi>=1.9.1",
+    "tzdata>=2026.4",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.17,<0.12"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "anyio>=4.15.1",
+    "granian[reload]>=2.8.3",
+    "httpx2>=2.13.1",
+    "import-linter>=2.15",
+    "pytest>=9.1.1",
+    "pytest-xdist>=3.8.0",
+    "respx>=0.23.1",
+    "ruff>=0.16.9",
+    "ty==0.0.84",
+]
+
+# The uv release line of the whole toolchain: local, CI (setup-uv reads this) and the image.
+[tool.uv]
+required-version = ">=0.11.17,<0.12"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "ASYNC", "PT"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Plain `pytest` runs the unit tests; CI selects the other suites with -m.
+addopts = ["-m", "not integration and not e2e", "--strict-markers", "--import-mode=importlib", "-ra"]
+markers = [
+    "integration: needs a real Redis at REDIS_URL",
+    "e2e: runs the built image with docker compose (tests/e2e/compose.yaml)",
+]
+filterwarnings = ["error"]
+xfail_strict = true
+
+[tool.importlinter]
+root_package = "candlestack"
+
+[[tool.importlinter.contracts]]
+name = "Modules depend downwards only: data -> core"
+type = "layers"
+layers = ["candlestack.data", "candlestack.core"]
+
+[[tool.importlinter.contracts]]
+name = "Other modules import core only through its package root"
+type = "protected"
+protected_modules = ["candlestack.core.*"]
+allowed_importers = ["candlestack.core"]

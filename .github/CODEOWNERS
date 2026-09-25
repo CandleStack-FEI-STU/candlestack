@@ -1,0 +1,6 @@
+# Infrastructure, CI and the dependency set are reviewed by the tech lead.
+/infra/                  @ArsenLabovich
+/.github/                @ArsenLabovich
+/backend/pyproject.toml  @ArsenLabovich
+/backend/uv.lock         @ArsenLabovich
+Dockerfile               @ArsenLabovich

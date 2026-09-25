@@ -1,0 +1,34 @@
+# Weekly update pull requests. Minor and patch updates of an ecosystem come together in one
+# pull request; each major update comes alone.
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /backend
+    schedule:
+      interval: weekly
+    groups:
+      python:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /backend
+    schedule:
+      interval: weekly
+    groups:
+      docker:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      # The backend is on Python 3.13 (requires-python); moving on is a deliberate change.
+      - dependency-name: python
+        versions: [">=3.14"]

@@ -1,0 +1,129 @@
+{
+  "components": {
+    "schemas": {
+      "Health": {
+        "properties": {
+          "commit": {
+            "title": "Commit",
+            "type": "string"
+          },
+          "env": {
+            "title": "Env",
+            "type": "string"
+          },
+          "redis": {
+            "enum": [
+              "ok",
+              "error"
+            ],
+            "title": "Redis",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "env",
+          "version",
+          "commit",
+          "redis"
+        ],
+        "title": "Health",
+        "type": "object"
+      },
+      "Problem": {
+        "additionalProperties": true,
+        "description": "Error response (RFC 9457). Some problems add members, such as `errors` on 422.",
+        "properties": {
+          "detail": {
+            "examples": [
+              "query parameter 'limit': Input should be at most 100"
+            ],
+            "title": "Detail",
+            "type": "string"
+          },
+          "status": {
+            "examples": [
+              422
+            ],
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "examples": [
+              "Invalid request"
+            ],
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "examples": [
+              "https://candlestack.tech/problems/validation"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail"
+        ],
+        "title": "Problem",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "HTTP API of CandleStack, a lab for experiments on financial time series. Market data covers crypto from Binance and US stocks from Alpaca. Times are UTC epoch seconds. Errors are RFC 9457 problem details (`application/problem+json`).",
+    "title": "CandleStack API",
+    "version": "snapshot"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/health": {
+      "get": {
+        "description": "200 when the app and its Redis work, 503 with the same body when Redis does not.\n\nThe body is compact JSON: deploy checks look for `\"version\":\"<version>\"` and the commit.",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Redis is unreachable"
+          }
+        },
+        "summary": "Health of the app",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+# Only pyproject.toml, uv.lock, src/ and granian-logging.json go into the image.
+**/__pycache__
+**/*.pyc
+.venv
+.pytest_cache
+.ruff_cache
+tests
+Dockerfile
+.dockerignore
