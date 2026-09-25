@@ -10,6 +10,11 @@ updates:
       python:
         patterns: ["*"]
         update-types: [minor, patch]
+    ignore:
+      # uv is one release line everywhere (required-version in backend/pyproject.toml, the
+      # uv_build bound, the uv image in the Dockerfile); a new line is adopted by hand.
+      - dependency-name: uv-build
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: github-actions
     directory: /
@@ -32,3 +37,6 @@ updates:
       # The backend is on Python 3.13 (requires-python); moving on is a deliberate change.
       - dependency-name: python
         versions: [">=3.14"]
+      # See uv-build above.
+      - dependency-name: astral-sh/uv
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
