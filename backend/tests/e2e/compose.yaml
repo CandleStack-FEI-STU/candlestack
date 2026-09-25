@@ -1,0 +1,43 @@
+# The backend image with Redis, hardened like the deployed environments, for the e2e tests.
+# The host port and the project name come from E2E_PORT, so several stacks can run at once:
+#   E2E_PORT=18001 docker compose -f tests/e2e/compose.yaml up -d --build --wait
+# The e2e fixture (tests/e2e/conftest.py) does this itself unless E2E_BASE_URL is set.
+name: candlestack-e2e-${E2E_PORT:-18000}
+
+services:
+  backend:
+    image: ${E2E_IMAGE:-candlestack-backend:e2e}
+    build:
+      context: ../..
+      args:
+        APP_COMMIT: e2e
+    environment:
+      APP_ENV: test
+      APP_VERSION: e2e
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - 127.0.0.1:${E2E_PORT:-18000}:8000
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
