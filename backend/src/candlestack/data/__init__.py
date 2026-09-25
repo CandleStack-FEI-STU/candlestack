@@ -20,6 +20,7 @@ from candlestack.data.candles import (
     suggest,
     validate,
 )
+from candlestack.data.catalog import Catalog, normalise_query, search
 from candlestack.data.errors import (
     DataError,
     DataIntegrityError,
@@ -46,6 +47,7 @@ __all__ = [
     "CANDLE_SCHEMA",
     "MAX_GAP_RANGES",
     "CandleSet",
+    "Catalog",
     "DataError",
     "DataIntegrityError",
     "Feed",
@@ -69,9 +71,11 @@ __all__ = [
     "find_gaps",
     "fingerprint",
     "normalise",
+    "normalise_query",
     "parse_calendar",
     "resample_fixed",
     "resample_sessions",
+    "search",
     "session_bins",
     "sessions_between",
     "slice_range",
