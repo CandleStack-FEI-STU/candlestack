@@ -1,2 +1,12 @@
 __pycache__/
 *.pyc
+
+# Python and uv
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Local settings, never committed
+.env
+.env.*
+!.env.example
