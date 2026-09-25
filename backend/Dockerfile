@@ -4,7 +4,7 @@
 # then copied alone into the runtime stage. Build context: backend/.
 #   docker build -t candlestack-backend --build-arg APP_COMMIT=$(git rev-parse HEAD) backend
 
-FROM ghcr.io/astral-sh/uv:0.11 AS uv
+FROM ghcr.io/astral-sh/uv:0.12 AS uv
 
 FROM python:3.13-slim AS build
 COPY --from=uv /uv /usr/local/bin/uv
