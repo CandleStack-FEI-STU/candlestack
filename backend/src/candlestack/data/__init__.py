@@ -24,6 +24,7 @@ from candlestack.data.models import (
     Timeframe,
     empty_candles,
 )
+from candlestack.data.sessions import Session, parse_calendar, session_bins, sessions_between
 
 __all__ = [
     "CANDLE_SCHEMA",
@@ -37,9 +38,13 @@ __all__ = [
     "InvalidRequest",
     "Market",
     "PeriodOutOfRange",
+    "Session",
     "Source",
     "SourceUnavailable",
     "Timeframe",
     "TooManyCandles",
     "empty_candles",
+    "parse_calendar",
+    "session_bins",
+    "sessions_between",
 ]
