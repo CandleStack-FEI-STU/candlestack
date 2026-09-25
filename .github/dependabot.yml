@@ -40,3 +40,8 @@ updates:
       # See uv-build above.
       - dependency-name: astral-sh/uv
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule:
+      interval: weekly

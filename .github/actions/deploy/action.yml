@@ -5,7 +5,8 @@ description: >-
 
 inputs:
   command:
-    description: candlestack-deploy command, e.g. "up stage <image@digest> <version>"
+    description: >-
+      candlestack-deploy command, e.g. "up stage <version> <backend@digest> <frontend@digest>"
     required: true
   ssh-key:
     description: Private deploy key of the environment (DEPLOY_SSH_KEY)
@@ -20,7 +21,12 @@ inputs:
     description: Cloudflare Access service token secret
     required: false
   ghcr-token:
-    description: Token the VM uses once to pull the image (sent on stdin, not stored)
+    description: Token the VM uses once to pull the images (sent on stdin, not stored)
+    required: false
+  env-secrets:
+    description: >-
+      Secrets of the environment as KEY=VALUE lines, sent on stdin after the GHCR token and
+      never printed (candlestack-deploy accepts only ALPACA_KEY_ID and ALPACA_SECRET_KEY)
     required: false
   health-url:
     description: URL to poll after the command
@@ -64,9 +70,17 @@ runs:
       env:
         COMMAND: ${{ inputs.command }}
         GHCR_TOKEN: ${{ inputs.ghcr-token }}
+        ENV_SECRETS: ${{ inputs.env-secrets }}
         TUNNEL_SERVICE_TOKEN_ID: ${{ inputs.access-client-id }}
         TUNNEL_SERVICE_TOKEN_SECRET: ${{ inputs.access-client-secret }}
-      run: printf '%s\n' "$GHCR_TOKEN" | ssh candlestack "$COMMAND"
+      run: |
+        # stdin of the command: the GHCR token on the first line, then the secrets.
+        {
+          printf '%s\n' "$GHCR_TOKEN"
+          if [[ -n $ENV_SECRETS ]]; then
+            printf '%s\n' "$ENV_SECRETS"
+          fi
+        } | ssh candlestack "$COMMAND"
 
     - name: Wait until healthy
       if: inputs.health-url != ''

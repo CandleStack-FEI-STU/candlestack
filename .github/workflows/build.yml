@@ -5,14 +5,12 @@ on:
     inputs:
       name:
         description: Image name under ghcr.io/candlestack-fei-stu/candlestack/
-        required: false
+        required: true
         type: string
-        default: placeholder
       context:
         description: Docker build context
-        required: false
+        required: true
         type: string
-        default: infra/placeholder
       tag:
         description: Image tag to push
         required: true

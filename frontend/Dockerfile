@@ -1,5 +1,6 @@
-# Placeholder app: shows which environment, version and commit is deployed until the
-# real application replaces it. The same image runs in every environment.
+# Frontend placeholder: a static page that shows which environment, version and commit is
+# deployed, until the real frontend replaces it. The same image runs in every environment;
+# the edge Caddy routes /api/* to the backend and everything else here.
 FROM caddy:2-alpine
 
 ARG APP_COMMIT=unknown
