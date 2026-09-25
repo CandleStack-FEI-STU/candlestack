@@ -22,4 +22,17 @@ and post-processing gives the most stable results.
 
 ## Status
 
-Early setup. Project structure and run instructions will follow.
+In development: the backend foundation, then the market data layer (crypto from Binance,
+US stocks from Alpaca).
+
+## Run locally
+
+```sh
+cp .env.example .env    # optional: Alpaca paper keys for US stocks
+docker compose -f compose.dev.yaml up --build
+```
+
+The API reference is then at http://localhost:8000/api/v1/docs.
+
+More: [architecture](docs/architecture.md), [market data](docs/data.md),
+[contributing](CONTRIBUTING.md), [infrastructure](infra/README.md).
