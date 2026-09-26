@@ -19,14 +19,16 @@ jobs:
     permissions:
       contents: read
 
-  # Decides which suites run: the backend jobs only when something they test changed.
+  # Decides which suites run: each only when something it checks changed.
   changes:
     needs: no-ai-signs
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
     outputs:
       backend: ${{ steps.diff.outputs.backend }}
+      infra: ${{ steps.diff.outputs.infra }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -45,19 +47,26 @@ jobs:
           fi
           if [[ $base =~ ^0*$ ]] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
             echo "No usable base ($base): running everything."
-            backend=true
-          elif git diff --name-only "$base" HEAD |
-              grep -qE '^(backend/|docs/openapi\.json$|compose[^/]*\.yaml$|\.github/workflows/ci\.yml$)'; then
-            backend=true
+            changed=$'backend/\ninfra/'
           else
-            backend=false
+            changed=$(git diff --name-only "$base" HEAD)
+          fi
+          backend=false
+          infra=false
+          if grep -qE '^(backend/|docs/openapi\.json$|compose[^/]*\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
+            backend=true
+          fi
+          if grep -qE '^(infra/|frontend/|\.github/)' <<<"$changed"; then
+            infra=true
           fi
           echo "backend=$backend" | tee -a "$GITHUB_OUTPUT"
+          echo "infra=$infra" | tee -a "$GITHUB_OUTPUT"
 
   lint:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     defaults:
@@ -81,6 +90,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     defaults:
@@ -102,6 +112,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     services:
@@ -134,6 +145,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     env:
@@ -177,12 +189,55 @@ jobs:
         if: always()
         run: docker compose -f tests/e2e/compose.yaml down --volumes
 
+  # What only the post-merge deploy would otherwise exercise: the workflows and their scripts,
+  # the deploy script the VM runs as a forced command, the edge and tunnel configuration and
+  # the images other than the backend's. A broken one on main breaks the next deploy.
+  infra:
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Workflows (actionlint, with shellcheck on their run scripts)
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
+
+      # The ShellCheck release the actionlint image brings, not the runner's older one.
+      - name: Shell scripts
+        run: |
+          docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.11.0 \
+            infra/vm/candlestack-deploy infra/vm/*.sh .github/scripts/*.sh
+
+      # With the Caddy image the edge runs.
+      - name: Edge Caddyfile
+        run: |
+          image=$(sed -n 's/^ *image: *//p' infra/edge/compose.yaml)
+          docker run --rm -v "$PWD/infra/edge/caddy:/etc/caddy:ro" "$image" \
+            caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
+      - name: Tunnel ingress rules
+        run: |
+          docker run --rm -v "$PWD/infra/cloudflared:/etc/cloudflared:ro" \
+            cloudflare/cloudflared:2026.9.3 tunnel --config /etc/cloudflared/config.yml ingress validate
+
+      - name: Frontend image and its Caddyfile
+        run: |
+          docker build --tag frontend-check frontend
+          docker run --rm frontend-check caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
+      - name: Server agent image
+        run: docker build --tag agent-check infra/agent
+
   # The one required check besides no-ai-signs: green when every job passed or was skipped.
   ci:
     name: ci
     if: always()
-    needs: [no-ai-signs, changes, lint, unit, integration, e2e]
+    needs: [no-ai-signs, changes, lint, unit, integration, e2e, infra]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions: {}
     steps:
       - env:
