@@ -1,8 +1,17 @@
-# A pull request that changes infrastructure, CI, the toolchain or the dependency set requests
-# a review from the tech lead (a request, not a merge requirement: see CONTRIBUTING.md).
+# A pull request that changes infrastructure, CI, the toolchain, the dependency set or the
+# shared editor and Claude Code settings needs an approval from the tech lead to merge, on top
+# of the one approval every pull request needs (see CONTRIBUTING.md).
 /infra/                  @ArsenLabovich
 /.github/                @ArsenLabovich
+/.claude/                @ArsenLabovich
+/CLAUDE.md               @ArsenLabovich
+/compose.yaml            @ArsenLabovich
+/frontend/Caddyfile      @ArsenLabovich
 /backend/pyproject.toml  @ArsenLabovich
 /backend/uv.lock         @ArsenLabovich
 /backend/.python-version @ArsenLabovich
 Dockerfile               @ArsenLabovich
+.dockerignore            @ArsenLabovich
+/.gitattributes          @ArsenLabovich
+/.gitignore              @ArsenLabovich
+/.editorconfig           @ArsenLabovich
