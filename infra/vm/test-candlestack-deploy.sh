@@ -29,7 +29,7 @@ case $1 in
     if [[ $file != /opt/candlestack/* ]]; then
       echo "  file $(head -n 1 "$file")" >>"$CALLS"
     fi
-    env | grep -E '^(ENV_NAME|APP_VERSION|BACKEND_IMAGE|FRONTEND_IMAGE|IMAGE|REDIS_[A-Z_]+|ALPACA_[A-Z_]+)=' |
+    env | grep -E '^(ENV_NAME|APP_VERSION|BACKEND_IMAGE|FRONTEND_IMAGE|IMAGE|REDIS_[A-Z_]+|ALPACA_[A-Z_]+|SENTRY_DSN)=' |
       sort | sed 's/^/  env /' >>"$CALLS"
     [[ $FAKE_DOCKER != fail-up || $* != *" up "* ]]
     ;;
@@ -76,6 +76,7 @@ KEY_ID=PKTEST0123456789
 SECRET='t3st/Secret+0123=~!'
 SECRETS="ALPACA_KEY_ID=$KEY_ID
 ALPACA_SECRET_KEY=$SECRET"
+DSN=https://0123abcd@o1.ingest.de.sentry.io/2
 
 tests=0
 failures=0
@@ -110,7 +111,7 @@ failed() {
 # The script's output never shows the token or a secret value, whatever happened.
 quiet() {
   local value
-  for value in "$TOKEN" "$KEY_ID" "$SECRET" "${@:2}"; do
+  for value in "$TOKEN" "$KEY_ID" "$SECRET" "$DSN" "${@:2}"; do
     if [[ $output == *"$value"* ]]; then
       failed "$1" "the output shows '$value': $output"
       return 1
@@ -174,8 +175,8 @@ release_git() {
     "git -C /opt/candlestack show $COMMIT:infra/env/compose.yaml" | head -n "$2"
 }
 
-# up_calls <env> <version> <maxmemory> <container limit> [with-secrets]: what "up" asks of
-# Docker; prod with the compose file of its release tag.
+# up_calls <env> <version> <maxmemory> <container limit> [with-secrets [with-dsn]]: what "up"
+# asks of Docker; prod with the compose file of its release tag.
 up_calls() {
   echo "docker login ghcr.io --username deploy --password-stdin"
   echo "  stdin $TOKEN"
@@ -198,6 +199,9 @@ up_calls() {
   echo "  env FRONTEND_IMAGE=$FRONTEND"
   echo "  env REDIS_MAXMEMORY=$3"
   echo "  env REDIS_MEM_LIMIT=$4"
+  if [[ -n ${6:-} ]]; then
+    echo "  env SENTRY_DSN=$DSN"
+  fi
   echo "docker image prune --all --force"
 }
 
@@ -224,6 +228,9 @@ $SECRETS" "$(release_git v0.3.0-rc.1 6 | sed 's/ --unshallow//')
 $(up_calls prod v0.3.0-rc.1 256mb 288m with-secrets)"
 allowed "stage: up stage" stage "up stage main-0123abc $IMAGES" "$TOKEN
 $SECRETS" "$(up_calls stage main-0123abc 128mb 160m with-secrets)"
+allowed "stage: up stage with the Sentry DSN" stage "up stage main-0123abc $IMAGES" "$TOKEN
+$SECRETS
+SENTRY_DSN=$DSN" "$(up_calls stage main-0123abc 128mb 160m with-secrets with-dsn)"
 allowed "stage: up stage without secrets" stage "up stage main-0123abc $IMAGES" "$TOKEN" \
   "$(up_calls stage main-0123abc 128mb 160m)"
 allowed "preview: up pr-42" preview "up pr-42 pr-42-0123abc $IMAGES" "$TOKEN
@@ -377,14 +384,15 @@ done
 refused "agent image" stage "agent ${AGENT%@*}:latest" "$TOKEN" \
   "image must be a GHCR digest reference: '${AGENT%@*}:latest'"
 
-echo "# stdin: the token, then only the Alpaca keys with safe values"
+echo "# stdin: the token, then only the Alpaca keys and the Sentry DSN, with safe values"
+only_secrets="only ALPACA_KEY_ID, ALPACA_SECRET_KEY and SENTRY_DSN may follow the token on stdin"
 refused "up without a token" stage "up stage v1 $IMAGES" "" "expected a GHCR token on stdin"
 refused "agent without a token" stage "agent $AGENT" "" "expected a GHCR token on stdin"
 refused "another variable" stage "up stage v1 $IMAGES" "$TOKEN
-LD_PRELOAD=/tmp/x.so" "only ALPACA_KEY_ID and ALPACA_SECRET_KEY may follow the token on stdin" \
+LD_PRELOAD=/tmp/x.so" "$only_secrets" \
   /tmp/x.so
 refused "PATH" stage "up stage v1 $IMAGES" "$TOKEN
-PATH=/tmp" "only ALPACA_KEY_ID and ALPACA_SECRET_KEY may follow the token on stdin"
+PATH=/tmp" "$only_secrets"
 refused "a line without =" stage "up stage v1 $IMAGES" "$TOKEN
 $KEY_ID" "expected KEY=VALUE lines after the token on stdin"
 for value in 'with space' 'quote"d' "quote'd" 'back`tick' 'back\slash' $'tab\there' \

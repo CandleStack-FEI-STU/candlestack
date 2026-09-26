@@ -1,6 +1,6 @@
 # One environment (prod, stage or pr-<N>) as its own compose project, started by
 # infra/vm/candlestack-deploy on the VM, which also exports the backend's Alpaca keys
-# (ALPACA_KEY_ID, ALPACA_SECRET_KEY) for this command only:
+# (ALPACA_KEY_ID, ALPACA_SECRET_KEY) and SENTRY_DSN (prod and stage only) for this command only:
 #   ENV_NAME=stage APP_VERSION=<version> BACKEND_IMAGE=<image@digest> FRONTEND_IMAGE=<image@digest> \
 #   REDIS_MAXMEMORY=128mb REDIS_MEM_LIMIT=160m docker compose -p stage -f infra/env/compose.yaml up -d
 # On the shared "edge" network the edge Caddy reaches <ENV_NAME>-backend:8000 (/api/*) and
@@ -15,6 +15,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       ALPACA_KEY_ID: ${ALPACA_KEY_ID:-}
       ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
     # Read by the server agent: ops tells deploys (new version) from redeploys (same version).
     labels:
       candlestack.version: ${APP_VERSION:?}

@@ -30,6 +30,9 @@ contract.
 - Dependencies only with `uv add <package>` (`--dev` for tools); commit `uv.lock` with them.
 - Settings are environment variables documented in `.env.example`. Never commit `.env` files,
   keys or tokens.
+- Errors: `ProblemError` for what the client should see, `logger.warning` for what the service
+  works around, `logger.exception` for what needs a developer (it becomes a Sentry issue).
+  Never swallow an exception or log keys, tokens or personal data.
 - Match the surrounding code: naming, short comments that say why, the style of the tests next
   to yours.
 

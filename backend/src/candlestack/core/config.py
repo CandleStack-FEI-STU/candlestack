@@ -22,6 +22,15 @@ def default_alpaca_rate_limit(app_env: str) -> int:
     return _ALPACA_RATE_LIMITS.get(app_env, _ALPACA_RATE_LIMIT_DEFAULT)
 
 
+# Share of requests traced in Sentry: prod has real traffic, stage mostly the smoke tests.
+_TRACES_SAMPLE_RATE_PROD = 0.2
+_TRACES_SAMPLE_RATE_DEFAULT = 1.0
+
+
+def default_traces_sample_rate(app_env: str) -> float:
+    return _TRACES_SAMPLE_RATE_PROD if app_env == "prod" else _TRACES_SAMPLE_RATE_DEFAULT
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_ignore_empty=True, extra="ignore", frozen=True)
 
@@ -46,6 +55,13 @@ class Settings(BaseSettings):
         gt=0,
     )
     binance_weight_limit: int = Field(default=1000, gt=0)
+
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = Field(
+        default_factory=lambda data: default_traces_sample_rate(data.get("app_env", "local")),
+        ge=0,
+        le=1,
+    )
 
     @field_validator("log_level", mode="before")
     @classmethod

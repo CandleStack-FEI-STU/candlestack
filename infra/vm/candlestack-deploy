@@ -8,8 +8,9 @@
 #   preview  up pr-<N> <version> <backend@digest> <frontend@digest>  |   down pr-<N>
 #
 # "up" and "agent" read a GHCR token from the first line of stdin and use it only for this
-# one pull. "up" then reads the backend's secrets as KEY=VALUE lines (only ALPACA_KEY_ID and
-# ALPACA_SECRET_KEY) and passes them to compose in its environment: no file, never printed.
+# one pull. "up" then reads the backend's secrets as KEY=VALUE lines (only ALPACA_KEY_ID,
+# ALPACA_SECRET_KEY and SENTRY_DSN) and passes them to compose in its environment: no file,
+# never printed.
 # Once the containers run, "up" prints "images <backend@digest> <frontend@digest>".
 # "up stage" also records its images in the stage record (see stage_images). "up prod" takes
 # no images: it runs the ones stage last ran for the commit of the release tag named by
@@ -132,8 +133,8 @@ read_secrets() {
     [[ $line == *=* ]] || fail "expected KEY=VALUE lines after the token on stdin"
     key=${line%%=*}
     value=${line#*=}
-    [[ $key =~ ^(ALPACA_KEY_ID|ALPACA_SECRET_KEY)$ ]] ||
-      fail "only ALPACA_KEY_ID and ALPACA_SECRET_KEY may follow the token on stdin"
+    [[ $key =~ ^(ALPACA_KEY_ID|ALPACA_SECRET_KEY|SENTRY_DSN)$ ]] ||
+      fail "only ALPACA_KEY_ID, ALPACA_SECRET_KEY and SENTRY_DSN may follow the token on stdin"
     [[ $value =~ ^[!-~]{0,256}$ && $value != *[\"\'\`\\]* ]] ||
       fail "$key must be at most 256 printable characters without spaces or quotes"
     export "$key=$value"

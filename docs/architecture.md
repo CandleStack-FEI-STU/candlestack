@@ -2,7 +2,7 @@
 
 The CandleStack backend is one Python service: a FastAPI application that serves the HTTP API
 under `/api`. In this milestone it has two modules: `core` (configuration, logging, errors,
-Redis and HTTP clients, health) and `data` (market data: instrument catalog and candles from
+Redis and HTTP clients, health, Sentry) and `data` (market data: instrument catalog and candles from
 Binance and Alpaca, see [data.md](data.md)). It stores nothing: the sources are the truth and
 Redis is a cache that can be lost at any time.
 
@@ -26,6 +26,7 @@ flowchart LR
     end
     backend -->|HTTPS| binance["Binance<br/>REST + data.binance.vision"]
     backend -->|HTTPS| alpaca["Alpaca<br/>trading API + market data"]
+    backend -.->|"HTTPS, prod and stage"| sentry["Sentry (EU)<br/>errors, traces, logs"]
 ```
 
 | Container | Image | Notes |
@@ -114,6 +115,7 @@ Folders for later modules are created when their work starts, not before.
 | Types | ty, exact version pinned | fast type checker; pinned so a new release cannot turn CI red by itself |
 | Boundaries | import-linter | keeps the module rules above enforced, not just written down |
 | Tests | pytest, pytest-xdist, anyio plugin, respx | parallel runs, async tests, no real network in unit and integration tests |
+| Errors, traces, logs | Sentry (`sentry-sdk`), EU region | the team sees what fails or is slow with the code, commit and request behind it; free for a year with the GitHub Student Developer Pack |
 
 ## Configuration
 
@@ -136,6 +138,42 @@ Environment variables, read by pydantic-settings without a prefix. All are docum
 | `CLIENT_RATE_LIMIT` | `60` | candle and instrument-detail requests per minute per client IP (IPv6: per /64); `0` disables |
 | `ALPACA_RATE_LIMIT` | prod `150`, stage `60`, `pr-*` `30`, else `60` | our Alpaca request budget per minute |
 | `BINANCE_WEIGHT_LIMIT` | `1000` | our Binance REST weight budget per minute per environment |
+| `SENTRY_DSN` | empty | Sentry project for errors, traces and logs; empty sends nothing (set for prod and stage only) |
+| `SENTRY_TRACES_SAMPLE_RATE` | prod `0.2`, else `1.0` | share of requests traced in Sentry |
+
+## Observability
+
+| Question | Where |
+| --- | --- |
+| Are prod and stage up? How loaded is the server? What was deployed or restarted? | https://ops.candlestack.tech, checks from outside every minute |
+| What failed, where in the code, since which release? What is slow? | Sentry, organization `candlestack`, project `backend`: https://candlestack.sentry.io |
+| Is prod down right now? | Sentry's uptime monitor calls `/api/health` of prod every minute and e-mails the tech lead after 3 failures |
+
+What the backend sends to Sentry (only prod and stage have a DSN), set up in
+`core/observability.py`:
+
+- **Errors**: an unhandled exception (the client gets a 500 with `X-Request-ID`) and every
+  record logged at ERROR or above. A problem response (4xx, or 502/503 when a source fails) and
+  a warning are not errors: they are the service working as designed.
+- **Traces**: 20% of prod requests and every stage request, never `/api/health`. Calls to
+  Binance, Alpaca and Redis are spans of them.
+- **Logs**: records from INFO up, the access line of each request included (except health
+  checks), each with its `request_id`.
+- Every event carries `environment` (`prod`, `stage`), `release` (`APP_VERSION`) and
+  `request_id`: the `X-Request-ID` a user reports finds the error.
+- Nothing personal or secret: no IP addresses, cookies, request bodies or Cloudflare Access
+  logins; the Alpaca keys and the DSN are filtered; only our own frames keep their local
+  variables, without the ASGI scope.
+- At most 100 error events an hour per process, so an error in a loop cannot use up the
+  month's quota (50,000 errors, no pay-as-you-go).
+
+Alerts are e-mails to the tech lead only: a new, regressed or reappearing issue on prod (at
+most every 30 minutes), 50 events of one issue in an hour on prod, and prod down. Stage sends
+none. Every deploy records its release in Sentry (`.github/scripts/sentry-release.sh`), which
+links an issue to its suspect commit.
+
+`GET /api/debug/sentry-error`, on stage and in local runs only and not in the API reference,
+fails on purpose to check that an error reaches Sentry.
 
 ## Not in this milestone
 
@@ -166,3 +204,4 @@ Environment variables, read by pydantic-settings without a prefix. All are docum
 | Prod API and docs public (per-IP rate limit); stage and previews behind Cloudflare Access | anyone can try the released API without an account; unreleased builds stay team-only |
 | granian instead of uvicorn, ty instead of mypy, Polars instead of pandas | faster tools with the same role |
 | Coverage and TDD are team conventions, not CI gates | CI stays fast; test quality is checked in review |
+| Sentry for errors, traces and logs of prod and stage; ops for uptime and the server | ops keeps working when the VM is down; Sentry shows failures with their code, commit and request, and previews and local runs stay out of its quota |

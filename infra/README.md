@@ -60,6 +60,11 @@ reads `https://vm.candlestack.tech/api/snapshot`, served by the server agent (`a
 CPU, memory and disk, containers and the health of every preview. The agent keeps no history
 and holds no secrets; its JSON is a contract with the ops repository (schema 1).
 
+The backend of prod and stage also reports to Sentry (organization `candlestack`, EU): errors,
+traces and logs. An uptime monitor there e-mails the tech lead when prod's `/api/health` fails 3
+times in a row. What is sent and when it alerts:
+[docs/architecture.md](../docs/architecture.md#observability).
+
 Each commit of `main` is built once. A release does not rebuild: it deploys the exact images
 (same digests) that stage last ran for the tagged commit, started with that commit's own
 `infra/env/compose.yaml` rather than whatever main's checkout has by then (`edge` keeps
@@ -71,7 +76,9 @@ closing the pull request removes its environment. Pull requests from forks never
 To release: `git tag v0.2.0 <commit on main> && git push origin v0.2.0`, then approve the
 deployment in the Actions tab. Only a commit that stage has deployed can be released; any other
 fails before prod changes. After every deployment the workflow waits for `/api/health` to
-report the new commit or version, then runs `.github/scripts/smoke.sh` against the environment:
+report the new commit or version and runs `.github/scripts/smoke.sh` against the environment;
+prod and stage then record the release in Sentry (`.github/scripts/sentry-release.sh`, which
+only warns when it fails):
 
 | Check | What it expects |
 | --- | --- |
@@ -109,20 +116,22 @@ workflow of `main` holds that key. Every `up` prints `images <backend@digest> <f
 at the end; the release tags those images with the version in the registry.
 
 `up` reads its stdin: the first line is a GHCR token used once for the pull, then `KEY=VALUE`
-lines with the backend's secrets. Only `ALPACA_KEY_ID` and `ALPACA_SECRET_KEY` are accepted (at
-most 256 printable characters, no spaces or quotes). The script hands them to `docker compose`
-in its environment only: it never writes them to a file or prints them (Docker itself keeps them
-in the container's configuration, as with any container environment variable). The workflows
-send them with the `env-secrets` input of `.github/actions/deploy`. After `up` and `down` the
-script removes the images no container uses any more (every backend build adds a source layer of
-about 150 KB, and a dependency layer of about 250 MB when `uv.lock` changes). The other commands
-are `down pr-<N>` (preview key), `edge` and `agent <image@digest>` (stage key); the header of
-`vm/candlestack-deploy` lists which key may run what.
+lines with the backend's secrets. Only `ALPACA_KEY_ID`, `ALPACA_SECRET_KEY` and `SENTRY_DSN` are
+accepted (at most 256 printable characters, no spaces or quotes). The script hands them to
+`docker compose` in its environment only: it never writes them to a file or prints them (Docker
+itself keeps them in the container's configuration, as with any container environment variable).
+The workflows send them with the `env-secrets` input of `.github/actions/deploy`. After `up` and
+`down` the script removes the images no container uses any more (every backend build adds a
+source layer of about 150 KB, and a dependency layer of about 250 MB when `uv.lock` changes).
+The other commands are `down pr-<N>` (preview key), `edge` and `agent <image@digest>` (stage
+key); the header of `vm/candlestack-deploy` lists which key may run what.
 
 | Secret or variable | Where | What |
 | --- | --- | --- |
 | `DEPLOY_SSH_KEY` | environments `production`, `staging`, `preview` | private deploy key of that scope |
 | `ALPACA_KEY_ID`, `ALPACA_SECRET_KEY` | environments `production`, `staging`, `preview` | Alpaca paper account keys for the backend (US stocks); `staging` and `preview` share the stage account, `production` has its own |
+| `SENTRY_DSN` | environments `production`, `staging` | where the backend sends errors, traces and logs (Sentry project `backend`) |
+| `SENTRY_AUTH_TOKEN` | environments `production`, `staging` | Sentry organization token (scope `org:ci`) that records each release |
 | `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | repository secrets | Access service token |
 | `DEPLOY_KNOWN_HOSTS` | repository variable | SSH host key of the VM |
 

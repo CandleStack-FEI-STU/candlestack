@@ -1,5 +1,5 @@
 """Shared foundations of every module: settings, logging, errors, Redis, outgoing HTTP, rate
-limits, health.
+limits, health, Sentry.
 
 Other modules import only from here (``from candlestack.core import ProblemError``), never
 from the submodules.
@@ -22,6 +22,8 @@ from candlestack.core.http import (
 )
 from candlestack.core.logging import setup_logging
 from candlestack.core.middleware import RequestContextMiddleware
+from candlestack.core.observability import check_router as sentry_check_router
+from candlestack.core.observability import setup_sentry
 from candlestack.core.ratelimit import RateLimiter
 from candlestack.core.redis import RedisDep, create_redis
 
@@ -43,5 +45,7 @@ __all__ = [
     "problem_responses",
     "request_with_retry",
     "retry_after",
+    "sentry_check_router",
     "setup_logging",
+    "setup_sentry",
 ]

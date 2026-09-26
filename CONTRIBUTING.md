@@ -94,3 +94,19 @@ uv run pytest -m e2e                                  # builds and runs the imag
   `lint-imports` checks both.
 - Add dependencies with `uv add <package>` (`--dev` for tools) and commit `uv.lock`.
 - Settings are environment variables, documented in `.env.example`.
+
+## Errors and logs
+
+The errors, traces and logs of prod and stage go to Sentry (https://candlestack.sentry.io;
+the tech lead grants access). What it records is in
+[docs/architecture.md](docs/architecture.md#observability). In code:
+
+- What the client should see is a `ProblemError` (4xx, or 502/503 when a source fails); what
+  the service works around is `logger.warning`. Neither becomes a Sentry issue.
+- What needs a developer is `logger.exception(...)` in the `except` block (or `logger.error`):
+  it becomes a Sentry issue, as does any exception nobody catches.
+- Never swallow an exception (`except Exception: pass`), and never put keys, tokens or personal
+  data in a log message or its `extra`.
+- Only `candlestack.core` imports `sentry_sdk`; `lint-imports` checks it.
+- Without `SENTRY_DSN` (local runs, tests, previews) nothing is sent. To see it work locally,
+  put the DSN in `.env` and open http://localhost:8000/api/debug/sentry-error.
