@@ -150,6 +150,7 @@ key); the header of `vm/candlestack-deploy` lists which key may run what.
 | `agent/` | Server agent for ops: host metrics, containers and preview health as JSON, read-only Docker proxy |
 | `github/` | Snapshot of the organization's GitHub settings: rulesets, environments, Actions policy, security, project |
 | `cloudflare/` | Snapshot of the Cloudflare settings: zone, DNS, Access, tunnel, Workers |
+| `sentry/` | Snapshot of the Sentry settings: privacy, alerts, the uptime monitor, the GitHub integration |
 
 The images of an environment are built from `backend/` and `frontend/` at the repository root.
 

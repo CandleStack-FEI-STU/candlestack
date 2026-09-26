@@ -173,7 +173,8 @@ none. Every deploy records its release in Sentry (`.github/scripts/sentry-releas
 links an issue to its suspect commit.
 
 `GET /api/debug/sentry-error`, on stage and in local runs only and not in the API reference,
-fails on purpose to check that an error reaches Sentry.
+fails on purpose to check that an error reaches Sentry. The Sentry settings are recorded in
+[`infra/sentry/`](../infra/sentry/README.md).
 
 ## Not in this milestone
 

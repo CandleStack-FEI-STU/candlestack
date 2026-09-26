@@ -1,0 +1,33 @@
+{
+  "allowedDomains": [
+    "*"
+  ],
+  "autofixAutomationTuning": "medium",
+  "dataScrubber": true,
+  "dataScrubberDefaults": true,
+  "digestsMaxDelay": 1800,
+  "digestsMinDelay": 300,
+  "groupingConfig": "newstyle:2026-01-20",
+  "inboundFilters": {
+    "browser-extensions": false,
+    "filtered-transaction": true,
+    "legacy-browsers": false,
+    "localhost": false,
+    "web-crawlers": false
+  },
+  "name": "backend",
+  "platform": "python-fastapi",
+  "resolveAge": 0,
+  "safeFields": [],
+  "scrapeJavaScript": true,
+  "scrubIPAddresses": true,
+  "seerScannerAutomation": true,
+  "sensitiveFields": [],
+  "slug": "backend",
+  "storeCrashReports": null,
+  "subjectPrefix": "",
+  "subjectTemplate": "$shortID - $title",
+  "teams": [
+    "candlestack"
+  ]
+}

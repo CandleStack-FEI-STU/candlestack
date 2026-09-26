@@ -1,0 +1,28 @@
+[
+  {
+    "codeMappings": [
+      {
+        "defaultBranch": "main",
+        "project": "backend",
+        "repoName": "CandleStack-FEI-STU/candlestack",
+        "sourceRoot": "backend/src/candlestack/",
+        "stackRoot": "candlestack/"
+      }
+    ],
+    "config": {
+      "nudge_invite": false,
+      "pr_comments": false,
+      "sync_comments": false,
+      "sync_forward_assignment": false,
+      "sync_reverse_assignment": false,
+      "sync_status_forward": {},
+      "sync_status_reverse": false
+    },
+    "name": "CandleStack-FEI-STU",
+    "provider": "github",
+    "repositories": [
+      "CandleStack-FEI-STU/candlestack"
+    ],
+    "status": "active"
+  }
+]

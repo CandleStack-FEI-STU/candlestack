@@ -1,0 +1,8 @@
+[
+  {
+    "dsn": "not recorded: GitHub environment secret SENTRY_DSN",
+    "isActive": true,
+    "label": "backend (prod, stage)",
+    "rateLimit": null
+  }
+]
