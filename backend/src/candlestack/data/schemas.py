@@ -66,6 +66,11 @@ class InstrumentOut(BaseModel):
 class InstrumentSearchOut(BaseModel):
     items: list[InstrumentOut] = Field(description="Best matches first.")
     count: int = Field(description="Number of items.", examples=[1])
+    unavailable: list[Market] = Field(
+        description="Markets left out of this search because their instrument list cannot be "
+        "loaded right now (the source is down); search again later. Empty normally.",
+        examples=[[]],
+    )
 
 
 class InstrumentDetailOut(InstrumentOut):

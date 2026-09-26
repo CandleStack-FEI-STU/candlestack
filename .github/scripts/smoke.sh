@@ -82,7 +82,8 @@ check_sources() {
     fail "a source is not reachable: $body"
 }
 
-# The first search of a new environment loads both catalogs from the sources.
+# The first search of a new environment loads both catalogs from the sources. The expected
+# instrument must be the first result, from a search over both markets.
 check_search() {
   local pair q id
   for pair in btc=crypto:BTCUSDT apple=stock:AAPL; do
@@ -90,8 +91,8 @@ check_search() {
     id=${pair#*=}
     get "/api/v1/data/instruments?q=$q"
     expect 200 application/json
-    jq -e --arg id "$id" 'any(.items[]; .id == $id)' <<<"$body" >/dev/null ||
-      fail "q=$q does not find $id: ${body:0:300}"
+    jq -e --arg id "$id" '.items[0].id == $id and .unavailable == []' <<<"$body" >/dev/null ||
+      fail "q=$q does not find $id first: ${body:0:300}"
   done
 }
 

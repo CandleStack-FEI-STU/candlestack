@@ -155,6 +155,15 @@ class CandleSet:
 
 
 @dataclass(frozen=True)
+class SearchResult:
+    """Instruments found, best first, and the searched markets that were left out because
+    their catalog cannot be loaded right now (their source is down)."""
+
+    items: list[Instrument]
+    unavailable: list[Market]
+
+
+@dataclass(frozen=True)
 class InstrumentInfo:
     """An instrument plus what a client needs to build a valid candles request.
 

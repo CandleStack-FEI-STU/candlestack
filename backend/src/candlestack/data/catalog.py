@@ -1,11 +1,12 @@
 """Instrument search over the catalogs of both markets (tens of thousands of instruments).
 
-Ranking: exact symbol; the pairs of a crypto base asset equal to the query (``btc`` finds the
-BTC pairs), the quote asset with the most pairs in the catalog first (USDT, so BTCUSDT leads);
-symbol prefix; prefix of a word in the name; substring of the symbol; substring of the name.
-Other ties go to the shorter symbol, then alphabetically. Symbols are compared
-without separators and case (``btc/usdt`` finds ``BTCUSDT``, ``brkb`` finds ``BRK.B``), names
-word by word without case and punctuation.
+Ranking: the top pair of a crypto base asset equal to the query, the one whose quote asset has
+the most pairs in the catalog (``btc`` finds BTCUSDT first, the coin rather than a stock with
+that ticker); exact symbol; the other pairs of that base asset, the same way (BTCUSDC before
+BTCTRY); symbol prefix; prefix of a word in the name; substring of the symbol; substring of the
+name. Other ties go to the shorter symbol, then alphabetically. Symbols are compared without
+separators and case (``btc/usdt`` finds ``BTCUSDT``, ``brkb`` finds ``BRK.B``), names word by
+word without case and punctuation.
 """
 
 import re
@@ -71,22 +72,26 @@ class Catalog:
         frame = self._frame
         if market is not None:
             frame = frame.filter(pl.col("market") == str(market))
+        pair = pl.col("base") == key
+        top_pair = pair & (pl.col("quote_pairs") == pl.col("quote_pairs").filter(pair).max())
         rank = (
-            pl.when(pl.col("key") == key)
+            pl.when(top_pair)
             .then(0)
-            .when(pl.col("base") == key)
+            .when(pl.col("key") == key)
             .then(1)
-            .when(pl.col("key").str.starts_with(key))
+            .when(pair)
             .then(2)
-            .when(pl.col("words").str.contains(f" {words}", literal=True))
+            .when(pl.col("key").str.starts_with(key))
             .then(3)
-            .when(pl.col("key").str.contains(key, literal=True))
+            .when(pl.col("words").str.contains(f" {words}", literal=True))
             .then(4)
-            .when(pl.col("words").str.contains(words, literal=True))
+            .when(pl.col("key").str.contains(key, literal=True))
             .then(5)
+            .when(pl.col("words").str.contains(words, literal=True))
+            .then(6)
         )
-        # Pairs of the base asset: the most common quote asset first (USDT before TRY, ...).
-        quote_pairs = pl.when(pl.col("rank") == 1).then(pl.col("quote_pairs")).otherwise(0)
+        # Pairs of the base asset: the most common quote asset first (USDC before TRY, ...).
+        quote_pairs = pl.when(pl.col("rank") == 2).then(pl.col("quote_pairs")).otherwise(0)
         found = (
             frame.select("index", "symbol", "quote_pairs", rank.alias("rank"))
             .filter(pl.col("rank").is_not_null())

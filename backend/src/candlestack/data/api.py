@@ -266,12 +266,21 @@ async def search_instruments(
     """Searches the instruments of both markets: every Binance spot pair that is trading and
     every active tradable US stock and ETF at Alpaca (without OTC).
 
-    Ranking: exact symbol, symbol prefix, prefix of a word in the name, substring of the
-    symbol, substring of the name; ties go to the shorter symbol, then alphabetically.
+    Ranking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`
+    first), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word
+    in the name, substring of the symbol, substring of the name; ties go to the shorter symbol,
+    then alphabetically.
+
+    When the instrument list of one market cannot be loaded, the other market is still
+    searched and `unavailable` names the missing one; 503 when no market can be searched.
     """
     with _problems():
         found = await service.search(q, market, limit)
-    return InstrumentSearchOut(items=[InstrumentOut.of(item) for item in found], count=len(found))
+    return InstrumentSearchOut(
+        items=[InstrumentOut.of(item) for item in found.items],
+        count=len(found.items),
+        unavailable=found.unavailable,
+    )
 
 
 @data.get(

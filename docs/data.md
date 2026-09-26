@@ -42,7 +42,8 @@ characters.
 | `base`, `quote` | `BTC`, `USDT` | `null` |
 
 `GET /api/v1/data/instruments?q=&market=&limit=` searches the cached catalogs of both markets
-(no source call per item) and returns `{"items": [<instrument>, ...], "count": <n>}`.
+(no source call per item) and returns
+`{"items": [<instrument>, ...], "count": <n>, "unavailable": []}`.
 
 | Parameter | Rule |
 | --- | --- |
@@ -50,10 +51,17 @@ characters.
 | `market` | optional, `crypto` or `stock` |
 | `limit` | default 20, max 100 |
 
-Ranking: exact symbol; the pairs of a crypto base asset equal to the query (`btc` finds the
-BTC pairs), the quote asset with the most pairs in the catalog first (USDT, so `crypto:BTCUSDT`
-leads them); symbol prefix; prefix of a word in the name; substring of the symbol; substring
-of the name. Other ties: shorter symbol first, then alphabetical.
+Ranking: the top pair of a crypto base asset equal to the query, the one whose quote asset has
+the most pairs in the catalog (USDT, so `btc` finds `crypto:BTCUSDT` first, before the stock
+`BTC`); exact symbol; the other pairs of that base asset, most common quote asset first; symbol
+prefix; prefix of a word in the name; substring of the symbol; substring of the name. Other
+ties: shorter symbol first, then alphabetical.
+
+Once the catalog of one market is loaded, a search over both markets does not wait for the
+other: it is loaded in the background (retried at most every 30 s while its source is down and
+Redis does not have it), and until then the search answers from the loaded market and names
+the missing one in `unavailable` (`["stock"]`). A search that can reach no requested market is
+503 `source-unavailable`.
 
 `GET /api/v1/data/instruments/{id}` returns the instrument plus what a client needs to build a
 valid `/candles` request (404 `instrument-not-found` if the id is not in the catalog). It counts

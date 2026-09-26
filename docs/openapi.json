@@ -572,11 +572,23 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "unavailable": {
+            "description": "Markets left out of this search because their instrument list cannot be loaded right now (the source is down); search again later. Empty normally.",
+            "examples": [
+              []
+            ],
+            "items": {
+              "$ref": "#/components/schemas/Market"
+            },
+            "title": "Unavailable",
+            "type": "array"
           }
         },
         "required": [
           "items",
-          "count"
+          "count",
+          "unavailable"
         ],
         "title": "InstrumentSearchOut",
         "type": "object"
@@ -959,7 +971,7 @@
     },
     "/api/v1/data/instruments": {
       "get": {
-        "description": "Searches the instruments of both markets: every Binance spot pair that is trading and\nevery active tradable US stock and ETF at Alpaca (without OTC).\n\nRanking: exact symbol, symbol prefix, prefix of a word in the name, substring of the\nsymbol, substring of the name; ties go to the shorter symbol, then alphabetically.",
+        "description": "Searches the instruments of both markets: every Binance spot pair that is trading and\nevery active tradable US stock and ETF at Alpaca (without OTC).\n\nRanking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`\nfirst), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word\nin the name, substring of the symbol, substring of the name; ties go to the shorter symbol,\nthen alphabetically.\n\nWhen the instrument list of one market cannot be loaded, the other market is still\nsearched and `unavailable` names the missing one; 503 when no market can be searched.",
         "operationId": "search_instruments_api_v1_data_instruments_get",
         "parameters": [
           {
