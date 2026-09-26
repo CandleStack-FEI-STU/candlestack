@@ -42,11 +42,11 @@ characters.
 | `base`, `quote` | `BTC`, `USDT` | `null` |
 
 `GET /api/v1/data/instruments?q=&market=&limit=` searches the cached catalogs of both markets
-(no source call per item) and returns `{"items": [<instrument>, ...]}`.
+(no source call per item) and returns `{"items": [<instrument>, ...], "count": <n>}`.
 
 | Parameter | Rule |
 | --- | --- |
-| `q` | required; an empty query returns no items. Case-insensitive; separators are ignored in symbols: `btc/usdt`, `btc-usdt` and `BTC USDT` all match `BTCUSDT`, `brkb` matches `BRK.B` |
+| `q` | required, 1-50 characters; a query without letters or digits finds nothing. Case-insensitive; separators are ignored in symbols: `btc/usdt`, `btc-usdt` and `BTC USDT` all match `BTCUSDT`, `brkb` matches `BRK.B` |
 | `market` | optional, `crypto` or `stock` |
 | `limit` | default 20, max 100 |
 
@@ -99,7 +99,10 @@ Both markets have the same list.
 
 ## Time
 
-- All times in requests and responses are UTC epoch seconds (integers).
+- All times in responses are UTC epoch seconds (integers). Requests accept epoch seconds or
+  ISO 8601 dates and date-times (`2024-06-03`, `2024-06-03T13:30:00Z`,
+  `2024-06-03T09:30:00-04:00`); a date-time without an offset is UTC, a date is its 00:00
+  UTC. In a URL, `+` of an offset must be written as `%2B`.
 - A candle is labelled by its open time `t`.
 - A request covers `[start, end)`: a candle is returned when `start <= t < end`. `start` and
   `end` do not have to be aligned to the timeframe.
@@ -193,10 +196,10 @@ and cached (see [Cache](#cache)); the chunks are joined, resampled for stocks an
 
 - A gap is an expected candle that the source did not deliver. Expected candles: crypto,
   every aligned bin of the period; stocks, every session bin of the period.
-- Gaps are never filled, interpolated or forward-filled. They are reported in `meta.gaps`:
-  `missing` is the total number of missing candles, `ranges` lists merged `[start, end)`
-  ranges, earliest first, at most 100. Consecutive missing candles form one range, for stocks
-  also across a night or weekend; a range ends where its last missing candle ends (at most the
+- Gaps are never filled, interpolated or forward-filled. They are reported in `meta.gaps`,
+  merged `[start, end)` ranges, earliest first, at most 100, and `meta.gaps_total`, the total
+  number of missing candles. Consecutive missing candles form one range, for stocks also
+  across a night or weekend; a range ends where its last missing candle ends (at most the
   session close).
 - Typical causes: exchange maintenance and trading halts; minutes without any IEX trade
   (common for illiquid stocks at 1m, rare at 1h and above).
@@ -209,7 +212,7 @@ Requests are checked in this order; the first failure is the answer.
 | Check | Error |
 | --- | --- |
 | client rate limit | 429 `rate-limited` |
-| parameters present and well-formed: instrument id, timeframe from the list, integer `start < end` | 422 `validation` |
+| parameters present and well-formed: instrument id, timeframe from the list, `start` and `end` as epoch seconds or ISO 8601, `start < end` | 422 `validation` |
 | instrument in the catalog | 404 `instrument-not-found` |
 | `start >= available_from` and `end <=` request time | 422 `period-out-of-range` |
 | expected candle count `<= CANDLES_MAX` | 422 `too-many-candles` |
@@ -313,7 +316,17 @@ again. Keys:
 
 ## Candles endpoint
 
-`GET /api/v1/data/candles?instrument=<id>&timeframe=<tf>&start=<epoch s>&end=<epoch s>`
+`GET /api/v1/data/candles?instrument=<id>&timeframe=<tf>&start=<time>&end=<time>`
+
+| Parameter | Rule |
+| --- | --- |
+| `instrument` | required, an instrument id |
+| `timeframe` | required, one of `1m 5m 15m 1h 4h 1d` |
+| `start` | required, inclusive; epoch seconds or ISO 8601 (see [Time](#time)) |
+| `end` | optional, exclusive, same formats; default the request time |
+
+Example: `/api/v1/data/candles?instrument=stock:AAPL&timeframe=1h&start=2024-06-03&end=2024-06-04`
+returns the 7 candles of that session.
 
 Processing: rate limit, validation, catalog lookup, period and count checks, then each chunk
 of the period from the cache or the source (single-flight, up to 16 at once), concatenated,
@@ -333,7 +346,8 @@ Response (columnar arrays; index `i` of every array is one candle):
     "feed": "spot",
     "fingerprint": "sha256:3b1f0c9e...",
     "count": 3,
-    "gaps": {"missing": 1, "ranges": [[1717207200, 1717210800]]}
+    "gaps": [[1717207200, 1717210800]],
+    "gaps_total": 1
   },
   "t": [1717200000, 1717203600, 1717210800],
   "o": [67491.0, 67612.5, 67580.1],
@@ -350,9 +364,26 @@ Response (columnar arrays; index `i` of every array is one candle):
 | `meta.source`, `meta.feed` | `binance`/`spot` or `alpaca`/`iex` |
 | `meta.fingerprint` | see [Fingerprint](#fingerprint) |
 | `meta.count` | number of candles returned |
-| `meta.gaps` | `missing` candles in total and up to 100 `[start, end)` ranges |
+| `meta.gaps` | up to 100 `[start, end)` ranges of missing candles, earliest first |
+| `meta.gaps_total` | number of missing candles in total |
 | `t` | open times, epoch seconds, strictly increasing |
 | `o`, `h`, `l`, `c`, `v` | open, high, low, close, volume as numbers |
+
+## Sources health
+
+`GET /api/health/sources` (not versioned, like `/api/health`) reports whether each source
+answers its cheapest request (Binance `GET /api/v3/ping`, Alpaca `GET /v2/clock`), checked at
+most once a minute: 200 when both answer, 503 with the same body when one does not.
+
+```json
+{
+  "status": "ok",
+  "sources": {
+    "binance": {"status": "ok", "latency_ms": 84, "detail": null},
+    "alpaca": {"status": "ok", "latency_ms": 131, "detail": null}
+  }
+}
+```
 
 ## Errors
 
@@ -362,14 +393,29 @@ RFC 9457 `application/problem+json`, `type` `https://candlestack.tech/problems/<
 | Status | Slug | When | Extensions |
 | --- | --- | --- | --- |
 | 404 | `instrument-not-found` | the id is not in the catalog | `instrument` |
-| 422 | `validation` | missing or malformed parameters | `errors` (FastAPI validation details) |
+| 422 | `validation` | missing or malformed parameters | `errors`: one `{loc, msg, type}` per bad parameter |
 | 422 | `period-out-of-range` | `start` before `available_from`, or `end` in the future | `instrument`, `timeframe`, `available_from`, `available_to` |
-| 422 | `too-many-candles` | more than `CANDLES_MAX` expected candles | `requested`, `maximum` |
+| 422 | `too-many-candles` | more than `CANDLES_MAX` expected candles | `requested`, `maximum`, `suggestion` (also in `detail`) |
 | 429 | `rate-limited` | client over `CLIENT_RATE_LIMIT` | `limit`; header `Retry-After` |
 | 502 | `source-data-invalid` | source data failed validation | `source` |
-| 503 | `source-unavailable` | source down or timing out, or our budget for it is spent | `source`; header `Retry-After` when the budget is spent |
+| 503 | `source-unavailable` | source down or timing out, or our budget for it is spent | `source`; header `Retry-After` when waiting helps (our budget is spent, or the source limits us) |
 
-`start` before the first candle (`available_to` is the request time):
+Invalid parameters, all of them at once:
+
+```json
+{
+  "type": "https://candlestack.tech/problems/validation",
+  "title": "Invalid request",
+  "status": 422,
+  "detail": "query parameter 'timeframe': Input should be '1m', '5m', '15m', '1h', '4h' or '1d'; query parameter 'start': 'yesterday' is neither epoch seconds nor an ISO 8601 date or date-time",
+  "errors": [
+    {"loc": ["query", "timeframe"], "msg": "Input should be '1m', '5m', '15m', '1h', '4h' or '1d'", "type": "enum"},
+    {"loc": ["query", "start"], "msg": "'yesterday' is neither epoch seconds nor an ISO 8601 date or date-time", "type": "time"}
+  ]
+}
+```
+
+`start` before the first candle:
 
 ```json
 {
@@ -393,7 +439,8 @@ Too many candles (1m for 2024-01-01 to 2024-04-01):
   "status": 422,
   "detail": "Requested 131040 candles, the maximum is 50000. Use 5m or a larger timeframe, or end the period at 2024-02-04T17:20:00Z (1707067200) or earlier.",
   "requested": 131040,
-  "maximum": 50000
+  "maximum": 50000,
+  "suggestion": "Use 5m or a larger timeframe, or end the period at 2024-02-04T17:20:00Z (1707067200) or earlier."
 }
 ```
 

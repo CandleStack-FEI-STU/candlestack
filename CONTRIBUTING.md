@@ -44,6 +44,14 @@ uv run pytest -m integration                          # ... for the integration 
 E2E_PORT=18000 uv run pytest -m e2e                   # builds and runs the image with compose
 ```
 
+- The market data endpoints (instruments, candles, `/api/health/sources`) are specified in
+  [docs/data.md](docs/data.md). With `compose.dev.yaml` running, try them in the API reference
+  at http://localhost:8000/api/v1/docs (test request panel of each endpoint); crypto needs no
+  keys, US stocks need `ALPACA_KEY_ID` and `ALPACA_SECRET_KEY` in `.env`.
+- Unit tests fake the `DataService`; integration tests mock the sources with respx. The e2e
+  stack replaces Binance and Alpaca with `tests/e2e/mock_sources.py`, which serves the
+  recorded responses listed in `tests/fixtures/README.md` under the sources' paths, so no test
+  needs the network or keys.
 - The API contract is committed in `docs/openapi.json` and a unit test fails when it is stale.
   After changing the API, regenerate it (in a POSIX shell such as Git Bash) and commit it with
   the change: `uv run python -m candlestack.openapi > ../docs/openapi.json`.
