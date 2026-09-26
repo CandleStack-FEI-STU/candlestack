@@ -2,7 +2,10 @@
 
 import asyncio
 import json
+import logging
 import time
+from collections.abc import Awaitable
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -22,6 +25,26 @@ pytestmark = [pytest.mark.integration, pytest.mark.anyio]
 
 def ids(found: SearchResult) -> list[str]:
     return [str(instrument.id) for instrument in found.items]
+
+
+async def and_background[T](call: Awaitable[T]) -> T:
+    """The result of ``call``, once the background work it started (catalog loads and
+    refreshes) is done too."""
+    before = asyncio.all_tasks()
+    result = await call
+    await asyncio.gather(*(asyncio.all_tasks() - before))
+    return result
+
+
+def stale(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Moves the wall clock of the catalogs a day and an hour ahead: every list is stale."""
+    monkeypatch.setattr(catalog_store, "_time", lambda: time.time() + 25 * 3600)
+
+
+def with_new_pair(listed: dict) -> dict:
+    """``listed`` (an exchangeInfo body) with one more trading pair, NEWUSDT."""
+    new = {**listed["symbols"][0], "symbol": "NEWUSDT", "baseAsset": "NEW"}
+    return {**listed, "symbols": [*listed["symbols"], new]}
 
 
 async def test_search_both_markets(service: DataService, upstream):
@@ -132,6 +155,153 @@ async def test_stale_catalog_is_served_while_it_refreshes(
     other_process = build_data_service(settings, redis, http)
     assert ids(await other_process.search("new", Market.CRYPTO)) == ["crypto:NEWUSDT"]
     assert info.call_count == 2
+
+
+async def test_failed_refresh_keeps_the_stale_catalog_until_the_next_try(
+    service: DataService,
+    upstream,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    caplog.set_level(logging.WARNING)
+    clock = [1000.0]  # the monotonic clock of the catalogs, which spaces the refreshes
+    monkeypatch.setattr(catalog_store, "time", SimpleNamespace(monotonic=lambda: clock[0]))
+    listed = json.loads(upstream.fixture_bytes("binance/rest/exchangeInfo-trading.json"))
+    info = upstream.router.get(f"{upstream.BINANCE_API}/api/v3/exchangeInfo").mock(
+        side_effect=[
+            httpx.Response(200, json=listed),
+            *[httpx.Response(503)] * 3,  # the first refresh, with its retries
+            httpx.Response(200, json=with_new_pair(listed)),
+        ]
+    )
+
+    assert ids(await service.search("new", Market.CRYPTO)) == []
+    stale(monkeypatch)
+    found = await and_background(service.search("new", Market.CRYPTO))
+    assert (ids(found), info.call_count) == ([], 4)  # the old list, and the refresh failed
+    warnings = [r for r in caplog.records if r.getMessage().startswith("Refreshing the crypto")]
+    assert [(r.levelno, r.getMessage()) for r in warnings] == [
+        (
+            logging.WARNING,
+            "Refreshing the crypto catalog failed: Binance failed with HTTP 503. "
+            "Try again in a minute.",
+        )
+    ]
+
+    clock[0] += catalog_store.RETRY_SECONDS - 1
+    found = await and_background(service.search("btcusdt", Market.CRYPTO))
+    assert (ids(found), info.call_count) == (["crypto:BTCUSDT"], 4)  # no new try yet
+
+    clock[0] += 1
+    await and_background(service.search("new", Market.CRYPTO))
+    assert ids(await service.search("new", Market.CRYPTO)) == ["crypto:NEWUSDT"]
+    assert info.call_count == 5
+
+
+async def test_crash_of_a_refresh_is_logged_and_the_stale_catalog_served(
+    service: DataService,
+    upstream,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    listed = upstream.fixture_bytes("binance/rest/exchangeInfo-trading.json")
+    upstream.router.get(f"{upstream.BINANCE_API}/api/v3/exchangeInfo").mock(
+        side_effect=[httpx.Response(200, content=listed), RuntimeError("a bug")]
+    )
+
+    await service.search("btcusdt", Market.CRYPTO)
+    stale(monkeypatch)
+    with caplog.at_level(logging.WARNING):
+        found = await and_background(service.search("btcusdt", Market.CRYPTO))
+
+    assert ids(found) == ["crypto:BTCUSDT"]
+    [crash] = [
+        r for r in caplog.records if r.getMessage() == "Refreshing the crypto catalog failed"
+    ]
+    assert crash.levelno == logging.ERROR
+    assert crash.exc_info is not None
+    assert "RuntimeError: a bug" in caplog.text
+
+
+async def test_catalog_another_process_refreshed_is_adopted_without_the_source(
+    service: DataService,
+    upstream,
+    settings: Settings,
+    redis,
+    http: httpx.AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    other_process = build_data_service(settings, redis, http)
+    listed = json.loads(upstream.fixture_bytes("binance/rest/exchangeInfo-trading.json"))
+    info = upstream.router.get(f"{upstream.BINANCE_API}/api/v3/exchangeInfo").mock(
+        side_effect=[
+            httpx.Response(200, json=listed),
+            httpx.Response(200, json=with_new_pair(listed)),
+        ]
+    )
+    assert ids(await service.search("new", Market.CRYPTO)) == []
+    assert ids(await other_process.search("new", Market.CRYPTO)) == []  # from Redis
+
+    stale(monkeypatch)
+    await and_background(other_process.search("new", Market.CRYPTO))  # it refreshes first
+    found = await and_background(service.search("new", Market.CRYPTO))
+
+    assert ids(found) == []  # the old list, at once
+    assert ids(await service.search("new", Market.CRYPTO)) == ["crypto:NEWUSDT"]
+    assert info.call_count == 2  # the load and the other process's refresh
+
+
+async def test_refresh_is_left_to_the_process_running_it(
+    service: DataService, upstream, redis, monkeypatch: pytest.MonkeyPatch
+):
+    info = upstream.exchange_info()
+    await service.search("btcusdt", Market.CRYPTO)
+    await redis.set("data:lock:catalog:crypto", "another-process", px=30_000)
+
+    stale(monkeypatch)
+    found = await and_background(service.search("btcusdt", Market.CRYPTO))
+
+    assert ids(found) == ["crypto:BTCUSDT"]
+    assert info.call_count == 1
+
+
+async def test_market_that_fails_to_load_in_the_background_stays_out(
+    service: DataService, upstream, caplog: pytest.LogCaptureFixture
+):
+    upstream.exchange_info()
+    assets = upstream.router.get(f"{upstream.ALPACA_API}/v2/assets").respond(503)
+    await service.search("btcusdt", Market.CRYPTO)  # crypto is loaded, stocks are not
+
+    with caplog.at_level(logging.WARNING):
+        found = await and_background(service.search("apple"))
+        again = await and_background(service.search("apple"))
+
+    assert (ids(found), found.unavailable) == ([], [Market.STOCK])
+    assert (ids(again), again.unavailable) == ([], [Market.STOCK])
+    assert "The stock catalog cannot be loaded: Alpaca failed with HTTP 503" in caplog.text
+    assert assets.call_count == 3  # one load with its retries: the failure is remembered
+
+
+async def test_crash_of_a_background_load_is_logged_and_tried_again(
+    service: DataService, upstream, caplog: pytest.LogCaptureFixture
+):
+    upstream.exchange_info()
+    listed = upstream.fixture_bytes("alpaca/assets.json")
+    assets = upstream.router.get(f"{upstream.ALPACA_API}/v2/assets").mock(
+        side_effect=[RuntimeError("a bug"), httpx.Response(200, content=listed)]
+    )
+    await service.search("btcusdt", Market.CRYPTO)
+
+    with caplog.at_level(logging.WARNING):
+        found = await and_background(service.search("apple"))
+    # Not remembered like an error of the source: the next search loads the list again.
+    await and_background(service.search("apple"))
+
+    assert (ids(found), found.unavailable) == ([], [Market.STOCK])
+    [crash] = [r for r in caplog.records if r.getMessage() == "Loading the stock catalog failed"]
+    assert (crash.levelno, crash.exc_info is not None) == (logging.ERROR, True)
+    assert ids(await service.search("apple")) == ["stock:AAPL"]
+    assert assets.call_count == 2
 
 
 async def test_sources_health_is_checked_once_a_minute(service: DataService, upstream):

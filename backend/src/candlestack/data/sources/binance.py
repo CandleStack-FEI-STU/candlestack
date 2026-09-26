@@ -149,7 +149,8 @@ def parse_klines(rows: object, end: int | None = None) -> pl.DataFrame:
             orient="row",
             strict=False,
         ).cast({**CANDLE_SCHEMA, "close_time": pl.Int64})
-    except (TypeError, IndexError, pl.exceptions.PolarsError) as exc:
+    # KeyError: a row that is an object, not an array (slicing a dict looks the slice up).
+    except (TypeError, IndexError, KeyError, pl.exceptions.PolarsError) as exc:
         reason = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
         raise DataIntegrityError(f"Binance klines cannot be read: {reason}", source=NAME) from None
     if end is not None:
