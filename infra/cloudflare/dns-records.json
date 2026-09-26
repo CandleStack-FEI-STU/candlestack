@@ -1,0 +1,137 @@
+[
+  {
+    "comment": null,
+    "content": "8cbd2a1f-f294-4534-bb63-f491bed7a51a.cfargotunnel.com",
+    "name": "*.candlestack.tech",
+    "proxied": true,
+    "tags": [],
+    "ttl": 1,
+    "type": "CNAME"
+  },
+  {
+    "comment": null,
+    "content": "\"4b039f2489a8c64a5b247e5c01f552\"",
+    "name": "_github-pages-challenge-candlestack-fei-stu.candlestack.tech",
+    "proxied": false,
+    "tags": [],
+    "ttl": 1,
+    "type": "TXT"
+  },
+  {
+    "comment": null,
+    "content": "8cbd2a1f-f294-4534-bb63-f491bed7a51a.cfargotunnel.com",
+    "name": "app.candlestack.tech",
+    "proxied": true,
+    "tags": [],
+    "ttl": 1,
+    "type": "CNAME"
+  },
+  {
+    "comment": null,
+    "content": "185.199.108.153",
+    "name": "candlestack.tech",
+    "proxied": false,
+    "tags": [],
+    "ttl": 1,
+    "type": "A"
+  },
+  {
+    "comment": null,
+    "content": "185.199.109.153",
+    "name": "candlestack.tech",
+    "proxied": false,
+    "tags": [],
+    "ttl": 1,
+    "type": "A"
+  },
+  {
+    "comment": null,
+    "content": "185.199.110.153",
+    "name": "candlestack.tech",
+    "proxied": false,
+    "tags": [],
+    "ttl": 1,
+    "type": "A"
+  },
+  {
+    "comment": null,
+    "content": "185.199.111.153",
+    "name": "candlestack.tech",
+    "proxied": false,
+    "tags": [],
+    "ttl": 1,
+    "type": "A"
+  },
+  {
+    "comment": null,
+    "content": "2606:50c0:8000::153",
+    "name": "candlestack.tech",
+    "proxied": false,
+    "tags": [],
+    "ttl": 1,
+    "type": "AAAA"
+  },
+  {
+    "comment": null,
+    "content": "2606:50c0:8001::153",
+    "name": "candlestack.tech",
+    "proxied": false,
+    "tags": [],
+    "ttl": 1,
+    "type": "AAAA"
+  },
+  {
+    "comment": null,
+    "content": "2606:50c0:8002::153",
+    "name": "candlestack.tech",
+    "proxied": false,
+    "tags": [],
+    "ttl": 1,
+    "type": "AAAA"
+  },
+  {
+    "comment": null,
+    "content": "2606:50c0:8003::153",
+    "name": "candlestack.tech",
+    "proxied": false,
+    "tags": [],
+    "ttl": 1,
+    "type": "AAAA"
+  },
+  {
+    "comment": null,
+    "content": "100::",
+    "name": "ops.candlestack.tech",
+    "proxied": true,
+    "tags": [],
+    "ttl": 1,
+    "type": "AAAA"
+  },
+  {
+    "comment": null,
+    "content": "8cbd2a1f-f294-4534-bb63-f491bed7a51a.cfargotunnel.com",
+    "name": "ssh.candlestack.tech",
+    "proxied": true,
+    "tags": [],
+    "ttl": 1,
+    "type": "CNAME"
+  },
+  {
+    "comment": null,
+    "content": "8cbd2a1f-f294-4534-bb63-f491bed7a51a.cfargotunnel.com",
+    "name": "stage.candlestack.tech",
+    "proxied": true,
+    "tags": [],
+    "ttl": 1,
+    "type": "CNAME"
+  },
+  {
+    "comment": null,
+    "content": "candlestack-fei-stu.github.io",
+    "name": "www.candlestack.tech",
+    "proxied": false,
+    "tags": [],
+    "ttl": 1,
+    "type": "CNAME"
+  }
+]

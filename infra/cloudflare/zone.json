@@ -1,0 +1,105 @@
+{
+  "dnssec": {
+    "algorithm": "13",
+    "digest": "6FFD000A036F6216939D6CD94D110CB0C9F189862D9B2B693F90C403EEB88714",
+    "digest_algorithm": "SHA256",
+    "digest_type": "2",
+    "ds": "candlestack.tech. 3600 IN DS 2371 13 2 6FFD000A036F6216939D6CD94D110CB0C9F189862D9B2B693F90C403EEB88714",
+    "flags": 257,
+    "key_tag": 2371,
+    "key_type": "ECDSAP256SHA256",
+    "public_key": "mdsswUyr3DPW132mOi8V9xESWE8jTo0dxCjjnopKl+GqJxpVXckHAeF+KkxLbxILfDLUT0rAK9iUzy1L53eKGQ==",
+    "status": "active"
+  },
+  "settings": {
+    "0rtt": "off",
+    "advanced_ddos": "on",
+    "always_online": "off",
+    "always_use_https": "on",
+    "automatic_https_rewrites": "on",
+    "brotli": "on",
+    "browser_cache_ttl": 14400,
+    "browser_check": "on",
+    "cache_level": "aggressive",
+    "challenge_ttl": 1800,
+    "ciphers": [],
+    "cname_flattening": "flatten_at_root",
+    "development_mode": "off",
+    "early_hints": "off",
+    "ech": "on",
+    "edge_cache_ttl": 7200,
+    "email_obfuscation": "on",
+    "filter_logs_to_cloudflare": "off",
+    "hotlink_protection": "off",
+    "http2": "on",
+    "http3": "on",
+    "ip_geolocation": "on",
+    "ipv6": "on",
+    "log_to_cloudflare": "on",
+    "long_lived_grpc": "off",
+    "max_upload": 100,
+    "min_tls_version": "1.2",
+    "minify": {
+      "css": "off",
+      "html": "off",
+      "js": "off"
+    },
+    "mirage": "off",
+    "mobile_redirect": {
+      "mobile_subdomain": null,
+      "status": "off",
+      "strip_uri": false
+    },
+    "opportunistic_encryption": "on",
+    "opportunistic_onion": "on",
+    "orange_to_orange": "off",
+    "origin_error_page_pass_thru": "off",
+    "polish": "off",
+    "pq_keyex": "on",
+    "prefetch_preload": "off",
+    "privacy_pass": "on",
+    "proxy_read_timeout": "125",
+    "pseudo_ipv4": "off",
+    "replace_insecure_js": "on",
+    "response_buffering": "off",
+    "rocket_loader": "off",
+    "security_header": {
+      "strict_transport_security": {
+        "enabled": false,
+        "include_subdomains": false,
+        "max_age": 0,
+        "nosniff": false,
+        "preload": false
+      }
+    },
+    "security_level": "medium",
+    "server_side_exclude": "on",
+    "sort_query_string_for_cache": "off",
+    "ssl": "strict",
+    "tls_1_2_only": "off",
+    "tls_1_3": "on",
+    "tls_client_auth": "off",
+    "true_client_ip_header": "off",
+    "visitor_ip": "on",
+    "waf": "off",
+    "webp": "off",
+    "websockets": "on"
+  },
+  "universal_ssl": {
+    "certificate_authority": "lets_encrypt",
+    "enabled": true
+  },
+  "workers_routes": [],
+  "zone": {
+    "name": "candlestack.tech",
+    "name_servers": [
+      "greg.ns.cloudflare.com",
+      "tori.ns.cloudflare.com"
+    ],
+    "original_registrar": "namify domains inc (id: 1913)",
+    "paused": false,
+    "plan": "Free Website",
+    "status": "active",
+    "type": "full"
+  }
+}

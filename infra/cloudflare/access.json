@@ -1,0 +1,326 @@
+{
+  "applications": [
+    {
+      "allowed_idps": [
+        "5990031a-0852-447e-a07f-f9bd774d24eb"
+      ],
+      "app_launcher_visible": true,
+      "aud": "477024847ebd007272c406074e3dea667279fb4b5048ac2bb6ea706d56a0c341",
+      "auto_redirect_to_identity": true,
+      "destinations": [
+        {
+          "type": "public",
+          "uri": "*.candlestack.tech"
+        }
+      ],
+      "domain": "*.candlestack.tech",
+      "eager_redirect_cookie_setting": true,
+      "enable_binding_cookie": false,
+      "http_only_cookie_attribute": false,
+      "id": "72c3afcd-20f4-4e63-bf5e-1e78199521da",
+      "name": "team-only",
+      "options_preflight_bypass": false,
+      "policies": [
+        {
+          "connection_rules": {
+            "rdp": {}
+          },
+          "decision": "allow",
+          "exclude": [],
+          "id": "f490c6c7-616d-4ac3-9695-0747836b34dd",
+          "include": [
+            {
+              "github-organization": {
+                "id": "332916408",
+                "identity_provider_id": "5990031a-0852-447e-a07f-f9bd774d24eb",
+                "name": "CandleStack-FEI-STU"
+              }
+            }
+          ],
+          "name": "team-github-org",
+          "precedence": 1,
+          "require": [],
+          "reusable": true,
+          "session_duration": "168h",
+          "uid": "f490c6c7-616d-4ac3-9695-0747836b34dd"
+        },
+        {
+          "connection_rules": {
+            "rdp": {}
+          },
+          "decision": "non_identity",
+          "exclude": [],
+          "id": "ed8692ff-666a-4fcb-ba5c-1104210e9baa",
+          "include": [
+            {
+              "service_token": {
+                "token_id": "7e57f2f5-ca75-42bd-996a-3132d432e9fc"
+              }
+            }
+          ],
+          "name": "github-actions-deploy",
+          "precedence": 2,
+          "require": [],
+          "reusable": true,
+          "uid": "ed8692ff-666a-4fcb-ba5c-1104210e9baa"
+        },
+        {
+          "connection_rules": {
+            "rdp": {}
+          },
+          "decision": "non_identity",
+          "exclude": [],
+          "id": "fcd768ec-ddca-45a5-b9d4-81759b8b76a7",
+          "include": [
+            {
+              "service_token": {
+                "token_id": "964e5db6-53fd-4727-9c67-9de29418ba56"
+              }
+            }
+          ],
+          "name": "ops-monitor",
+          "precedence": 3,
+          "require": [],
+          "reusable": true,
+          "uid": "fcd768ec-ddca-45a5-b9d4-81759b8b76a7"
+        }
+      ],
+      "self_hosted_domains": [
+        "*.candlestack.tech"
+      ],
+      "session_duration": "24h",
+      "tags": [],
+      "type": "self_hosted",
+      "uid": "72c3afcd-20f4-4e63-bf5e-1e78199521da"
+    },
+    {
+      "allowed_idps": [],
+      "app_launcher_visible": true,
+      "aud": "ec56686b83faecf4143e1025788a6c48f43685c79580d2ad618146e43d61c9a3",
+      "auto_redirect_to_identity": false,
+      "destinations": [
+        {
+          "type": "public",
+          "uri": "app.candlestack.tech"
+        }
+      ],
+      "domain": "app.candlestack.tech",
+      "eager_redirect_cookie_setting": true,
+      "enable_binding_cookie": false,
+      "http_only_cookie_attribute": false,
+      "id": "15d570cd-1802-4b72-a8e6-8feaf76d131b",
+      "name": "prod-public",
+      "options_preflight_bypass": false,
+      "policies": [
+        {
+          "connection_rules": {
+            "rdp": {}
+          },
+          "decision": "bypass",
+          "exclude": [],
+          "id": "7c6b21ee-e685-4713-8fe3-88a5f2f69906",
+          "include": [
+            {
+              "everyone": {}
+            }
+          ],
+          "name": "public",
+          "precedence": 1,
+          "require": [],
+          "reusable": true,
+          "uid": "7c6b21ee-e685-4713-8fe3-88a5f2f69906"
+        }
+      ],
+      "self_hosted_domains": [
+        "app.candlestack.tech"
+      ],
+      "session_duration": "24h",
+      "tags": [],
+      "type": "self_hosted",
+      "uid": "15d570cd-1802-4b72-a8e6-8feaf76d131b"
+    },
+    {
+      "allowed_idps": [],
+      "app_launcher_visible": true,
+      "aud": "bc0ab03bc21cbab3098ff1b3d4f1cdcf6af8a49d382938e7bc47ef35fc090634",
+      "auto_redirect_to_identity": false,
+      "destinations": [
+        {
+          "type": "public",
+          "uri": "ssh.candlestack.tech"
+        }
+      ],
+      "domain": "ssh.candlestack.tech",
+      "eager_redirect_cookie_setting": true,
+      "enable_binding_cookie": false,
+      "http_only_cookie_attribute": false,
+      "id": "e5e07338-5336-42bb-a98e-40028194d88c",
+      "name": "ssh-deploy",
+      "options_preflight_bypass": false,
+      "policies": [
+        {
+          "connection_rules": {
+            "rdp": {}
+          },
+          "decision": "non_identity",
+          "exclude": [],
+          "id": "ed8692ff-666a-4fcb-ba5c-1104210e9baa",
+          "include": [
+            {
+              "service_token": {
+                "token_id": "7e57f2f5-ca75-42bd-996a-3132d432e9fc"
+              }
+            }
+          ],
+          "name": "github-actions-deploy",
+          "precedence": 1,
+          "require": [],
+          "reusable": true,
+          "uid": "ed8692ff-666a-4fcb-ba5c-1104210e9baa"
+        }
+      ],
+      "self_hosted_domains": [
+        "ssh.candlestack.tech"
+      ],
+      "session_duration": "24h",
+      "tags": [],
+      "type": "self_hosted",
+      "uid": "e5e07338-5336-42bb-a98e-40028194d88c"
+    }
+  ],
+  "identity_providers": [
+    {
+      "config": {
+        "redirect_url": "https://candlestack.cloudflareaccess.com/cdn-cgi/access/callback",
+        "restrict_to_account_members": true
+      },
+      "id": "9612ffb8-b05d-4734-85b7-c16657f96199",
+      "name": "",
+      "type": "cloudflare"
+    },
+    {
+      "config": {
+        "client_id": "Ov23ctGEplb2z18ntRWo",
+        "redirect_url": "https://candlestack.cloudflareaccess.com/cdn-cgi/access/callback"
+      },
+      "id": "5990031a-0852-447e-a07f-f9bd774d24eb",
+      "name": "GitHub",
+      "type": "github"
+    }
+  ],
+  "organization": {
+    "allow_authenticate_via_warp": false,
+    "auth_domain": "candlestack.cloudflareaccess.com",
+    "cache_device_posture": true,
+    "deny_unmatched_requests": false,
+    "deny_unmatched_requests_exempted_zone_names": [],
+    "has_migrated_private_apps": true,
+    "is_ui_read_only": false,
+    "login_design": {},
+    "name": "jolly-hill-3984.cloudflareaccess.com",
+    "service_token_inactivity": {
+      "action": null,
+      "enabled": false,
+      "inactivity_threshold_days": null
+    },
+    "trusted_accounts": [],
+    "warp_auth_non_browser_401": false
+  },
+  "policies": [
+    {
+      "app_count": 1,
+      "connection_rules": {
+        "rdp": {}
+      },
+      "decision": "non_identity",
+      "exclude": [],
+      "id": "fcd768ec-ddca-45a5-b9d4-81759b8b76a7",
+      "include": [
+        {
+          "service_token": {
+            "token_id": "964e5db6-53fd-4727-9c67-9de29418ba56"
+          }
+        }
+      ],
+      "name": "ops-monitor",
+      "require": [],
+      "reusable": true,
+      "uid": "fcd768ec-ddca-45a5-b9d4-81759b8b76a7"
+    },
+    {
+      "app_count": 1,
+      "connection_rules": {
+        "rdp": {}
+      },
+      "decision": "bypass",
+      "exclude": [],
+      "id": "7c6b21ee-e685-4713-8fe3-88a5f2f69906",
+      "include": [
+        {
+          "everyone": {}
+        }
+      ],
+      "name": "public",
+      "require": [],
+      "reusable": true,
+      "uid": "7c6b21ee-e685-4713-8fe3-88a5f2f69906"
+    },
+    {
+      "app_count": 1,
+      "connection_rules": {
+        "rdp": {}
+      },
+      "decision": "allow",
+      "exclude": [],
+      "id": "f490c6c7-616d-4ac3-9695-0747836b34dd",
+      "include": [
+        {
+          "github-organization": {
+            "id": "332916408",
+            "identity_provider_id": "5990031a-0852-447e-a07f-f9bd774d24eb",
+            "name": "CandleStack-FEI-STU"
+          }
+        }
+      ],
+      "name": "team-github-org",
+      "require": [],
+      "reusable": true,
+      "session_duration": "168h",
+      "uid": "f490c6c7-616d-4ac3-9695-0747836b34dd"
+    },
+    {
+      "app_count": 2,
+      "connection_rules": {
+        "rdp": {}
+      },
+      "decision": "non_identity",
+      "exclude": [],
+      "id": "ed8692ff-666a-4fcb-ba5c-1104210e9baa",
+      "include": [
+        {
+          "service_token": {
+            "token_id": "7e57f2f5-ca75-42bd-996a-3132d432e9fc"
+          }
+        }
+      ],
+      "name": "github-actions-deploy",
+      "require": [],
+      "reusable": true,
+      "uid": "ed8692ff-666a-4fcb-ba5c-1104210e9baa"
+    }
+  ],
+  "service_tokens": [
+    {
+      "duration": "8760h",
+      "expires_at": "2027-09-24T14:01:31Z",
+      "id": "7e57f2f5-ca75-42bd-996a-3132d432e9fc",
+      "name": "github-actions-deploy"
+    },
+    {
+      "duration": "8760h",
+      "expires_at": "2027-09-24T16:24:35Z",
+      "id": "964e5db6-53fd-4727-9c67-9de29418ba56",
+      "name": "ops-monitor"
+    }
+  ]
+}

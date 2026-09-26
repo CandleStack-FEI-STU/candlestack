@@ -1,0 +1,9 @@
+[
+  {
+    "config_src": "local",
+    "id": "8cbd2a1f-f294-4534-bb63-f491bed7a51a",
+    "name": "candlestack-vm",
+    "remote_config": false,
+    "tun_type": "cfd_tunnel"
+  }
+]

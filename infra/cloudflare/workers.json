@@ -1,0 +1,39 @@
+{
+  "account_workers_dev_subdomain_exists": true,
+  "custom_domains": [
+    {
+      "environment": "production",
+      "hostname": "ops.candlestack.tech",
+      "service": "candlestack-ops",
+      "zone_name": "candlestack.tech"
+    }
+  ],
+  "d1_databases": [
+    {
+      "name": "candlestack-ops",
+      "uuid": "c1c0eb38-5bf6-4b22-a27e-b34f70c80317",
+      "version": "production"
+    }
+  ],
+  "scripts": [
+    {
+      "compatibility_date": "2026-09-01",
+      "handlers": [
+        "fetch",
+        "scheduled"
+      ],
+      "id": "candlestack-ops",
+      "logpush": false,
+      "schedules": [
+        {
+          "cron": "* * * * *"
+        }
+      ],
+      "usage_model": "standard",
+      "workers_dev": {
+        "enabled": false,
+        "previews_enabled": false
+      }
+    }
+  ]
+}
