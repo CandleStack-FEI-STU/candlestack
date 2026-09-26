@@ -86,16 +86,6 @@ The stage deployment also reloads the edge Caddy, which serves prod too, so righ
 checks that https://app.candlestack.tech/api/health reports `ok` and the page at `/` answers
 200 (without the Access token: prod is public).
 
-### Transition to the backend + frontend layout
-
-Until the first release with this layout, prod still runs the old single `app` container
-(`prod-app:8080`, the placeholder that also answered `/api/health`), while the edge Caddyfile
-is deployed from `main` with every stage deployment. So for `app.candlestack.tech` the edge
-lists `prod-backend`/`prod-frontend` first and `prod-app` as a fallback that is used only while
-the new containers do not exist. The release replaces `app` with the three containers
-(`--remove-orphans`). After that first release, remove the fallback from
-`edge/caddy/Caddyfile` (`import env prod` like stage).
-
 ## How a deployment reaches the VM
 
 GitHub Actions connects over SSH to `ssh.candlestack.tech` through the tunnel. That hostname
