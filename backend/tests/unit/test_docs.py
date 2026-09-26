@@ -1,8 +1,15 @@
+import re
+from urllib.parse import urlsplit
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from candlestack.core import Problem, problem_responses
+
+# Matches an HTML href="..." attribute and the CSS attribute selector href^="...", including
+# the JSON-escaped form (\") the page embeds custom_css in.
+HREF_VALUE = re.compile(r'href\^?=\\?"([^"\\]+)')
 
 
 def test_scalar_docs_page(client: TestClient) -> None:
@@ -22,7 +29,8 @@ def test_scalar_docs_page_is_branded_and_trimmed(client: TestClient) -> None:
     assert '"documentDownloadType": "none"' in page
     assert '"showDeveloperTools": "never"' in page
     assert '"mcp": {"disabled": true}' in page
-    assert "https://www.scalar.com" in page  # the CSS that hides Scalar's footer link
+    # the CSS that hides Scalar's footer link
+    assert any(urlsplit(href).hostname == "www.scalar.com" for href in HREF_VALUE.findall(page))
 
 
 def test_scalar_docs_page_uses_the_candlestack_theme(client: TestClient) -> None:
