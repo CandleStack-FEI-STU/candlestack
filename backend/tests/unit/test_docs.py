@@ -25,6 +25,18 @@ def test_scalar_docs_page_is_branded_and_trimmed(client: TestClient) -> None:
     assert "https://www.scalar.com" in page  # the CSS that hides Scalar's footer link
 
 
+def test_scalar_docs_page_uses_the_candlestack_theme(client: TestClient) -> None:
+    page = client.get("/api/v1/docs").text
+
+    assert "https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.72.1" in page
+    assert '"theme": "none"' in page
+    assert '"withDefaultFonts": false' in page
+    assert "/* basic theme */" not in page  # scalar-fastapi's own theme stays out
+    assert "--scalar-color-accent: #0f766e" in page  # light, the website's teal
+    assert "--scalar-color-accent: #3cc7a6" in page  # dark
+    assert "Geist" in page
+
+
 def test_openapi_schema(client: TestClient) -> None:
     response = client.get("/api/v1/openapi.json")
 

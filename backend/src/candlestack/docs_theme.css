@@ -1,0 +1,88 @@
+/* CandleStack theme for Scalar: the tokens of candlestack.tech and the ops page. */
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap");
+
+:root {
+  --scalar-font: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --scalar-font-code: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --scalar-radius: 4px;
+  --scalar-radius-lg: 8px;
+  --scalar-radius-xl: 10px;
+}
+
+.light-mode {
+  --scalar-color-1: #141414;
+  --scalar-color-2: #4a4a4a;
+  --scalar-color-3: #686868;
+  --scalar-color-accent: #0f766e;
+
+  --scalar-background-1: #fafaf9;
+  --scalar-background-2: #f1f0ee;
+  --scalar-background-3: #e9e7e3;
+  --scalar-background-accent: #e3efec;
+
+  --scalar-border-color: #e7e5e2;
+
+  --scalar-button-1: #141414;
+  --scalar-button-1-color: #fafaf9;
+  --scalar-button-1-hover: #2c2c2c;
+
+  --scalar-color-green: #0f766e;
+  --scalar-color-blue: #0f766e;
+  --scalar-color-red: #b42318;
+  --scalar-color-yellow: #a15c07;
+  --scalar-color-orange: #a15c07;
+  --scalar-color-purple: #6b4fbb;
+
+  --scalar-scrollbar-color: rgb(20 20 20 / 0.18);
+  --scalar-scrollbar-color-active: rgb(20 20 20 / 0.36);
+}
+
+.dark-mode {
+  --scalar-color-1: #ecedee;
+  --scalar-color-2: #b8bec3;
+  --scalar-color-3: #9ba1a6;
+  --scalar-color-accent: #3cc7a6;
+
+  --scalar-background-1: #0d0f11;
+  --scalar-background-2: #16191c;
+  --scalar-background-3: #1e2226;
+  --scalar-background-accent: #10302a;
+
+  --scalar-border-color: #23272b;
+
+  --scalar-button-1: #ecedee;
+  --scalar-button-1-color: #0d0f11;
+  --scalar-button-1-hover: #d4d7da;
+
+  --scalar-color-green: #3cc7a6;
+  --scalar-color-blue: #3cc7a6;
+  --scalar-color-red: #f0616d;
+  --scalar-color-yellow: #e8b45a;
+  --scalar-color-orange: #e8b45a;
+  --scalar-color-purple: #b39cf2;
+
+  --scalar-scrollbar-color: rgb(236 237 238 / 0.2);
+  --scalar-scrollbar-color-active: rgb(236 237 238 / 0.4);
+}
+
+.light-mode .sidebar,
+.light-mode .t-doc__sidebar,
+.dark-mode .sidebar,
+.dark-mode .t-doc__sidebar {
+  --scalar-sidebar-background-1: var(--scalar-background-1);
+  --scalar-sidebar-color-1: var(--scalar-color-1);
+  --scalar-sidebar-color-2: var(--scalar-color-3);
+  --scalar-sidebar-border-color: var(--scalar-border-color);
+  --scalar-sidebar-item-hover-color: var(--scalar-color-1);
+  --scalar-sidebar-item-hover-background: var(--scalar-background-2);
+  --scalar-sidebar-item-active-background: var(--scalar-background-accent);
+  --scalar-sidebar-color-active: var(--scalar-color-accent);
+  --scalar-sidebar-search-background: var(--scalar-background-1);
+  --scalar-sidebar-search-border-color: var(--scalar-border-color);
+  --scalar-sidebar-search-color: var(--scalar-color-3);
+}
+
+/* Scalar has no option for its footer link. */
+a[href^="https://www.scalar.com"] {
+  display: none !important;
+}
