@@ -3,13 +3,17 @@
 import asyncio
 import json
 import logging
+import time
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import httpx
 import pytest
+from redis.asyncio import Redis
 
 import candlestack.data.service as service_module
-from candlestack.core import Settings, create_redis
+import candlestack.data.sources.binance as binance_module
+from candlestack.core import RateLimiter, Settings, create_redis
 from candlestack.data import (
     DataIntegrityError,
     DataService,
@@ -23,13 +27,16 @@ from candlestack.data import (
     normalise,
 )
 from candlestack.data.cache import encode_chunk
-from candlestack.data.sources.binance import parse_archive
+from candlestack.data.sources.binance import IP_WEIGHT_CEILING, parse_archive
+from candlestack.main import create_app
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]
 
 BTC = InstrumentId.parse("crypto:BTCUSDT")
+ETH = InstrumentId.parse("crypto:ETHUSDT")
 LISTED_MS = 1502942400000  # the first BTCUSDT 1m candle: 2017-08-17T04:00Z
 HOUR = 3600
+MINUTE_MS = 60_000
 
 
 def utc(text: str) -> int:
@@ -38,6 +45,23 @@ def utc(text: str) -> int:
 
 def freeze(monkeypatch: pytest.MonkeyPatch, now: int) -> None:
     monkeypatch.setattr(service_module, "_time", lambda: now)
+
+
+def freeze_binance(monkeypatch: pytest.MonkeyPatch, now: float) -> None:
+    """The wall clock of the Binance source, which times its REST pauses."""
+    monkeypatch.setattr(
+        binance_module, "time", SimpleNamespace(time=lambda: now, perf_counter=time.perf_counter)
+    )
+
+
+async def get_api(service: DataService, redis: Redis, path: str) -> httpx.Response:
+    """``GET path`` from the API app, answered by ``service``."""
+    app = create_app(Settings(app_env="test"))
+    app.state.data_service = service
+    app.state.rate_limiter = RateLimiter(redis)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://api.test") as client:
+        return await client.get(path)
 
 
 async def test_closed_month_from_its_archive_then_from_the_cache(service: DataService, upstream):
@@ -282,6 +306,206 @@ async def test_rate_limit_of_binance_pauses_rest_calls(
         assert info.value.source == "binance"
 
     assert today.call_count == 1  # the second request did not reach Binance
+
+
+@pytest.mark.parametrize(
+    ("error", "detail", "calls"),
+    [
+        (
+            httpx.ReadTimeout("The read operation timed out"),
+            "Binance did not answer in time. Try again in a minute.",
+            1,
+        ),
+        (
+            httpx.ConnectError("[Errno 111] Connection refused"),
+            "Binance could not be reached (ConnectError). Try again in a minute.",
+            3,  # with its two retries
+        ),
+    ],
+    ids=["timeout", "connection-error"],
+)
+async def test_binance_not_answering_is_unavailable_and_remembered(
+    service: DataService,
+    upstream,
+    redis: Redis,
+    monkeypatch: pytest.MonkeyPatch,
+    error: httpx.HTTPError,
+    detail: str,
+    calls: int,
+):
+    now = utc("2025-02-03T02:30")
+    freeze(monkeypatch, now)
+    upstream.exchange_info()
+    upstream.first_kline(LISTED_MS)
+    today = upstream.router.get(
+        f"{upstream.BINANCE_API}/api/v3/klines",
+        params={"startTime": str(utc("2025-02-03") * 1000)},
+    ).mock(side_effect=error)
+    chunk = "candles:crypto:BTCUSDT:1h:2025-02-03-live"
+
+    with pytest.raises(SourceUnavailable) as info:
+        await service.candles(BTC, Timeframe.H1, utc("2025-02-03"), now)
+    response = await get_api(
+        service,
+        redis,
+        "/api/v1/data/candles?instrument=crypto:BTCUSDT&timeframe=1h"
+        f"&start={utc('2025-02-03')}&end={now}",
+    )
+
+    assert (info.value.source, info.value.detail, info.value.retry_after) == (
+        "binance",
+        detail,
+        None,
+    )
+    assert response.status_code == 503
+    assert response.headers["content-type"] == "application/problem+json"
+    assert "retry-after" not in response.headers
+    assert response.json() == {
+        "type": "https://candlestack.tech/problems/source-unavailable",
+        "title": "Data source unavailable",
+        "status": 503,
+        "detail": detail,
+        "source": "binance",
+    }
+    assert today.call_count == calls  # the second request got the kept error
+    assert 0 < await redis.ttl(f"data:fail:{chunk}") <= 10
+    assert await redis.exists(f"data:v2:{chunk}") == 0
+
+
+async def test_live_day_of_1m_candles_comes_in_two_rest_pages(
+    service: DataService, upstream, monkeypatch: pytest.MonkeyPatch
+):
+    now = utc("2025-02-03T20:00")
+    freeze(monkeypatch, now)
+    upstream.exchange_info()
+    upstream.first_kline(LISTED_MS)
+    opens = [utc("2025-02-03") * 1000 + minute * MINUTE_MS for minute in range(1200)]
+    rows = [upstream.kline(opens_at, MINUTE_MS) for opens_at in opens]
+    first = upstream.klines(opens[0], rows[:1000])  # a full page: there may be more
+    second = upstream.klines(opens[999] + 1, rows[1000:])  # from after the last open time
+
+    candles = await service.candles(BTC, Timeframe.M1, utc("2025-02-03"), now)
+
+    assert candles.frame["ts"].to_list() == list(range(utc("2025-02-03"), now, 60))
+    assert (candles.gaps, candles.gaps_total) == ([], 0)
+    assert (first.call_count, second.call_count) == (1, 1)
+    for page in (first, second):
+        params = page.calls.last.request.url.params
+        assert (params["interval"], params["limit"], params["endTime"]) == (
+            "1m",
+            "1000",
+            str(now * 1000 - 1),
+        )
+
+
+@pytest.mark.parametrize("status", [418, 429], ids=["ip-banned", "rate-limited"])
+async def test_ban_or_rate_limit_of_binance_pauses_every_rest_call(
+    service: DataService, upstream, monkeypatch: pytest.MonkeyPatch, status: int
+):
+    now = utc("2025-02-03T02:30")
+    freeze(monkeypatch, now)
+    upstream.exchange_info()
+    first = upstream.first_kline(LISTED_MS)
+    today = upstream.router.get(
+        f"{upstream.BINANCE_API}/api/v3/klines",
+        params={"startTime": str(utc("2025-02-03") * 1000)},
+    ).respond(status, headers={"Retry-After": "120"})
+
+    with pytest.raises(SourceUnavailable) as limited:
+        await service.candles(BTC, Timeframe.H1, utc("2025-02-03"), now)
+    # Nothing of ETHUSDT is cached: its first-candle lookup is the next REST call.
+    with pytest.raises(SourceUnavailable) as paused:
+        await service.candles(ETH, Timeframe.H1, utc("2025-02-03"), now)
+
+    assert (limited.value.retry_after, limited.value.detail) == (
+        120,
+        "Binance is rate limiting our requests. Try again in 120 seconds.",
+    )
+    assert paused.value.source == "binance"
+    assert paused.value.retry_after is not None
+    assert abs(paused.value.retry_after - 120) <= 1
+    assert paused.value.detail == (
+        "Binance's limit for our server is reached. "
+        f"Try again in {paused.value.retry_after} seconds."
+    )
+    assert (today.call_count, first.call_count) == (1, 1)  # ETHUSDT's lookup was not sent
+
+
+def first_klines(upstream, used_weight: str) -> tuple:
+    """The first-candle lookups of BTCUSDT, whose answer reports ``used_weight`` of our IP
+    this minute, and of ETHUSDT."""
+    klines = f"{upstream.BINANCE_API}/api/v3/klines"
+    btc = upstream.router.get(klines, params={"symbol": "BTCUSDT", "startTime": "0"}).respond(
+        200,
+        json=[upstream.kline(LISTED_MS, MINUTE_MS)],
+        headers={"X-MBX-USED-WEIGHT-1M": used_weight},
+    )
+    eth = upstream.router.get(klines, params={"symbol": "ETHUSDT", "startTime": "0"}).respond(
+        200, json=[upstream.kline(LISTED_MS, MINUTE_MS)]
+    )
+    return btc, eth
+
+
+async def test_weight_of_our_ip_at_the_ceiling_pauses_rest_calls(
+    service: DataService, upstream, monkeypatch: pytest.MonkeyPatch
+):
+    freeze_binance(monkeypatch, 1_800_000_030.25)  # 30 s into a minute
+    upstream.exchange_info()
+    _, eth = first_klines(upstream, str(IP_WEIGHT_CEILING))
+
+    await service.instrument(BTC)
+    with pytest.raises(SourceUnavailable) as paused:
+        await service.candles(ETH, Timeframe.H1, utc("2024-01-01"), utc("2024-01-02"))
+
+    assert paused.value.detail.startswith("Binance's limit for our server is reached.")
+    assert paused.value.retry_after is not None
+    assert 1 <= paused.value.retry_after <= 61  # until the minute is over
+    assert eth.call_count == 0
+
+
+@pytest.mark.parametrize("used_weight", [str(IP_WEIGHT_CEILING - 1), "", "n/a"])
+async def test_weight_below_the_ceiling_or_unreadable_does_not_pause(
+    service: DataService, upstream, monkeypatch: pytest.MonkeyPatch, used_weight: str
+):
+    freeze_binance(monkeypatch, 1_800_000_030.25)
+    upstream.exchange_info()
+    _, eth = first_klines(upstream, used_weight)
+
+    await service.instrument(BTC)
+    info = await service.instrument(ETH)
+
+    assert info.available_from == LISTED_MS // 1000
+    assert eth.call_count == 1
+
+
+async def test_instrument_detail_when_the_first_candle_cannot_be_asked(
+    service: DataService,
+    upstream,
+    redis: Redis,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    freeze(monkeypatch, utc("2026-09-26T12:34:56"))
+    upstream.exchange_info()
+    first = upstream.router.get(
+        f"{upstream.BINANCE_API}/api/v3/klines", params={"startTime": "0"}
+    ).respond(503)
+
+    with caplog.at_level(logging.WARNING):
+        response = await get_api(service, redis, "/api/v1/data/instruments/crypto:BTCUSDT")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["id"], body["available_from"], body["available_to"]) == (
+        "crypto:BTCUSDT",
+        None,
+        utc("2026-09-26T12:33"),
+    )
+    assert (
+        "First candle of crypto:BTCUSDT unknown: Binance failed with HTTP 503. "
+        "Try again in a minute." in caplog.text
+    )
+    assert first.call_count == 3  # one lookup with its retries
 
 
 async def test_works_without_redis(

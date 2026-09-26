@@ -1,14 +1,17 @@
 """Stock candles through DataService: sessions, 1m bars, 1Day bars and Alpaca's failures."""
 
+import logging
 from datetime import UTC, datetime
 
 import httpx
 import polars as pl
 import pytest
+from redis.asyncio import Redis
 
 import candlestack.core.ratelimit as ratelimit_module
-from candlestack.core import Settings
+from candlestack.core import RateLimiter, Settings
 from candlestack.data import (
+    DataIntegrityError,
     DataService,
     InstrumentId,
     InstrumentNotFound,
@@ -17,6 +20,7 @@ from candlestack.data import (
     Timeframe,
     build_data_service,
 )
+from candlestack.main import create_app
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]
 
@@ -33,6 +37,16 @@ def utc(text: str) -> int:
 
 def period(times: tuple[str, str]) -> tuple[int, int]:
     return utc(times[0]), utc(times[1])
+
+
+async def get_api(service: DataService, redis: Redis, path: str) -> httpx.Response:
+    """``GET path`` from the API app, answered by ``service``."""
+    app = create_app(Settings(app_env="test"))
+    app.state.data_service = service
+    app.state.rate_limiter = RateLimiter(redis)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://api.test") as client:
+        return await client.get(path)
 
 
 @pytest.fixture
@@ -183,6 +197,109 @@ async def test_our_request_budget(
     )
     assert info.value.retry_after == 59
     assert november.call_count == 0
+
+
+@pytest.mark.usefixtures("stocks")
+@pytest.mark.parametrize(
+    ("error", "detail", "calls"),
+    [
+        (
+            httpx.ReadTimeout("The read operation timed out"),
+            "Alpaca did not answer in time. Try again in a minute.",
+            1,
+        ),
+        (
+            httpx.ConnectError("[Errno 111] Connection refused"),
+            "Alpaca could not be reached (ConnectError). Try again in a minute.",
+            3,  # with its two retries
+        ),
+    ],
+    ids=["timeout", "connection-error"],
+)
+async def test_alpaca_not_answering_is_unavailable_and_remembered(
+    service: DataService,
+    upstream,
+    redis: Redis,
+    error: httpx.HTTPError,
+    detail: str,
+    calls: int,
+):
+    november = upstream.router.get(
+        f"{upstream.ALPACA_DATA}/v2/stocks/bars",
+        params={"timeframe": "1Min", "start": "2024-11-01T00:00:00Z"},
+    ).mock(side_effect=error)
+    start, end = period(NOVEMBER_29)
+    chunk = "candles:stock:AAPL:1m:2024-11"
+
+    with pytest.raises(SourceUnavailable) as info:
+        await service.candles(AAPL, Timeframe.H1, start, end)
+    response = await get_api(
+        service,
+        redis,
+        f"/api/v1/data/candles?instrument=stock:AAPL&timeframe=1h&start={start}&end={end}",
+    )
+
+    assert (info.value.source, info.value.detail, info.value.retry_after) == (
+        "alpaca",
+        detail,
+        None,
+    )
+    assert response.status_code == 503
+    assert response.headers["content-type"] == "application/problem+json"
+    assert "retry-after" not in response.headers
+    assert response.json() == {
+        "type": "https://candlestack.tech/problems/source-unavailable",
+        "title": "Data source unavailable",
+        "status": 503,
+        "detail": detail,
+        "source": "alpaca",
+    }
+    assert november.call_count == calls  # the second request got the kept error
+    assert 0 < await redis.ttl(f"data:fail:{chunk}") <= 10
+    assert await redis.exists(f"data:v2:{chunk}") == 0
+
+
+@pytest.mark.usefixtures("stocks")
+async def test_answer_that_is_not_json_is_invalid_data(
+    service: DataService, upstream, redis: Redis, caplog: pytest.LogCaptureFixture
+):
+    # A 200 with a page instead of JSON, as a proxy in front of Alpaca might send.
+    november = upstream.router.get(
+        f"{upstream.ALPACA_DATA}/v2/stocks/bars",
+        params={"timeframe": "1Min", "start": "2024-11-01T00:00:00Z"},
+    ).respond(
+        200,
+        content=b"<html><body><h1>Service Unavailable</h1></body></html>",
+        headers={"Content-Type": "text/html"},
+    )
+    start, end = period(NOVEMBER_29)
+
+    with pytest.raises(DataIntegrityError) as info:
+        await service.candles(AAPL, Timeframe.H1, start, end)
+    with caplog.at_level(logging.ERROR):
+        response = await get_api(
+            service,
+            redis,
+            f"/api/v1/data/candles?instrument=stock:AAPL&timeframe=1h&start={start}&end={end}",
+        )
+
+    assert info.value.source == "alpaca"
+    assert info.value.detail.startswith("Alpaca sent a response that is not valid JSON")
+    assert response.status_code == 502
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json() == {
+        "type": "https://candlestack.tech/problems/source-data-invalid",
+        "title": "Invalid data from the source",
+        "status": 502,
+        "detail": "Alpaca sent data for this request that failed validation, so it was not "
+        "used. Try again later, or ask for another period.",
+        "source": "alpaca",
+    }
+    assert "Invalid data from alpaca: Alpaca sent a response that is not valid JSON" in (
+        caplog.text
+    )
+    assert november.call_count == 1  # the second request got the kept error
+    assert await redis.exists("data:v2:candles:stock:AAPL:1m:2024-11") == 0
 
 
 async def test_rejected_keys(service: DataService, upstream):

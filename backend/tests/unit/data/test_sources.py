@@ -1,13 +1,17 @@
 """Parsing of source responses and the chunk plan, on recorded responses (tests/fixtures)."""
 
 import json
+import logging
+from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
+import httpx
 import polars as pl
 import pytest
+import respx
 
-from candlestack.core import RateLimiter
+from candlestack.core import RateLimiter, Settings
 from candlestack.data import (
     CANDLE_SCHEMA,
     DataIntegrityError,
@@ -15,8 +19,15 @@ from candlestack.data import (
     SourceUnavailable,
     Timeframe,
 )
+from candlestack.data.cache import Cache, Fetch
 from candlestack.data.sources import base
-from candlestack.data.sources.alpaca import parse_assets, parse_bars, regular_candles, relabel_daily
+from candlestack.data.sources.alpaca import (
+    AlpacaSource,
+    parse_assets,
+    parse_bars,
+    regular_candles,
+    relabel_daily,
+)
 from candlestack.data.sources.base import DAY, Period, plan_periods, spend
 from candlestack.data.sources.binance import (
     off_grid_span,
@@ -115,10 +126,23 @@ def test_klines_are_in_seconds_and_drop_the_candle_still_open() -> None:
     assert parse_klines(rows).height == 5
 
 
-@pytest.mark.parametrize("rows", [{"code": -1121}, [[1790359200000, "x"]], [[1, "1"] * 3]])
+@pytest.mark.parametrize(
+    "rows",
+    [
+        {"code": -1121, "msg": "Invalid symbol."},
+        [[1790359200000, "x"]],
+        [[1, "1"] * 3],
+        [None],
+        [{"code": -1121, "msg": "Invalid symbol."}],
+        [[1790359200000, "83785.11", "84081.41", "83785.11", "83968.0", "n/a", 1790362799999]],
+    ],
+    ids=["error-object", "short-row", "text-prices", "null-row", "object-row", "text-volume"],
+)
 def test_malformed_klines_are_a_data_integrity_error(rows: object) -> None:
-    with pytest.raises(DataIntegrityError, match="Binance klines cannot be read"):
+    with pytest.raises(DataIntegrityError, match="Binance klines cannot be read") as info:
         parse_klines(rows)
+
+    assert info.value.source == "binance"
 
 
 def test_exchange_info_lists_the_trading_pairs() -> None:
@@ -152,6 +176,25 @@ def test_exchange_info_skips_pairs_that_are_not_trading() -> None:
     assert parse_exchange_info(json.dumps(body).encode()) == []
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"<html><body><h1>502 Bad Gateway</h1></body></html>",
+        b"[]",
+        b'{"code": -1003, "msg": "Too many requests."}',
+        b'{"symbols": null}',
+        b'{"symbols": [{"symbol": "BTCUSDT", "baseAsset": "BTC", "quoteAsset": "USDT"}]}',
+        b'{"symbols": ["BTCUSDT"]}',
+    ],
+    ids=["not-json", "array", "error-object", "null-symbols", "no-status", "text-symbols"],
+)
+def test_malformed_exchange_info_is_a_data_integrity_error(body: bytes) -> None:
+    with pytest.raises(DataIntegrityError, match="Binance exchangeInfo cannot be read") as info:
+        parse_exchange_info(body)
+
+    assert info.value.source == "binance"
+
+
 # Alpaca
 
 
@@ -164,6 +207,43 @@ def test_assets_keep_tradable_stocks_outside_otc() -> None:
         ("stock:BRK.B", "NYSE"),
     ]
     assert instruments[0].name == "Apple Inc. Common Stock"
+
+
+def test_assets_skip_symbols_that_are_not_instrument_symbols(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    asset = {"name": "Some Corp", "exchange": "NYSE", "tradable": True}
+    body = [
+        {**asset, "symbol": "AAPL"},
+        {**asset, "symbol": "BAD/SYMBOL"},  # not a valid symbol at all
+        {**asset, "symbol": "brk.a"},  # valid only upper-cased: not the source's spelling
+    ]
+
+    with caplog.at_level(logging.WARNING):
+        instruments = parse_assets(json.dumps(body).encode())
+
+    assert [str(item.id) for item in instruments] == ["stock:AAPL"]
+    assert "Skipping Alpaca symbol 'BAD/SYMBOL'" in caplog.text
+    assert "Skipping Alpaca symbol 'brk.a'" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        fixture_bytes("alpaca/error-no-auth.html"),
+        b'{"message": "forbidden."}',
+        b"null",
+        b'[{"symbol": "AAPL", "name": "Apple Inc.", "exchange": "NASDAQ"}]',
+        b'[{"symbol": "AAPL", "tradable": true}]',
+        b'["AAPL"]',
+    ],
+    ids=["html", "error-object", "null", "no-tradable", "no-exchange", "text-assets"],
+)
+def test_malformed_assets_are_a_data_integrity_error(body: bytes) -> None:
+    with pytest.raises(DataIntegrityError, match="Alpaca assets cannot be read") as info:
+        parse_assets(body)
+
+    assert info.value.source == "alpaca"
 
 
 def test_bars_of_two_pages() -> None:
@@ -347,3 +427,98 @@ async def test_spend_refuses_when_the_next_window_is_far(sleeps: list[float]) ->
     )
     assert (info.value.source, info.value.retry_after) == ("binance", 43)
     assert sleeps == []
+
+
+# Alpaca's calendar and bars as the source reads them: malformed bodies are
+# DataIntegrityError naming the source, never a KeyError or TypeError.
+
+ALPACA_API, ALPACA_DATA = "https://api.alpaca.test", "https://data.alpaca.test"
+JUNE = Period("closed", utc("2024-06-01"), utc("2024-07-01"), "2024-06", DAY)
+
+
+class Unlimited(RateLimiter):
+    """Lets every request through, without Redis."""
+
+    def __init__(self) -> None:
+        pass
+
+    async def hit(self, key: str, limit: int, cost: int = 1, window: int = 60) -> float:
+        return 0.0
+
+
+class NoCache(Cache):
+    """Fetches every value, without Redis."""
+
+    def __init__(self) -> None:
+        pass
+
+    async def get_or_fetch(self, name: str, fetch: Fetch) -> bytes:
+        return (await fetch())[0]
+
+
+@pytest.fixture
+def alpaca_api() -> Iterator[respx.MockRouter]:
+    with respx.mock() as router:
+        yield router
+
+
+@pytest.fixture
+async def alpaca(alpaca_api: respx.MockRouter) -> AsyncIterator[AlpacaSource]:
+    settings = Settings(
+        app_env="test",
+        alpaca_api_url=ALPACA_API,
+        alpaca_data_url=ALPACA_DATA,
+        alpaca_key_id="test-key-id",
+        alpaca_secret_key="test-secret",
+    )
+    async with httpx.AsyncClient() as http:
+        yield AlpacaSource(settings, http, Unlimited(), NoCache())
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("body", "error"),
+    [
+        (b"<html><body>504 Gateway Time-out</body></html>", "not valid JSON"),
+        (b'{"message": "internal server error"}', "calendar cannot be read: TypeError"),
+        (b"[null]", "calendar cannot be read: TypeError"),
+        (b'[{"date": "2024-06-03", "open": "09:30"}]', "calendar cannot be read: KeyError"),
+        (b'[{"date": "2024-06-03", "open": "9:30", "close": "16:00"}]', "Malformed trading"),
+        (b'[{"date": "2024-06-03", "open": "16:00", "close": "09:30"}]', "closes before it opens"),
+    ],
+    ids=["html", "error-object", "null-day", "no-close", "bad-time", "close-before-open"],
+)
+async def test_malformed_calendar_is_a_data_integrity_error(
+    alpaca: AlpacaSource, alpaca_api: respx.MockRouter, body: bytes, error: str
+) -> None:
+    alpaca_api.get(f"{ALPACA_API}/v2/calendar").respond(200, content=body)
+
+    with pytest.raises(DataIntegrityError, match=error) as info:
+        await alpaca.sessions()
+
+    assert info.value.source == "alpaca"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("body", "error"),
+    [
+        (b"<!DOCTYPE html><title>503 Service Unavailable</title>", "not valid JSON"),
+        (b"[]", "bars response is not an object"),
+        (b"null", "bars response is not an object"),
+        (b'{"bars": ["AAPL"]}', "bars response has no list of bars"),
+        (b'{"bars": {"AAPL": {"t": "2024-06-03T13:30:00Z"}}}', "bars response has no list of bars"),
+        (b'{"bars": {"AAPL": [1]}}', "bars cannot be read"),
+        (b'{"bars": {"AAPL": [{"t": "2024-06-03T13:30:00Z", "o": "n/a"}]}}', "bars cannot be read"),
+    ],
+    ids=["html", "array", "null", "bars-array", "bar-object", "number-bar", "text-price"],
+)
+async def test_malformed_bars_response_is_a_data_integrity_error(
+    alpaca: AlpacaSource, alpaca_api: respx.MockRouter, body: bytes, error: str
+) -> None:
+    alpaca_api.get(f"{ALPACA_DATA}/v2/stocks/bars").respond(200, content=body)
+
+    with pytest.raises(DataIntegrityError, match=error) as info:
+        await alpaca.fetch_period("AAPL", Timeframe.M1, JUNE)
+
+    assert info.value.source == "alpaca"
