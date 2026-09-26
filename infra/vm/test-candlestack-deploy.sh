@@ -163,7 +163,7 @@ release_git() {
     "git -C /opt/candlestack fetch --quiet --no-tags origin tag $1" \
     "git -C /opt/candlestack rev-parse --verify --quiet refs/tags/$1^{commit}" \
     "git -C /opt/candlestack rev-parse --is-shallow-repository" \
-    "git -C /opt/candlestack fetch --quiet --unshallow origin main" \
+    "git -C /opt/candlestack fetch --quiet --unshallow origin +refs/heads/main:refs/remotes/origin/main" \
     "git -C /opt/candlestack merge-base --is-ancestor $COMMIT origin/main" \
     "git -C /opt/candlestack show $COMMIT:infra/env/compose.yaml" | head -n "$2"
 }

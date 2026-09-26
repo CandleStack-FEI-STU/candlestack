@@ -80,11 +80,14 @@ release_compose_file() {
   commit=$(git -C "$repo" rev-parse --verify --quiet "refs/tags/$tag^{commit}") ||
     fail "release tag '$tag' does not point to a commit"
   # The checkout is a shallow clone (see cloud-init.yaml): deepen it so main's real history,
-  # not just its latest commit, is available to check the tag against.
+  # not just its latest commit, is available to check the tag against. The clone may track
+  # another branch (cloud-init's __GIT_REF__) and "edge" only fetches into FETCH_HEAD, so the
+  # refspec names origin/main itself.
+  local main_ref=+refs/heads/main:refs/remotes/origin/main
   if [ "$(git -C "$repo" rev-parse --is-shallow-repository)" = true ]; then
-    git -C "$repo" fetch --quiet --unshallow origin main
+    git -C "$repo" fetch --quiet --unshallow origin "$main_ref"
   else
-    git -C "$repo" fetch --quiet origin main
+    git -C "$repo" fetch --quiet origin "$main_ref"
   fi
   git -C "$repo" merge-base --is-ancestor "$commit" origin/main ||
     fail "release tag '$tag' is not on main's history"
