@@ -514,8 +514,17 @@ use are in `backend/tests/fixtures/` (see its README).
   strings. Open times switch from milliseconds to microseconds exactly at 2025-01-01 (monthly
   and daily files). `close_time` is open time + interval - 1 unit. `.CHECKSUM` is
   `<sha256 hex>  <file name>` without a trailing newline; all downloaded archives matched.
-  Monthly and daily files hold identical rows, and 1m summed into 1h and 1h into 1d reproduce
-  the archives exactly (OHLCV, trades, taker volumes).
+  Monthly and daily files hold identical rows, and 1m summed into 1h (2024-03-10) and 1h into
+  1d (2024-01) reproduce the archives exactly (OHLCV, trades, taker volumes).
+- **Minutes without trades.** A 1m candle of a minute without trades has volume 0 and open,
+  high, low and close equal to the previous close, while the native 5m, 15m and 1h candles are
+  built from trades only. So 1m aggregated into 1h is sure to equal the native 1h only where
+  every minute traded: an hour that starts with such minutes gets the previous close as its
+  open, which can also widen its high or low. Aggregating while skipping the zero-volume
+  minutes reproduces the native candles exactly (BTCUSDT 2017-08-17 04:00-24:00, where 369 of
+  1200 minutes had no trade: 20 of 20 1h and 80 of 80 15m candles; 15 and 62 without
+  skipping). Crypto candles are served in Binance's native timeframes, so this does not affect
+  responses.
 - **Archives off the grid.** Scans of the monthly archives (BTCUSDT 1h and 15m and ETHUSDT 1h
   from 2017-08 to 2026-08, BTCUSDT 1m of 2017-12 and 2018-02) found candles whose open time is
   no multiple of the timeframe in two periods: BTCUSDT 1m from 2017-12-04 06:00 to 12-18 10:00
@@ -523,6 +532,10 @@ use are in `backend/tests/fixtures/` (see its README).
   2018-02-09T09:28:14Z, 1m to 1h of BTCUSDT, ETHUSDT and BNBUSDT; 1h at `hh:28:14`). 4h and 1d
   are on the grid. REST returns both periods on the grid, with the maintenance as missing
   candles (1h from 2018-02-09T10:00).
+- **Residual after the maintenance.** The BTCUSDT 1h archive row of 2018-02-11T04:00, the first
+  on the grid after that span and therefore served from the archive, has open 7976.74 and
+  volume 1055.87. The 1m candles of that hour (REST, on the grid) give open 7976.73 and volume
+  1063.59, as does REST's 1h candle; the native 4h and 1d candles agree with the 1m ones.
 - **Publication lag.** A daily archive appears 01:28-03:26 UTC the next day. A monthly archive
   appears 1-7 days after the month, on the following Monday. Until then the days of a closed
   month come from daily archives, and today (and yesterday before its archive) from REST.
