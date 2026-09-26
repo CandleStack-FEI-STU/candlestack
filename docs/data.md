@@ -50,8 +50,10 @@ characters.
 | `market` | optional, `crypto` or `stock` |
 | `limit` | default 20, max 100 |
 
-Ranking: exact symbol, symbol prefix, prefix of a word in the name, substring of the symbol,
-substring of the name. Ties: shorter symbol first, then alphabetical.
+Ranking: exact symbol; the pairs of a crypto base asset equal to the query (`btc` finds the
+BTC pairs), the quote asset with the most pairs in the catalog first (USDT, so `crypto:BTCUSDT`
+leads them); symbol prefix; prefix of a word in the name; substring of the symbol; substring
+of the name. Other ties: shorter symbol first, then alphabetical.
 
 `GET /api/v1/data/instruments/{id}` returns the instrument plus what a client needs to build a
 valid `/candles` request (404 `instrument-not-found` if the id is not in the catalog):

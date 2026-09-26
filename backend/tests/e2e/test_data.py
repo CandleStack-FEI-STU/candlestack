@@ -47,7 +47,7 @@ def test_search(http: httpx.Client, q: str, found: str) -> None:
     response = http.get("/api/v1/data/instruments", params={"q": q})
 
     assert response.status_code == 200
-    assert found in [item["id"] for item in response.json()["items"]]
+    assert response.json()["items"][0]["id"] == found
 
 
 def test_search_leaves_out_what_is_not_tradable(http: httpx.Client) -> None:
