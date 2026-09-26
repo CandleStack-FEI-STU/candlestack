@@ -38,6 +38,7 @@ name = "candlestack"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "anyio" },
     { name = "fastapi" },
     { name = "granian" },
     { name = "httpx" },
@@ -52,7 +53,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "anyio" },
     { name = "granian", extra = ["reload"] },
     { name = "httpx2" },
     { name = "import-linter" },
@@ -65,6 +65,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", specifier = ">=4.15.1" },
     { name = "fastapi", specifier = ">=0.141.1" },
     { name = "granian", specifier = ">=2.8.3" },
     { name = "httpx", specifier = ">=0.28.1" },
@@ -79,7 +80,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "anyio", specifier = ">=4.15.1" },
     { name = "granian", extras = ["reload"], specifier = ">=2.8.3" },
     { name = "httpx2", specifier = ">=2.13.1" },
     { name = "import-linter", specifier = ">=2.15" },

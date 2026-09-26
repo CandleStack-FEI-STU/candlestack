@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "CandleStack backend: API for experiments on financial time series"
 requires-python = ">=3.13,<3.14"
 dependencies = [
+    "anyio>=4.15.1",
     "fastapi>=0.141.1",
     "granian>=2.8.3",
     "httpx>=0.28.1",
@@ -22,7 +23,6 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "anyio>=4.15.1",
     "granian[reload]>=2.8.3",
     "httpx2>=2.13.1",
     "import-linter>=2.15",
