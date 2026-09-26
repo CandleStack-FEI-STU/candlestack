@@ -10,20 +10,23 @@
   period, e.g. "Add the candles endpoint".
 - No AI attribution in commits or pull requests: no co-author trailers of AI tools,
   "Generated with ..." lines or session links. The `no-ai-signs` check fails on them.
+- Using Claude Code is fine: `CLAUDE.md` gives it the project's rules and
+  `.claude/settings.json` turns its commit and pull request attribution off. Keep personal
+  settings in `.claude/settings.local.json` (ignored).
 
 ## Merging
 
 What the ruleset of `main` enforces:
 
 - one approving review; a new push dismisses earlier approvals;
+- an approval from @ArsenLabovich when the pull request changes a path listed in
+  `.github/CODEOWNERS` (infrastructure, CI, the toolchain, the dependency set, the shared
+  editor and Claude Code settings);
 - every review thread resolved;
 - the required checks `no-ai-signs / No AI signs` and `ci` (below) green;
 - no force pushes to `main` and no deleting it.
 
-A pull request that changes a path listed in `.github/CODEOWNERS` (infrastructure, CI, the
-toolchain, the dependency set) requests a review from @ArsenLabovich; the ruleset does not
-require that review beyond the one approval. Squash merging is the team's convention, not a
-rule of the repository.
+Squash merging is the team's convention, not a rule of the repository.
 
 ## Checks
 
