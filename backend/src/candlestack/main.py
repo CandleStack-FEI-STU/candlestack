@@ -25,7 +25,7 @@ TITLE = "CandleStack API"
 DESCRIPTION = (
     "HTTP API of CandleStack, a lab for experiments on financial time series. "
     "Market data covers crypto from Binance and US stocks from Alpaca. "
-    "Times are UTC epoch seconds. "
+    "Times in responses are UTC epoch seconds; requests also accept ISO 8601. "
     "Errors are RFC 9457 problem details (`application/problem+json`)."
 )
 OPENAPI_URL = "/api/v1/openapi.json"
