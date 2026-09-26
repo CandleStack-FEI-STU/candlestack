@@ -1,6 +1,7 @@
 """Crypto candles through DataService: archives, REST, the cache and its failures."""
 
 import asyncio
+import json
 import logging
 from datetime import UTC, datetime
 
@@ -141,6 +142,39 @@ async def test_month_without_its_archive_is_built_from_daily_ones(
     )
     assert monthly.call_count == 1
     assert all(zip_route.call_count == 1 for zip_route, _ in daily)
+
+
+async def test_archive_candles_off_the_grid_are_taken_from_rest(service: DataService, upstream):
+    # The 2018-02 archive has 1h candles at hh:28:14 from 02-09T09:28:14 to 02-11T03:28:14;
+    # REST has that span on the grid, from 02-09T10:00.
+    upstream.exchange_info()
+    upstream.first_kline(LISTED_MS)
+    archive, _ = upstream.fixture_archive("monthly", "BTCUSDT-1h-2018-02.zip")
+    rest = upstream.klines(
+        utc("2018-02-09T09:00") * 1000,
+        json.loads(
+            upstream.fixture_bytes("binance/rest/klines-BTCUSDT-1h-2018-02-09-maintenance.json")
+        ),
+    )
+
+    candles = await service.candles(BTC, Timeframe.H1, utc("2018-02-07"), utc("2018-02-11"))
+    again = await service.candles(BTC, Timeframe.H1, utc("2018-02-09"), utc("2018-02-10"))
+
+    opens = candles.frame["ts"].to_list()
+    assert [t for t in opens if t % HOUR] == []
+    assert (len(opens), candles.gaps_total) == (63, 33)  # 96 bins, the maintenance is the gap
+    assert candles.gaps == [(utc("2018-02-08T01:00"), utc("2018-02-09T10:00"))]
+    assert candles.frame.row(opens.index(utc("2018-02-09T10:00"))) == (
+        utc("2018-02-09T10:00"),
+        7789.9,
+        8390.0,
+        7789.9,
+        8269.84,
+        2131.59828,
+    )
+    assert again.frame.height == 14
+    assert rest.calls.last.request.url.params["endTime"] == str(utc("2018-02-11T04:00") * 1000 - 1)
+    assert (archive.call_count, rest.call_count) == (1, 1)  # the repaired month is cached
 
 
 async def test_archive_with_a_wrong_checksum_is_never_cached(service: DataService, upstream):

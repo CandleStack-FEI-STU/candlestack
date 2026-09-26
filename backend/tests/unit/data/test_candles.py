@@ -150,6 +150,19 @@ def test_validate_reports_every_problem_with_its_first_time() -> None:
     )
 
 
+def test_validate_checks_the_grid_of_fixed_bins() -> None:
+    candles = frame([(HOUR, 10, 12, 9, 11, 1), (2 * HOUR + 1694, 10, 12, 9, 11, 1)])
+
+    validate(candles)  # session bins: no grid
+    with pytest.raises(DataIntegrityError) as error:
+        validate(candles, Timeframe.H1)
+
+    assert error.value.detail == (
+        "Invalid candle data: 1 candle has an open time off the 1h UTC grid, "
+        "first at 1970-01-01T02:28:14Z (8894)."
+    )
+
+
 def test_validate_rejects_missing_values() -> None:
     candles = pl.DataFrame(
         {
