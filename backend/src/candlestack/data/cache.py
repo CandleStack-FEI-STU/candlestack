@@ -1,5 +1,5 @@
 """The Redis cache of the data module: values fetched once (single-flight), candle chunks as
-Arrow IPC with zstd.
+Arrow IPC with zstd, and the errors of failed fetches for a few seconds.
 
 Redis is disposable here. When it fails, values are fetched from the source and not cached,
 a warning is logged and the cache is skipped for a few seconds; a Redis failure never fails a
@@ -9,20 +9,28 @@ request by itself.
 import asyncio
 import io
 import logging
+import math
 import secrets
 import struct
 import time
 from collections.abc import Awaitable, Callable
 
+import orjson
 import polars as pl
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
+
+from candlestack.data.errors import DataIntegrityError, SourceUnavailable
 
 logger = logging.getLogger(__name__)
 
 KEY_PREFIX = "data:v1:"
 LOCK_PREFIX = "data:lock:"
+FAIL_PREFIX = "data:fail:"
 LOCK_TTL_MS = 30_000
+# How long the error of a failed fetch is kept: the callers waiting for the value and new ones
+# get it at once, instead of calling the source again one after another.
+FAIL_SECONDS = 10
 POLL_SECONDS = 0.1
 # How long the cache is skipped after Redis failed, so that a dead Redis costs one timeout
 # per few seconds instead of one per call.
@@ -63,10 +71,14 @@ class Cache:
 
     async def set(self, name: str, value: bytes, ttl: int) -> None:
         """Stores a value for ``ttl`` seconds; a Redis failure only logs."""
+        await self._store(KEY_PREFIX + name, value, ttl)
+
+    async def delete(self, name: str) -> None:
+        """Removes a value; a Redis failure only logs."""
         if self._is_down():
             return
         try:
-            await self._redis.set(KEY_PREFIX + name, value, ex=ttl)
+            await self._redis.delete(KEY_PREFIX + name)
         except _REDIS_ERRORS as exc:
             self._failed(exc)
 
@@ -75,17 +87,22 @@ class Cache:
 
         Single-flight: one caller takes the lock ``data:lock:<name>`` (``SET NX``, 30 s) and
         fetches; concurrent callers poll until the value appears, or take the lock themselves
-        when it is released without a value (the fetch failed) or expires. Errors of ``fetch``
-        propagate and nothing is cached.
+        when it expires. When ``fetch`` fails with ``SourceUnavailable`` or
+        ``DataIntegrityError``, the error is kept as ``data:fail:<name>`` for ``FAIL_SECONDS``
+        (at most its ``retry_after``): the waiting callers and new ones raise it without calling
+        the source. Other errors propagate and nothing is kept.
         """
         lock, token = LOCK_PREFIX + name, secrets.token_hex(8)
         while True:
             if self._is_down():
                 return (await fetch())[0]
             try:
-                value = await self._redis.get(KEY_PREFIX + name)
+                value, failure = await self._redis.mget(KEY_PREFIX + name, FAIL_PREFIX + name)
                 if value is not None:
+                    # redis-py types values as bytes | str; this client never decodes.
                     return value  # ty: ignore[invalid-return-type]
+                if failure is not None:
+                    raise _decode_failure(failure)
                 if await self._redis.set(lock, token, nx=True, px=LOCK_TTL_MS):
                     break
             except _REDIS_ERRORS as exc:
@@ -93,7 +110,11 @@ class Cache:
                 return (await fetch())[0]
             await _sleep(POLL_SECONDS)
         try:
-            value, ttl = await fetch()
+            try:
+                value, ttl = await fetch()
+            except (SourceUnavailable, DataIntegrityError) as exc:
+                await self._store(FAIL_PREFIX + name, *_encode_failure(exc))
+                raise
             await self.set(name, value, ttl)
             return value
         finally:
@@ -116,6 +137,14 @@ class Cache:
     async def unlock(self, name: str, token: str) -> None:
         await self._release(LOCK_PREFIX + name, token)
 
+    async def _store(self, key: str, value: bytes, ttl: int) -> None:
+        if self._is_down():
+            return
+        try:
+            await self._redis.set(key, value, ex=ttl)
+        except _REDIS_ERRORS as exc:
+            self._failed(exc)
+
     async def _release(self, lock: str, token: str) -> None:
         if self._is_down():
             return
@@ -134,6 +163,27 @@ class Cache:
             DOWN_SECONDS,
         )
         self._down_until = time.monotonic() + DOWN_SECONDS
+
+
+def _encode_failure(error: SourceUnavailable | DataIntegrityError) -> tuple[bytes, int]:
+    """A failed fetch's error as kept in Redis, and how long to keep it."""
+    ttl = FAIL_SECONDS
+    retry_at = None
+    if isinstance(error, SourceUnavailable) and error.retry_after is not None:
+        ttl = max(1, min(ttl, error.retry_after))
+        retry_at = time.time() + error.retry_after
+    kind = "unavailable" if isinstance(error, SourceUnavailable) else "invalid"
+    value = {"kind": kind, "source": error.source, "detail": error.detail, "retry_at": retry_at}
+    return orjson.dumps(value), ttl
+
+
+def _decode_failure(blob: bytes | str) -> SourceUnavailable | DataIntegrityError:
+    value = orjson.loads(blob)
+    if value["kind"] == "invalid":
+        return DataIntegrityError(value["detail"], source=value["source"])
+    retry_at = value["retry_at"]
+    retry_after = None if retry_at is None else max(1, math.ceil(retry_at - time.time()))
+    return SourceUnavailable(value["source"], value["detail"], retry_after=retry_after)
 
 
 def encode_chunk(frame: pl.DataFrame, fetched_at: int) -> bytes:

@@ -177,7 +177,7 @@ async def test_archive_candles_off_the_grid_are_taken_from_rest(service: DataSer
     assert (archive.call_count, rest.call_count) == (1, 1)  # the repaired month is cached
 
 
-async def test_archive_with_a_wrong_checksum_is_never_cached(service: DataService, upstream):
+async def test_archive_with_a_wrong_checksum_is_never_cached(service: DataService, upstream, redis):
     upstream.exchange_info()
     upstream.first_kline(LISTED_MS)
     name = "BTCUSDT-1h-2024-01.zip"
@@ -187,13 +187,49 @@ async def test_archive_with_a_wrong_checksum_is_never_cached(service: DataServic
         upstream.fixture_bytes(f"binance/archive/monthly/{name}"),
         upstream.checksum(b"something else", name),
     )
+    failure = "data:fail:candles:crypto:BTCUSDT:1h:2024-01"
 
-    for _ in range(2):
+    for attempt in range(3):
+        if attempt == 2:
+            await redis.delete(failure)  # as if the kept error had expired
         with pytest.raises(DataIntegrityError, match="does not match its published") as info:
             await service.candles(BTC, Timeframe.H1, utc("2024-01-01"), utc("2024-02-01"))
         assert info.value.source == "binance"
+        assert 0 < await redis.ttl(failure) <= 10
 
-    assert archive.call_count == 2
+    assert archive.call_count == 2  # the second attempt got the kept error
+    assert await redis.exists("data:v1:candles:crypto:BTCUSDT:1h:2024-01") == 0
+
+
+async def test_a_failed_fetch_ends_every_request_waiting_for_it(
+    service: DataService, upstream, redis
+):
+    upstream.exchange_info()
+    upstream.first_kline(LISTED_MS)
+    calls = 0
+
+    async def forbidden(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0.3)  # the other requests wait for the lock meanwhile
+        return httpx.Response(403)
+
+    upstream.router.get(url__startswith=upstream.BINANCE_DATA).mock(side_effect=forbidden)
+    await service.instrument(BTC)  # the catalog and the first candle
+
+    results = await asyncio.gather(
+        *(
+            service.candles(BTC, Timeframe.H1, utc("2024-01-01"), utc("2024-02-01"))
+            for _ in range(4)
+        ),
+        return_exceptions=True,
+    )
+
+    assert all(isinstance(result, SourceUnavailable) for result in results)
+    assert {result.detail for result in results if isinstance(result, SourceUnavailable)} == {
+        "Binance archive rejected our request with HTTP 403. Try again later."
+    }
+    assert calls == 2  # the archive and its checksum, once: not once per waiting request
 
 
 async def test_rate_limit_of_binance_pauses_rest_calls(

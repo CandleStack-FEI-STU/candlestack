@@ -560,15 +560,30 @@ def test_source_budget_spent(client: TestClient, service: FakeDataService) -> No
 def test_invalid_source_data(
     client: TestClient, service: FakeDataService, caplog: pytest.LogCaptureFixture
 ) -> None:
+    # What failed (here a library message) goes to the log, not to the client.
     service.error = DataIntegrityError(
-        "Checksum mismatch in BTCUSDT-1m-2024-06.zip.", source="binance"
+        'Alpaca bars cannot be read: could not append value: "n/a" of type: str to the '
+        "builder; consider increasing `infer_schema_length`",
+        source="alpaca",
     )
 
     body = problem(client.get(CANDLES), 502, "source-data-invalid")
 
-    assert body["source"] == "binance"
-    assert body["detail"] == "Checksum mismatch in BTCUSDT-1m-2024-06.zip."
-    assert "Checksum mismatch" in caplog.text
+    assert body["source"] == "alpaca"
+    assert body["detail"] == (
+        "Alpaca sent data for this request that failed validation, so it was not used. "
+        "Try again later, or ask for another period."
+    )
+    assert "infer_schema_length" in caplog.text
+
+
+def test_invalid_data_of_no_known_source(client: TestClient, service: FakeDataService) -> None:
+    service.error = DataIntegrityError("Malformed trading calendar day {'date': 'x'}")
+
+    body = problem(client.get(CANDLES), 502, "source-data-invalid")
+
+    assert body["source"] is None
+    assert body["detail"].startswith("The data source sent data for this request that failed")
 
 
 def test_unknown_data_error_is_a_500(client: TestClient, service: FakeDataService) -> None:
