@@ -23,6 +23,7 @@ from candlestack.data import (
     InvalidRequest,
     Market,
     PeriodOutOfRange,
+    SearchResult,
     SourceHealth,
     SourceUnavailable,
     Timeframe,
@@ -91,9 +92,11 @@ class FakeDataService:
         if self.error is not None:
             raise self.error
 
-    async def search(self, q: str, market: Market | None = None, limit: int = 20) -> list:
+    unavailable: list[Market] = field(default_factory=list)
+
+    async def search(self, q: str, market: Market | None = None, limit: int = 20) -> SearchResult:
         self._called("search", q, market, limit)
-        return [BTCUSDT, AAPL][:limit]
+        return SearchResult([BTCUSDT, AAPL][:limit], self.unavailable)
 
     async def instrument(self, instrument_id: InstrumentId) -> InstrumentInfo:
         self._called("instrument", instrument_id)
@@ -183,8 +186,20 @@ def test_search(client: TestClient, service: FakeDataService) -> None:
             },
         ],
         "count": 2,
+        "unavailable": [],
     }
     assert service.calls == [("search", ("btc", None, 20))]
+
+
+def test_search_names_a_market_that_cannot_be_searched(
+    client: TestClient, service: FakeDataService
+) -> None:
+    service.unavailable = [Market.STOCK]
+
+    response = client.get("/api/v1/data/instruments?q=btc")
+
+    assert response.status_code == 200
+    assert response.json()["unavailable"] == ["stock"]
 
 
 def test_search_passes_market_and_limit(client: TestClient, service: FakeDataService) -> None:

@@ -48,6 +48,7 @@ from candlestack.data.models import (
     InstrumentId,
     InstrumentInfo,
     Market,
+    SearchResult,
     SourceHealth,
     Timeframe,
     empty_candles,
@@ -84,14 +85,14 @@ class DataService:
         self._catalogs = catalogs
         self._candles_max = candles_max
 
-    async def search(
-        self, q: str, market: Market | None = None, limit: int = 20
-    ) -> list[Instrument]:
-        """Instruments matching ``q``, best first (ranking in ``candlestack.data.catalog``)."""
+    async def search(self, q: str, market: Market | None = None, limit: int = 20) -> SearchResult:
+        """Instruments matching ``q``, best first (ranking in ``candlestack.data.catalog``), in
+        the markets whose catalog can be loaded; ``unavailable`` names the others. Raises the
+        source's error when none can be loaded."""
         if limit <= 0 or not normalise_query(q):
-            return []
+            return SearchResult([], [])
         catalog = await self._catalogs.catalog(market)
-        return catalog.search(q, market, limit)
+        return SearchResult(catalog.search(q, market, limit), self._catalogs.missing(market))
 
     async def instrument(self, instrument_id: InstrumentId) -> InstrumentInfo:
         """The instrument and its available period. ``available_from`` is ``None`` when the

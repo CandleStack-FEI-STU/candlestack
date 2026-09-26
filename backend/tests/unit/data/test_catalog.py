@@ -75,9 +75,9 @@ def test_normalise_query(query: str, normalised: str) -> None:
 
 def test_search_ranks_symbol_then_name_matches(catalog: Catalog) -> None:
     assert ids(catalog.search("btc")) == [
+        "crypto:BTCUSDT",  # the top pair of the base asset BTC: its quote has the most pairs
         "stock:BTC",  # exact symbol
-        "crypto:BTCUSDT",  # pairs of the base asset BTC, the quote with the most pairs first
-        "crypto:BTCUSDC",
+        "crypto:BTCUSDC",  # the other pairs of BTC
         "crypto:ETHBTC",  # a word of the name starts with the query (ETH/BTC)
         "stock:XBTC",  # substring of the symbol
         "crypto:WBTCUSDT",
@@ -109,7 +109,24 @@ def test_base_asset_pairs_come_first_in_a_full_catalog() -> None:
     found = ids(Catalog(instruments).search("btc", limit=3))
 
     # Then the other BTC pairs (one pair per quote here): shorter symbol, then alphabetical.
-    assert found == ["stock:BTC", "crypto:BTCUSDT", "crypto:BTCARS"]
+    assert found == ["crypto:BTCUSDT", "stock:BTC", "crypto:BTCARS"]
+
+
+def test_top_pair_of_a_base_asset_without_a_usdt_pair() -> None:
+    instruments = [
+        crypto("ABCBTC", "ABC", "BTC"),
+        crypto("ABCTRY", "ABC", "TRY"),
+        crypto("ETHBTC", "ETH", "BTC"),
+        crypto("XRPBTC", "XRP", "BTC"),
+        crypto("XRPTRY", "XRP", "TRY"),
+        stock("ABC", "American Broadcasting Company"),
+    ]
+
+    assert ids(Catalog(instruments).search("abc")) == [
+        "crypto:ABCBTC",  # BTC is the quote with the most pairs (3)
+        "stock:ABC",
+        "crypto:ABCTRY",
+    ]
 
 
 def test_search_name_substring_comes_last(catalog: Catalog) -> None:
@@ -136,7 +153,7 @@ def test_search_dotted_and_non_ascii_symbols(catalog: Catalog) -> None:
 
 def test_search_market_and_limit(catalog: Catalog) -> None:
     assert ids(catalog.search("btc", market=Market.STOCK)) == ["stock:BTC", "stock:XBTC"]
-    assert ids(catalog.search("btc", limit=2)) == ["stock:BTC", "crypto:BTCUSDT"]
+    assert ids(catalog.search("btc", limit=2)) == ["crypto:BTCUSDT", "stock:BTC"]
     assert catalog.search("btc", limit=0) == []
 
 

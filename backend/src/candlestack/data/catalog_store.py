@@ -3,14 +3,17 @@
 Each market's list is one Redis value (``data:v1:catalog:<market>``, compact JSON with its
 fetch time). A list older than 24 hours is still served at once while one background task
 refreshes it from the source. Searches run on an in-process ``Catalog``; when the process's
-copy is stale it first adopts a newer list another process already stored.
+copy is stale it first adopts a newer list another process already stored. Once one market is
+loaded, a search over all markets does not wait for the others: they are loaded in the
+background and the search answers from the loaded ones.
 """
 
 import asyncio
 import logging
 import time
-from collections.abc import Mapping
+from collections.abc import Coroutine, Mapping
 from dataclasses import dataclass
+from typing import Any
 
 import orjson
 from anyio import to_thread
@@ -50,15 +53,25 @@ class CatalogStore:
         self._version = 0  # bumped whenever an entry changes
         self._next_refresh: dict[Market, float] = {}
         self._failed: dict[Market, tuple[float, DataError]] = {}
+        self._loading: set[Market] = set()
         self._tasks: set[asyncio.Task[None]] = set()
 
     async def catalog(self, market: Market | None = None) -> Catalog:
         """A catalog with the instruments of ``market``, or of every market that can be loaded
-        (a market whose source is down is left out). Raises the source's error when no
-        requested market can be loaded."""
+        (``missing`` names the markets left out). Raises the source's error when no requested
+        market can be loaded.
+
+        Markets are waited for only while none of the requested ones is loaded. Once one is, the
+        others are loaded in the background and left out until they are, so a source that is
+        down does not hold up a search over all markets for its timeout.
+        """
         markets = [market] if market else list(self._sources)
+        waited = [each for each in markets if each in self._entries] or markets
+        for each in markets:
+            if each not in waited:
+                self._load_in_background(each)
         results = await asyncio.gather(
-            *(self._entry(each) for each in markets), return_exceptions=True
+            *(self._entry(each) for each in waited), return_exceptions=True
         )
         errors = [result for result in results if isinstance(result, BaseException)]
         for error in errors:
@@ -81,6 +94,12 @@ class CatalogStore:
         if version == self._version:  # no newer entry arrived while it was built
             self._catalog = catalog
         return catalog
+
+    def missing(self, market: Market | None = None) -> list[Market]:
+        """The requested markets (all without ``market``) whose list is not loaded, which a
+        catalog leaves out."""
+        markets = [market] if market else list(self._sources)
+        return [each for each in markets if each not in self._entries]
 
     async def _entry(self, market: Market) -> _Entry:
         entry = self._entries.get(market)
@@ -137,13 +156,35 @@ class CatalogStore:
             self._catalog = None
             self._version += 1
 
+    def _load_in_background(self, market: Market) -> None:
+        """Loads a market's list unless it is loading or failed less than
+        ``LOAD_RETRY_SECONDS`` ago."""
+        retry_at, _ = self._failed.get(market, (0.0, None))
+        if market in self._loading or time.monotonic() < retry_at:
+            return
+        self._loading.add(market)
+        self._start(self._load_quietly(market))
+
+    async def _load_quietly(self, market: Market) -> None:
+        try:
+            await self._load(market)
+        except DataError:
+            pass  # _load logged it and answers with it until the next retry
+        except Exception:
+            logger.exception("Loading the %s catalog failed", market)
+        finally:
+            self._loading.discard(market)
+
+    def _start(self, work: Coroutine[Any, Any, None]) -> None:
+        task = asyncio.create_task(work)
+        self._tasks.add(task)  # a task without a reference can be garbage-collected
+        task.add_done_callback(self._tasks.discard)
+
     def _refresh_in_background(self, market: Market) -> None:
         if time.monotonic() < self._next_refresh.get(market, 0.0):
             return
         self._next_refresh[market] = time.monotonic() + RETRY_SECONDS
-        task = asyncio.create_task(self._refresh(market))
-        self._tasks.add(task)  # a task without a reference can be garbage-collected
-        task.add_done_callback(self._tasks.discard)
+        self._start(self._refresh(market))
 
     async def _refresh(self, market: Market) -> None:
         name = f"catalog:{market}"
