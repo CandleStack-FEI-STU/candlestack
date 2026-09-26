@@ -19,7 +19,13 @@ env:
   REGISTRY: ghcr.io/candlestack-fei-stu/candlestack
 
 jobs:
+  no-ai-signs:
+    uses: CandleStack-FEI-STU/.github/.github/workflows/no-ai-signs.yml@main
+    permissions:
+      contents: read
+
   deploy:
+    needs: no-ai-signs
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
