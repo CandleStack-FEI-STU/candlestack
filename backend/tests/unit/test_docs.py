@@ -14,6 +14,17 @@ def test_scalar_docs_page(client: TestClient) -> None:
     assert "/api/v1/openapi.json" in response.text
 
 
+def test_scalar_docs_page_is_branded_and_trimmed(client: TestClient) -> None:
+    page = client.get("/api/v1/docs").text
+
+    assert 'href="/favicon.svg"' in page
+    assert "fastapi.tiangolo.com" not in page
+    assert '"documentDownloadType": "none"' in page
+    assert '"showDeveloperTools": "never"' in page
+    assert '"mcp": {"disabled": true}' in page
+    assert "https://www.scalar.com" in page  # the CSS that hides Scalar's footer link
+
+
 def test_openapi_schema(client: TestClient) -> None:
     response = client.get("/api/v1/openapi.json")
 
@@ -22,6 +33,13 @@ def test_openapi_schema(client: TestClient) -> None:
     assert schema["info"]["title"] == "CandleStack API"
     assert schema["info"]["version"] == "1.2.3"
     assert "/api/health" in schema["paths"]
+
+
+def test_openapi_server_is_the_current_host(client: TestClient) -> None:
+    schema = client.get("/api/v1/openapi.json").json()
+
+    # Relative, so Scalar's code examples use the host the docs are opened on.
+    assert schema["servers"] == [{"url": "/", "description": "This environment"}]
 
 
 @pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json", "/api/docs"])

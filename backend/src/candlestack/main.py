@@ -23,14 +23,24 @@ from candlestack.core import (
 from candlestack.data import build_data_service, data_router
 
 TITLE = "CandleStack API"
+# The icon is served by the frontend on the same host, like the rest of the site.
+ICON_URL = "/favicon.svg"
 DESCRIPTION = (
+    f'<img src="{ICON_URL}" alt="CandleStack" width="40" height="40">\n\n'
     "HTTP API of CandleStack, a lab for experiments on financial time series. "
     "Market data covers crypto from Binance and US stocks from Alpaca. "
     "Times in responses are UTC epoch seconds; requests also accept ISO 8601. "
-    "Errors are RFC 9457 problem details (`application/problem+json`)."
+    "Errors are RFC 9457 problem details (`application/problem+json`).\n\n"
+    "[Website](https://candlestack.tech) · "
+    "[Source code](https://github.com/CandleStack-FEI-STU/candlestack) · "
+    "[Status](https://ops.candlestack.tech)"
 )
 OPENAPI_URL = "/api/v1/openapi.json"
 DOCS_URL = "/api/v1/docs"
+# A relative server makes the code examples use the host the docs are opened on.
+SERVERS = [{"url": "/", "description": "This environment"}]
+# Scalar has no option for its footer link, so CSS hides it.
+DOCS_CSS = 'a[href^="https://www.scalar.com"] { display: none !important; }'
 
 
 class CandleStackAPI(FastAPI):
@@ -65,6 +75,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title=TITLE,
         version=settings.app_version,
         description=DESCRIPTION,
+        servers=SERVERS,
         lifespan=lifespan,
         openapi_url=OPENAPI_URL,
         docs_url=None,
@@ -81,8 +92,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return get_scalar_api_reference(
             openapi_url=OPENAPI_URL,
             title=TITLE,
+            scalar_favicon_url=ICON_URL,
+            document_download_type="none",
+            show_developer_tools="never",
+            custom_css=DOCS_CSS,
             telemetry=False,
             agent=AgentScalarConfig(disabled=True),
+            overrides={"mcp": {"disabled": True}},
         )
 
     return app
