@@ -206,7 +206,7 @@ def test_regular_candles_drop_prints_outside_the_session(sessions: list[Session]
     march = Period("closed", utc("2024-03-01"), utc("2024-04-01"), "2024-03", DAY)
 
     frame = regular_candles(
-        aapl_bars("bars-AAPL-1Min-2024-03-08-open.json"), Timeframe.M1, march, sessions
+        parse_bars(aapl_bars("bars-AAPL-1Min-2024-03-08-open.json")), Timeframe.M1, march, sessions
     )
 
     assert frame.height == 62
@@ -215,7 +215,7 @@ def test_regular_candles_drop_prints_outside_the_session(sessions: list[Session]
 
 def test_regular_candles_of_the_live_tail_are_closed(sessions: list[Session]) -> None:
     live = Period("live", utc("2024-06-03"), utc("2024-06-03T14:00:30"), "2024-06-03-live", 60)
-    bars = aapl_bars("bars-AAPL-1Min-2024-06-03-p0.json")
+    bars = parse_bars(aapl_bars("bars-AAPL-1Min-2024-06-03-p0.json"))
 
     frame = regular_candles(bars, Timeframe.M1, live, sessions)
 
@@ -223,7 +223,7 @@ def test_regular_candles_of_the_live_tail_are_closed(sessions: list[Session]) ->
 
 
 def test_regular_daily_candle_waits_for_the_close(sessions: list[Session]) -> None:
-    bars = aapl_bars("bars-AAPL-1Day-2024-11-25_12-02.json")
+    bars = parse_bars(aapl_bars("bars-AAPL-1Day-2024-11-25_12-02.json"))
     during = Period("live", utc("2024-11-29"), utc("2024-11-29T17:59"), "2024-11-29-live", 60)
     after = Period("live", utc("2024-11-29"), utc("2024-11-29T18:00"), "2024-11-29-live", 60)
 

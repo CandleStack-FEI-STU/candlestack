@@ -47,6 +47,8 @@ class DataSource(Protocol):
     name: Source
     feed: Feed
     market: Market
+    chunk_concurrency: int
+    """Chunks of one request fetched at once."""
 
     async def list_instruments(self) -> list[Instrument]:
         """The catalog: every instrument the source serves now."""

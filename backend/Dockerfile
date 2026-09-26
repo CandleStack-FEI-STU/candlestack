@@ -36,7 +36,9 @@ CMD ["granian", "--interface", "asgi", "--host", "0.0.0.0", "--port", "8000", \
      "--no-access-log", "--log-config", "granian-logging.json", "--reload", \
      "--reload-paths", "src", "candlestack.main:app"]
 
-# The app runs from /app/src on PYTHONPATH, next to the dependencies' venv.
+# The app runs from /app/src on PYTHONPATH, next to the dependencies' venv. MALLOC_ARENA_MAX:
+# glibc gives each thread that allocates (the workers that parse and resample candles) arenas of
+# its own that keep freed memory; two arenas keep the process within its memory limit.
 FROM python:3.13-slim
 WORKDIR /app
 COPY --from=deps /app/.venv /app/.venv
@@ -45,7 +47,8 @@ COPY src ./src
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH=/app/src \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    MALLOC_ARENA_MAX=2
 # Runs unprivileged and needs no writable path: fine with a read-only root filesystem.
 USER 65534:65534
 EXPOSE 8000

@@ -1,10 +1,34 @@
 from datetime import UTC, datetime
+from typing import cast
 
 import polars as pl
+import pytest
 
-from candlestack.data import CANDLE_SCHEMA, Session, Timeframe
+import candlestack.data.service as service_module
+from candlestack.data import (
+    CANDLE_SCHEMA,
+    InstrumentId,
+    Session,
+    Timeframe,
+    resample_sessions,
+    slice_range,
+)
 from candlestack.data.cache import decode_chunk, encode_chunk
-from candlestack.data.service import bin_open, newest_minute
+from candlestack.data.service import assemble, bin_open, newest_minute
+from candlestack.data.sources.base import DAY, DataSource, Period, plan_periods
+
+BTC, AAPL = InstrumentId.parse("crypto:BTCUSDT"), InstrumentId.parse("stock:AAPL")
+
+
+class Named:
+    """What ``assemble`` uses of a source: its name and feed."""
+
+    def __init__(self, name: str, feed: str) -> None:
+        self.name, self.feed = name, feed
+
+
+Binance = cast(DataSource, Named("binance", "spot"))
+Alpaca = cast(DataSource, Named("alpaca", "iex"))
 
 
 def utc(text: str) -> int:
@@ -63,3 +87,62 @@ def test_empty_chunk_round_trip() -> None:
 
     assert decoded.schema == CANDLE_SCHEMA
     assert decoded.height == 0
+
+
+def minutes(opens: list[int]) -> pl.DataFrame:
+    return pl.DataFrame(
+        [(ts, 100.0, 101.0, 99.0, 100.5, 1.0) for ts in opens], schema=CANDLE_SCHEMA, orient="row"
+    )
+
+
+def test_assemble_resamples_stock_chunks_in_batches(
+    sessions: list[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(service_module, "RESAMPLE_CHUNKS", 5)  # 12 months in batches of 5
+    start, end, now = utc("2024-01-01"), utc("2025-01-01"), utc("2025-06-01")
+    bars = minutes(
+        [
+            s.open + m * 60
+            for s in sessions
+            for m in (0, 59, 60, 61, 239, 240, 389)
+            if s.open + m * 60 < s.close
+        ]
+    )
+    periods = plan_periods(
+        start, end, now, yearly=False, daily=False, closed_ttl=DAY, current_ttl=DAY
+    )
+    blobs = [encode_chunk(slice_range(bars, p.start, p.end), p.end) for p in periods]
+
+    for timeframe in (Timeframe.H1, Timeframe.H4):
+        result = assemble(
+            Alpaca, AAPL, timeframe, Timeframe.M1, start, end, now, sessions, periods, blobs
+        )
+
+        assert len(periods) == 12
+        assert result.frame.equals(resample_sessions(bars, timeframe, sessions))
+
+
+def test_assemble_knows_candles_only_up_to_the_live_fetch() -> None:
+    # The live chunk was fetched at 12:00:30; the request comes 50 s later, when the 12:00
+    # candle has closed but is not in the chunk: it is neither returned nor a gap.
+    fetched, now = utc("2026-09-26T12:00:30"), utc("2026-09-26T12:01:20")
+    live = Period("live", utc("2026-09-26"), fetched, "2026-09-26-live", 60)
+    blob = encode_chunk(
+        minutes(list(range(utc("2026-09-26T11:50"), utc("2026-09-26T12:00"), 60))), fetched
+    )
+
+    result = assemble(
+        Binance,
+        BTC,
+        Timeframe.M1,
+        Timeframe.M1,
+        utc("2026-09-26T11:50"),
+        now,
+        now,
+        None,
+        [live],
+        [blob],
+    )
+
+    assert result.frame["ts"][-1] == utc("2026-09-26T11:59")
+    assert (result.gaps, result.gaps_total) == ([], 0)

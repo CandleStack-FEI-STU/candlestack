@@ -13,6 +13,7 @@ import time
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict
 from functools import partial
+from itertools import batched
 
 import httpx
 import orjson
@@ -53,15 +54,16 @@ from candlestack.data.models import (
     Timeframe,
     empty_candles,
 )
-from candlestack.data.sessions import Session
+from candlestack.data.sessions import Session, sessions_between
 from candlestack.data.sources.alpaca import AlpacaSource
 from candlestack.data.sources.base import DAY, DataSource, Period
 from candlestack.data.sources.binance import BinanceSource
 
 logger = logging.getLogger(__name__)
 
-# Chunks of one request fetched at once.
-CHUNK_CONCURRENCY = 16
+# Chunks decoded and resampled at once: a year of monthly chunks of IEX 1m bars is about
+# 100000 rows (5 MB). Fewer at once use less memory, but every resample call costs time.
+RESAMPLE_CHUNKS = 12
 FIRST_TTL = 7 * DAY
 # An instrument without any candle yet (a new listing) is asked again after an hour.
 FIRST_NONE_TTL = 3600
@@ -187,7 +189,7 @@ class DataService:
         timeframe: Timeframe,
         periods: Sequence[Period],
     ) -> list[bytes]:
-        limit = asyncio.Semaphore(CHUNK_CONCURRENCY)
+        limit = asyncio.Semaphore(source.chunk_concurrency)
 
         async def fetch(period: Period) -> tuple[bytes, int]:
             frame = await source.fetch_period(instrument.symbol, timeframe, period)
@@ -262,19 +264,27 @@ def assemble(
 ) -> CandleSet:
     """The candle set from cached chunks of the base timeframe (CPU work, run in a thread).
 
-    Candles count as known up to when the live chunk was fetched: a candle that closed after
-    that is neither returned nor a gap (it comes with the next fetch).
+    The chunks are decoded and resampled ``RESAMPLE_CHUNKS`` at a time, so a request for years
+    of stock candles never holds all their 1m bars at once; a chunk holds whole sessions (its
+    bounds are UTC midnights, which no session spans). Candles count as known up to when the
+    live chunk was fetched: a candle that closed after that is neither returned nor a gap (it
+    comes with the next fetch).
     """
     frames, as_of = [], now
-    for period, blob in zip(periods, blobs, strict=True):
-        frame, complete_until = decode_chunk(blob)
-        frames.append(frame)
-        if period.kind == "live":
-            as_of = min(as_of, complete_until)
+    for group in batched(zip(periods, blobs, strict=True), RESAMPLE_CHUNKS, strict=False):
+        parts = []
+        for period, blob in group:
+            frame, complete_until = decode_chunk(blob)
+            parts.append(frame)
+            if period.kind == "live":
+                as_of = min(as_of, complete_until)
+        frame = pl.concat(parts)
+        if sessions is not None and timeframe is not base:
+            within = sessions_between(sessions, group[0][0].start, group[-1][0].end)
+            frame = resample_sessions(frame, timeframe, within)
+        frames.append(slice_range(frame, start, end))
     frame = pl.concat(frames) if frames else empty_candles()
-    if sessions is not None and timeframe is not base:
-        frame = resample_sessions(frame, timeframe, sessions)
-    frame = slice_range(closed_only(frame, timeframe, as_of, sessions), start, end)
+    frame = closed_only(frame, timeframe, as_of, sessions)
     if sessions is None:
         expected = expected_bins_fixed(start, end, timeframe, now=as_of)
     else:

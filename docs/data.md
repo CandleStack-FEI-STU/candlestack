@@ -345,8 +345,9 @@ Example: `/api/v1/data/candles?instrument=stock:AAPL&timeframe=1h&start=2024-06-
 returns the 7 candles of that session.
 
 Processing: rate limit, validation, catalog lookup, period and count checks, then each chunk
-of the period from the cache or the source (single-flight, up to 16 at once), concatenated,
-resampled (stocks), closed candles only, sliced to `[start, end)`, gaps found, fingerprint
+of the period from the cache or the source (single-flight; up to 16 at once for crypto, 4 for
+stocks), resampled (stocks) a year of chunks at a time so that years of 1m bars are never held
+at once, concatenated, closed candles only, sliced to `[start, end)`, gaps found, fingerprint
 computed.
 
 Response (columnar arrays; index `i` of every array is one candle):

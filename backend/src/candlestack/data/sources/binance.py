@@ -180,6 +180,9 @@ class BinanceSource:
     name: Source = NAME
     feed: Feed = "spot"
     market = Market.CRYPTO
+    # Archives are not rate limited, and a chunk holds the requested timeframe, so a request's
+    # chunks hold at most CANDLES_MAX candles in all.
+    chunk_concurrency = 16
 
     def __init__(self, settings: Settings, http: httpx.AsyncClient, limiter: RateLimiter) -> None:
         self._api = settings.binance_api_url.rstrip("/")
