@@ -1,6 +1,5 @@
-"""Against a real Redis at REDIS_URL: CI starts one, locally compose.dev.yaml does."""
+"""Against a real Redis at REDIS_URL: CI starts one, locally compose.yaml does."""
 
-import os
 import uuid
 
 import pytest
@@ -10,11 +9,6 @@ from candlestack.core import Settings, create_redis
 from candlestack.main import create_app
 
 pytestmark = pytest.mark.integration
-
-
-@pytest.fixture
-def redis_url() -> str:
-    return os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
 
 def test_health_with_redis_up(redis_url: str) -> None:

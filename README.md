@@ -22,14 +22,15 @@ and post-processing gives the most stable results.
 
 ## Status
 
-In development: the backend foundation, then the market data layer (crypto from Binance,
-US stocks from Alpaca).
+In development. The backend foundation and the market data layer (crypto from Binance, US
+stocks from Alpaca) run on stage; prod runs v0.1.0, the placeholder page, until the next
+release.
 
 ## Run locally
 
 ```sh
 cp .env.example .env    # optional: Alpaca paper keys for US stocks
-docker compose -f compose.dev.yaml up --build
+docker compose up --build
 ```
 
 The API reference is then at http://localhost:8000/api/v1/docs. Every endpoint there has a
@@ -42,7 +43,21 @@ test request panel to try it, for example:
 | candles | `GET /api/v1/data/candles?instrument=crypto:BTCUSDT&timeframe=1h&start=2024-06-03&end=2024-06-04` |
 | sources reachable | `GET /api/health/sources` |
 
-Crypto needs no keys; US stocks (`stock:AAPL`) need Alpaca paper keys in `.env`.
+The local stack runs no frontend, so `/` and the logo in the API reference answer 404 there.
+
+### Alpaca keys for US stocks
+
+Crypto needs no keys. US stocks (`stock:AAPL`) need the keys of an Alpaca paper account:
+
+1. Create a free account at https://alpaca.markets and open its Paper account.
+2. Generate an API key there.
+3. Put the key ID and the secret into `.env` as `ALPACA_KEY_ID` and `ALPACA_SECRET_KEY`, then
+   run `docker compose up --build` again.
+
+Use your own paper account, never the team's. Paper accounts get the IEX feed only, which is
+the feed CandleStack uses. Without keys, `/api/health/sources` answers 503 with Alpaca's
+`status` `error`, instrument searches report `"unavailable": ["stock"]` and stock requests get
+503 `source-unavailable`.
 
 More: [architecture](docs/architecture.md), [market data](docs/data.md),
 [contributing](CONTRIBUTING.md), [infrastructure](infra/README.md).

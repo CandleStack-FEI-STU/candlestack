@@ -20,7 +20,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     uv sync --locked --no-dev --no-install-project
 
-# Local development only (compose.dev.yaml): dev dependencies, the project installed editable
+# Local development only (compose.yaml): dev dependencies, the project installed editable
 # so the mounted src/ is what runs, granian with --reload.
 FROM deps AS dev
 COPY pyproject.toml uv.lock ./
@@ -36,10 +36,11 @@ CMD ["granian", "--interface", "asgi", "--host", "0.0.0.0", "--port", "8000", \
      "--no-access-log", "--log-config", "granian-logging.json", "--reload", \
      "--reload-paths", "src", "candlestack.main:app"]
 
+# Keep last: build.yml, the CI e2e build and tests/e2e/compose.yaml build the last stage.
 # The app runs from /app/src on PYTHONPATH, next to the dependencies' venv. MALLOC_ARENA_MAX:
 # glibc gives each thread that allocates (the workers that parse and resample candles) arenas of
 # its own that keep freed memory; two arenas keep the process within its memory limit.
-FROM python:3.13-slim
+FROM python:3.13-slim AS api
 WORKDIR /app
 COPY --from=deps /app/.venv /app/.venv
 COPY granian-logging.json ./

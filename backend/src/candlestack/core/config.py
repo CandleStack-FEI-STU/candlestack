@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     app_commit: str = "unknown"
     log_level: LogLevel = "INFO"
 
-    redis_url: str = "redis://localhost:6379/0"
+    redis_url: str = "redis://127.0.0.1:6379/0"
 
     alpaca_key_id: SecretStr = SecretStr("")
     alpaca_secret_key: SecretStr = SecretStr("")

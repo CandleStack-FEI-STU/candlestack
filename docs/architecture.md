@@ -8,8 +8,11 @@ Redis is a cache that can be lost at any time.
 
 ## Runtime
 
-Every environment (prod, stage, `pr-<N>` previews) runs the same three containers on one VM.
-Deployment, hosts and secrets are described in [infra/README.md](../infra/README.md).
+stage and the `pr-<N>` previews run the same three containers on one VM. prod switches to this
+layout, and makes the API reference public, with its next release; until then it runs v0.1.0,
+the placeholder page (see
+[the transition](../infra/README.md#transition-to-the-backend--frontend-layout)). Deployment,
+hosts and secrets are described in [infra/README.md](../infra/README.md).
 
 ```mermaid
 flowchart LR
@@ -41,7 +44,7 @@ flowchart LR
 | `GET /api/health` | liveness + Redis; used by deploys and the ops page; not versioned |
 | `GET /api/health/sources` | reachability of Binance and Alpaca (cached 60 s) |
 | `GET /api/v1/data/...` | instruments and candles, see [data.md](data.md) |
-| `GET /api/v1/docs` | API reference (Scalar); public on prod |
+| `GET /api/v1/docs` | API reference (Scalar); public on prod from its next release |
 | `GET /api/v1/openapi.json` | OpenAPI schema; snapshot committed as [openapi.json](openapi.json) |
 
 - Responses are JSON. Pydantic response models serialize themselves; the candles body, up to
@@ -49,7 +52,10 @@ flowchart LR
   documents it). Errors are RFC 9457 `application/problem+json` with
   `type` `https://candlestack.tech/problems/<slug>`, `title`, `status`, a `detail` that says
   which limit fired and what to do, and extension fields. Request validation errors use slug
-  `validation` (422).
+  `validation` (422), the framework's own errors `not-found` (404) and `method-not-allowed`
+  (405), and an unhandled exception `internal-error` (500), whose `detail` reveals nothing and
+  asks to report the response's `X-Request-ID`. The slugs of the data module are listed in
+  [data.md](data.md#errors). The `type` URIs are identifiers; they do not resolve to pages.
 - Every response carries `X-Request-ID` and `Server-Timing: app;dur=<ms>` (the app's time
   until the response started), so response times can be measured from outside.
 - Logs: one JSON object per line on stdout (`ts`, `level`, `logger`, `msg`); the access line
@@ -65,7 +71,7 @@ A module is a subpackage of `candlestack` under `backend/src/candlestack/`.
 | `core` | now | settings, logging, problem errors, Redis and HTTP clients, health endpoint |
 | `data` | now | instrument catalog, candles, sessions, cache, source adapters, rate limits |
 | `preprocessing` | later | Renko, Kagi, time windows, normalization, segmentation |
-| `models` | later | upload `.keras` models, validate input/output shapes, run inference |
+| `ml` | later | upload `.keras` models, validate input/output shapes, run inference; worker only (below) |
 | `postprocessing` | later | turn predictions into signals: thresholds, smoothing, holding period, sizing, risk limits |
 | `metrics` | later | unified metrics and charts of one run |
 | `experiments` | later | assemble the three layers into runs, store and compare them |
@@ -75,13 +81,21 @@ Folders for later modules are created when their work starts, not before.
 
 ## Import rules
 
-- Dependencies point one way: `experiments` -> pipeline layers (`preprocessing`, `models`,
+- Dependencies point one way: `experiments` -> pipeline layers (`preprocessing`,
   `postprocessing`, `metrics`) -> `data` -> `core`. `core` imports no other module.
+- `ml` is worker-only, so the API process never loads TensorFlow: only the worker's
+  composition root (a future `candlestack/worker.py`) imports it and wires it into the
+  experiment runs, and the API enqueues worker tasks by name instead of importing them.
+  TensorFlow and Keras go into a `worker` dependency group (or extra) that the API image does
+  not install. An import-linter `forbidden` contract will enforce this when the worker lands:
+  source `candlestack.main`, forbidden `tensorflow` and `keras`,
+  `include_external_packages = true`. The name is `ml`, not `models`, which `data/models.py`
+  and later ORM models use.
 - Another module is imported only through its package root:
   `from candlestack.data import DataService`, never `from candlestack.data.sources import ...`.
   The package root's `__init__.py` is the module's public API.
 - `candlestack.main` (builds the app) and `candlestack.openapi` (schema snapshot) wire the
-  modules together and may import any module root.
+  modules together and may import any module root except `ml`.
 - Checked by import-linter (`uv run lint-imports`, contracts in `backend/pyproject.toml`) in
   the CI `lint` job.
 
@@ -115,7 +129,7 @@ Environment variables, read by pydantic-settings without a prefix. All are docum
 | `APP_VERSION` | `dev` | deployed version (`main-<sha>`, `v0.2.0`, `pr-<N>-<sha>`) |
 | `APP_COMMIT` | `unknown` | commit sha, baked into the image at build time |
 | `LOG_LEVEL` | `INFO` | |
-| `REDIS_URL` | `redis://localhost:6379/0` | |
+| `REDIS_URL` | `redis://127.0.0.1:6379/0` | |
 | `ALPACA_KEY_ID`, `ALPACA_SECRET_KEY` | empty | Alpaca paper account keys (whitespace stripped) |
 | `ALPACA_API_URL` | `https://paper-api.alpaca.markets` | assets, calendar, clock |
 | `ALPACA_DATA_URL` | `https://data.alpaca.markets` | bars |
@@ -152,6 +166,6 @@ Environment variables, read by pydantic-settings without a prefix. All are docum
 | Gaps are reported, never filled | filled candles would be invented prices |
 | Explicit limits instead of silent truncation (50000 candles, per-IP and per-source rate limits) | the client always gets exactly what it asked for or an error saying what to change |
 | A fingerprint over every candle set | later experiments can detect that a source changed its data |
-| Prod API and docs public (per-IP rate limit); stage and previews behind Cloudflare Access | anyone can try the released API without an account; unreleased builds stay team-only |
+| Prod API and docs public (per-IP rate limit) from prod's next release; stage and previews behind Cloudflare Access | anyone can try the released API without an account; unreleased builds stay team-only |
 | granian instead of uvicorn, ty instead of mypy, Polars instead of pandas | faster tools with the same role |
 | Coverage and TDD are team conventions, not CI gates | CI stays fast; test quality is checked in review |

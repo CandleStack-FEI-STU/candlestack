@@ -17,7 +17,7 @@ def test_defaults() -> None:
     assert settings.app_version == "dev"
     assert settings.app_commit == "unknown"
     assert settings.log_level == "INFO"
-    assert settings.redis_url == "redis://localhost:6379/0"
+    assert settings.redis_url == "redis://127.0.0.1:6379/0"
     assert settings.alpaca_key_id.get_secret_value() == ""
     assert settings.alpaca_secret_key.get_secret_value() == ""
     assert settings.alpaca_api_url == "https://paper-api.alpaca.markets"

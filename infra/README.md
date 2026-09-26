@@ -38,10 +38,11 @@ Redis is a cache for the backend: no persistence, least recently used keys are e
 | stage | `128mb` | `160m` |
 | `pr-<N>` | `64mb` | `96m` |
 
-All containers run with a read-only root filesystem, no Linux capabilities and
-`no-new-privileges`.
+All containers of an environment run with a read-only root filesystem, no Linux capabilities
+and `no-new-privileges`.
 
-The backend, frontend and agent images are built for every deployment. The images that keep
+Every push to `main` builds the backend, frontend and agent images once, a preview deployment
+builds the backend and frontend images, and a release builds nothing. The images that keep
 running on the VM (Redis, the edge Caddy, the agent's Docker socket proxy) are pinned in the
 compose files, and Dependabot proposes their updates; `edge` recreates the edge Caddy when its
 version changes.

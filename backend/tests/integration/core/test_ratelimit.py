@@ -1,7 +1,6 @@
 """RateLimiter against a real Redis at REDIS_URL."""
 
 import logging
-import os
 import uuid
 from collections.abc import AsyncIterator
 
@@ -17,8 +16,8 @@ MINUTE = 1_800_000_000  # a window start: a multiple of 60
 
 
 @pytest.fixture
-async def redis() -> AsyncIterator[Redis]:
-    client = create_redis(os.environ.get("REDIS_URL", "redis://localhost:6379/0"))
+async def redis(redis_url: str) -> AsyncIterator[Redis]:
+    client = create_redis(redis_url)
     yield client
     await client.aclose()
 
