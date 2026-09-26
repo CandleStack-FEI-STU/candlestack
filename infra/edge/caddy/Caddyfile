@@ -20,6 +20,10 @@
 (prod-app-fallback) {
 	lb_policy first
 	lb_try_duration 3s
+	# prod-backend does not exist yet: whenever its failure mark (fail_duration) has expired,
+	# a request tries it first. Moving on to prod-app at once keeps that request fast; the
+	# default 250 ms wait between tries would be added to it.
+	lb_try_interval 10ms
 	fail_duration 10s
 }
 

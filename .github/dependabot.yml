@@ -45,3 +45,19 @@ updates:
     directory: /frontend
     schedule:
       interval: weekly
+
+  - package-ecosystem: docker
+    directory: /infra/agent
+    schedule:
+      interval: weekly
+
+  # The long-running images on the VM (Redis, the edge Caddy, the Docker socket proxy) are
+  # pinned in these compose files and change only through these pull requests.
+  - package-ecosystem: docker-compose
+    directories: [/infra/env, /infra/edge, /infra/agent]
+    schedule:
+      interval: weekly
+    groups:
+      docker-compose:
+        patterns: ["*"]
+        update-types: [minor, patch]
