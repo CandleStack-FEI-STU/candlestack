@@ -1,6 +1,235 @@
 {
   "components": {
     "schemas": {
+      "CandlesMeta": {
+        "properties": {
+          "count": {
+            "description": "Number of candles returned.",
+            "examples": [
+              3
+            ],
+            "title": "Count",
+            "type": "integer"
+          },
+          "end": {
+            "description": "End of the period (exclusive), UTC epoch seconds.",
+            "examples": [
+              1717214400
+            ],
+            "title": "End",
+            "type": "integer"
+          },
+          "feed": {
+            "enum": [
+              "spot",
+              "iex"
+            ],
+            "examples": [
+              "spot"
+            ],
+            "title": "Feed",
+            "type": "string"
+          },
+          "fingerprint": {
+            "description": "`sha256:<hex>` over the request and its candles: the same candles give the same value, any changed number another.",
+            "examples": [
+              "sha256:3b1f0c9e5d7a4b2c8e6f1a0d9c7b5e3f2a4c6e8d0b1f3a5c7e9d2b4f6a8c0e1d"
+            ],
+            "title": "Fingerprint",
+            "type": "string"
+          },
+          "gaps": {
+            "description": "Missing candles as merged `[start, end)` ranges in UTC epoch seconds, earliest first, at most 100.",
+            "examples": [
+              [
+                [
+                  1717207200,
+                  1717210800
+                ]
+              ]
+            ],
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "gaps_total": {
+            "description": "Number of missing candles in total.",
+            "examples": [
+              1
+            ],
+            "title": "Gaps Total",
+            "type": "integer"
+          },
+          "instrument": {
+            "description": "Instrument id, normalised.",
+            "examples": [
+              "crypto:BTCUSDT"
+            ],
+            "title": "Instrument",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "binance",
+              "alpaca"
+            ],
+            "examples": [
+              "binance"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "start": {
+            "description": "Start of the period (inclusive), UTC epoch seconds.",
+            "examples": [
+              1717200000
+            ],
+            "title": "Start",
+            "type": "integer"
+          },
+          "timeframe": {
+            "$ref": "#/components/schemas/Timeframe",
+            "examples": [
+              "1h"
+            ]
+          }
+        },
+        "required": [
+          "instrument",
+          "timeframe",
+          "start",
+          "end",
+          "source",
+          "feed",
+          "fingerprint",
+          "count",
+          "gaps",
+          "gaps_total"
+        ],
+        "title": "CandlesMeta",
+        "type": "object"
+      },
+      "CandlesOut": {
+        "description": "Candles as columns: index `i` of every array is one candle, oldest first.",
+        "properties": {
+          "c": {
+            "description": "Close prices.",
+            "examples": [
+              [
+                67612.4,
+                67540.3,
+                67601.9
+              ]
+            ],
+            "items": {
+              "type": "number"
+            },
+            "title": "C",
+            "type": "array"
+          },
+          "h": {
+            "description": "High prices.",
+            "examples": [
+              [
+                67700.0,
+                67650.0,
+                67640.0
+              ]
+            ],
+            "items": {
+              "type": "number"
+            },
+            "title": "H",
+            "type": "array"
+          },
+          "l": {
+            "description": "Low prices.",
+            "examples": [
+              [
+                67420.2,
+                67510.0,
+                67488.8
+              ]
+            ],
+            "items": {
+              "type": "number"
+            },
+            "title": "L",
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/CandlesMeta"
+          },
+          "o": {
+            "description": "Open prices.",
+            "examples": [
+              [
+                67491.0,
+                67612.5,
+                67580.1
+              ]
+            ],
+            "items": {
+              "type": "number"
+            },
+            "title": "O",
+            "type": "array"
+          },
+          "t": {
+            "description": "Open times, UTC epoch seconds, strictly increasing.",
+            "examples": [
+              [
+                1717200000,
+                1717203600,
+                1717210800
+              ]
+            ],
+            "items": {
+              "type": "integer"
+            },
+            "title": "T",
+            "type": "array"
+          },
+          "v": {
+            "description": "Volumes: base asset for crypto, shares (IEX only) for stocks.",
+            "examples": [
+              [
+                512.31,
+                398.07,
+                421.55
+              ]
+            ],
+            "items": {
+              "type": "number"
+            },
+            "title": "V",
+            "type": "array"
+          }
+        },
+        "required": [
+          "meta",
+          "t",
+          "o",
+          "h",
+          "l",
+          "c",
+          "v"
+        ],
+        "title": "CandlesOut",
+        "type": "object"
+      },
       "Health": {
         "properties": {
           "commit": {
@@ -41,6 +270,324 @@
         ],
         "title": "Health",
         "type": "object"
+      },
+      "InstrumentDetailOut": {
+        "description": "An instrument and what a valid `/candles` request for it can ask for.",
+        "properties": {
+          "available_from": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Open time of the first candle, UTC epoch seconds; null when not known.",
+            "examples": [
+              1502928000
+            ],
+            "title": "Available From"
+          },
+          "available_to": {
+            "description": "Open time of the newest closed 1m candle, UTC epoch seconds.",
+            "examples": [
+              1790424000
+            ],
+            "title": "Available To",
+            "type": "integer"
+          },
+          "base": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Base asset of a crypto pair; null for stocks.",
+            "examples": [
+              "BTC"
+            ],
+            "title": "Base"
+          },
+          "exchange": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Listing exchange of a stock (`NASDAQ`, `NYSE`, `ARCA`, ...); null for crypto.",
+            "examples": [
+              null
+            ],
+            "title": "Exchange"
+          },
+          "feed": {
+            "description": "`spot` (Binance spot) or `iex` (Alpaca IEX: IEX trades only).",
+            "enum": [
+              "spot",
+              "iex"
+            ],
+            "examples": [
+              "spot"
+            ],
+            "title": "Feed",
+            "type": "string"
+          },
+          "id": {
+            "description": "Instrument id, `<market>:<symbol>`.",
+            "examples": [
+              "crypto:BTCUSDT"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "market": {
+            "$ref": "#/components/schemas/Market",
+            "examples": [
+              "crypto"
+            ]
+          },
+          "max_candles": {
+            "description": "Most candles one `/candles` response may hold.",
+            "examples": [
+              50000
+            ],
+            "title": "Max Candles",
+            "type": "integer"
+          },
+          "name": {
+            "description": "Crypto: `<base>/<quote>`. Stocks: the company or fund name from Alpaca.",
+            "examples": [
+              "BTC/USDT"
+            ],
+            "title": "Name",
+            "type": "string"
+          },
+          "quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Quote asset of a crypto pair; null for stocks.",
+            "examples": [
+              "USDT"
+            ],
+            "title": "Quote"
+          },
+          "source": {
+            "enum": [
+              "binance",
+              "alpaca"
+            ],
+            "examples": [
+              "binance"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "symbol": {
+            "description": "Symbol as the source spells it.",
+            "examples": [
+              "BTCUSDT"
+            ],
+            "title": "Symbol",
+            "type": "string"
+          },
+          "timeframes": {
+            "examples": [
+              [
+                "1m",
+                "5m",
+                "15m",
+                "1h",
+                "4h",
+                "1d"
+              ]
+            ],
+            "items": {
+              "$ref": "#/components/schemas/Timeframe"
+            },
+            "title": "Timeframes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "market",
+          "symbol",
+          "name",
+          "source",
+          "feed",
+          "exchange",
+          "base",
+          "quote",
+          "timeframes",
+          "available_from",
+          "available_to",
+          "max_candles"
+        ],
+        "title": "InstrumentDetailOut",
+        "type": "object"
+      },
+      "InstrumentOut": {
+        "description": "One instrument of a source's catalog.",
+        "properties": {
+          "base": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Base asset of a crypto pair; null for stocks.",
+            "examples": [
+              "BTC"
+            ],
+            "title": "Base"
+          },
+          "exchange": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Listing exchange of a stock (`NASDAQ`, `NYSE`, `ARCA`, ...); null for crypto.",
+            "examples": [
+              null
+            ],
+            "title": "Exchange"
+          },
+          "feed": {
+            "description": "`spot` (Binance spot) or `iex` (Alpaca IEX: IEX trades only).",
+            "enum": [
+              "spot",
+              "iex"
+            ],
+            "examples": [
+              "spot"
+            ],
+            "title": "Feed",
+            "type": "string"
+          },
+          "id": {
+            "description": "Instrument id, `<market>:<symbol>`.",
+            "examples": [
+              "crypto:BTCUSDT"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "market": {
+            "$ref": "#/components/schemas/Market",
+            "examples": [
+              "crypto"
+            ]
+          },
+          "name": {
+            "description": "Crypto: `<base>/<quote>`. Stocks: the company or fund name from Alpaca.",
+            "examples": [
+              "BTC/USDT"
+            ],
+            "title": "Name",
+            "type": "string"
+          },
+          "quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Quote asset of a crypto pair; null for stocks.",
+            "examples": [
+              "USDT"
+            ],
+            "title": "Quote"
+          },
+          "source": {
+            "enum": [
+              "binance",
+              "alpaca"
+            ],
+            "examples": [
+              "binance"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "symbol": {
+            "description": "Symbol as the source spells it.",
+            "examples": [
+              "BTCUSDT"
+            ],
+            "title": "Symbol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "market",
+          "symbol",
+          "name",
+          "source",
+          "feed",
+          "exchange",
+          "base",
+          "quote"
+        ],
+        "title": "InstrumentOut",
+        "type": "object"
+      },
+      "InstrumentSearchOut": {
+        "properties": {
+          "count": {
+            "description": "Number of items.",
+            "examples": [
+              1
+            ],
+            "title": "Count",
+            "type": "integer"
+          },
+          "items": {
+            "description": "Best matches first.",
+            "items": {
+              "$ref": "#/components/schemas/InstrumentOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "title": "InstrumentSearchOut",
+        "type": "object"
+      },
+      "Market": {
+        "enum": [
+          "crypto",
+          "stock"
+        ],
+        "title": "Market",
+        "type": "string"
       },
       "Problem": {
         "additionalProperties": true,
@@ -83,6 +630,101 @@
         ],
         "title": "Problem",
         "type": "object"
+      },
+      "SourceHealthOut": {
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What failed; null when ok.",
+            "examples": [
+              null
+            ],
+            "title": "Detail"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Duration of the check; null when the source did not answer.",
+            "examples": [
+              84
+            ],
+            "title": "Latency Ms"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "latency_ms",
+          "detail"
+        ],
+        "title": "SourceHealthOut",
+        "type": "object"
+      },
+      "SourcesHealthOut": {
+        "description": "Reachability of the market data sources, checked at most once a minute.",
+        "properties": {
+          "sources": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SourceHealthOut"
+            },
+            "propertyNames": {
+              "enum": [
+                "binance",
+                "alpaca"
+              ]
+            },
+            "title": "Sources",
+            "type": "object"
+          },
+          "status": {
+            "description": "`ok` when every source is reachable.",
+            "enum": [
+              "ok",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "sources"
+        ],
+        "title": "SourcesHealthOut",
+        "type": "object"
+      },
+      "Timeframe": {
+        "description": "Candle durations; iteration goes from the shortest to the longest.",
+        "enum": [
+          "1m",
+          "5m",
+          "15m",
+          "1h",
+          "4h",
+          "1d"
+        ],
+        "title": "Timeframe",
+        "type": "string"
       }
     }
   },
@@ -122,6 +764,376 @@
         "summary": "Health of the app",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/health/sources": {
+      "get": {
+        "description": "Reachability of Binance (`GET /api/v3/ping`) and Alpaca (`GET /v2/clock`), checked at\nmost once a minute. 200 when both answer, 503 with the same body when one does not.",
+        "operationId": "sources_health_api_health_sources_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcesHealthOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcesHealthOut"
+                }
+              }
+            },
+            "description": "A source is unreachable"
+          }
+        },
+        "summary": "Health of the data sources",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/data/candles": {
+      "get": {
+        "description": "Closed candles of one instrument and timeframe with `start <= t < end`.\n\nStocks have regular-session candles only (09:30-16:00 New York), aligned to the session\nopen. Missing candles are never filled; `meta.gaps` reports them. Limits: `max_candles`\nexpected candles per request (see the instrument detail) and a per-minute number of\nrequests per client address.",
+        "operationId": "candles_api_v1_data_candles_get",
+        "parameters": [
+          {
+            "description": "Instrument id, `<market>:<symbol>`.",
+            "in": "query",
+            "name": "instrument",
+            "required": true,
+            "schema": {
+              "description": "Instrument id, `<market>:<symbol>`.",
+              "examples": [
+                "crypto:BTCUSDT"
+              ],
+              "title": "Instrument",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "timeframe",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Timeframe",
+              "examples": [
+                "1h"
+              ]
+            }
+          },
+          {
+            "description": "Start of the period, inclusive: UTC epoch seconds or ISO 8601 (`2024-06-03`, `2024-06-03T13:30:00Z`; without an offset it is UTC).",
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "format": "date-time",
+                  "type": "string"
+                }
+              ],
+              "examples": [
+                "2024-06-03",
+                "2024-06-03T13:30:00Z",
+                1717421400
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "description": "End of the period, exclusive, in the same formats; default now.",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "anyOf": [
+                    {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  ],
+                  "examples": [
+                    "2024-06-03",
+                    "2024-06-03T13:30:00Z",
+                    1717421400
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "End of the period, exclusive, in the same formats; default now.",
+              "examples": [
+                "2024-06-04"
+              ],
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandlesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The instrument is not in the catalog (`instrument-not-found`)."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid parameters (`validation`), a period outside the available data (`period-out-of-range`) or more candles than `max_candles` (`too-many-candles`)."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "More candle requests from this address than the per-minute limit (`rate-limited`); see `Retry-After`."
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The source sent data that failed validation (`source-data-invalid`)."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The source is down or our request budget for it is spent (`source-unavailable`); `Retry-After` when waiting helps."
+          }
+        },
+        "summary": "Candles",
+        "tags": [
+          "data"
+        ]
+      }
+    },
+    "/api/v1/data/instruments": {
+      "get": {
+        "description": "Searches the instruments of both markets: every Binance spot pair that is trading and\nevery active tradable US stock and ETF at Alpaca (without OTC).\n\nRanking: exact symbol, symbol prefix, prefix of a word in the name, substring of the\nsymbol, substring of the name; ties go to the shorter symbol, then alphabetically.",
+        "operationId": "search_instruments_api_v1_data_instruments_get",
+        "parameters": [
+          {
+            "description": "Symbol or name, case-insensitive; separators in symbols are ignored (`btc/usdt` finds `BTCUSDT`, `brkb` finds `BRK.B`).",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Symbol or name, case-insensitive; separators in symbols are ignored (`btc/usdt` finds `BTCUSDT`, `brkb` finds `BRK.B`).",
+              "examples": [
+                "btc"
+              ],
+              "maxLength": 50,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this market.",
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Market"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this market.",
+              "title": "Market"
+            }
+          },
+          {
+            "description": "Most items to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "Most items to return.",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstrumentSearchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid parameters (`validation`)."
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The source sent data that failed validation (`source-data-invalid`)."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The source is down or our request budget for it is spent (`source-unavailable`); `Retry-After` when waiting helps."
+          }
+        },
+        "summary": "Search instruments",
+        "tags": [
+          "data"
+        ]
+      }
+    },
+    "/api/v1/data/instruments/{instrument_id}": {
+      "get": {
+        "description": "An instrument with its timeframes, available period and the candle limit: what a valid\n`/candles` request can ask for.",
+        "operationId": "instrument_detail_api_v1_data_instruments__instrument_id__get",
+        "parameters": [
+          {
+            "description": "Instrument id, `<market>:<symbol>`.",
+            "in": "path",
+            "name": "instrument_id",
+            "required": true,
+            "schema": {
+              "description": "Instrument id, `<market>:<symbol>`.",
+              "examples": [
+                "crypto:BTCUSDT"
+              ],
+              "title": "Instrument Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstrumentDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The instrument is not in the catalog (`instrument-not-found`)."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Malformed instrument id (`validation`)."
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The source sent data that failed validation (`source-data-invalid`)."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The source is down or our request budget for it is spent (`source-unavailable`); `Retry-After` when waiting helps."
+          }
+        },
+        "summary": "Instrument detail",
+        "tags": [
+          "data"
         ]
       }
     }
