@@ -18,10 +18,11 @@ Both are required to merge:
 | Check | What it runs |
 | --- | --- |
 | `no-ai-signs / No AI signs` | commit messages, authors and the pull request text |
-| `ci` | `lint` (ruff, ty, import-linter), `unit`, `integration` (Redis) and `e2e` (the built image) |
+| `ci` | the backend jobs `lint` (ruff, ty, import-linter), `unit`, `integration` (Redis) and `e2e` (the built image); `infra` (actionlint with shellcheck on the workflows, shellcheck on the deploy and smoke scripts, the edge Caddyfile and the tunnel ingress rules validated, the frontend and server agent images built) |
 
 The backend jobs run only when `backend/`, `docs/openapi.json`, a `compose*.yaml` file or
-`.github/workflows/ci.yml` changed; `ci` passes when they are skipped.
+`.github/workflows/ci.yml` changed, and `infra` only when `infra/`, `frontend/` or `.github/`
+changed; `ci` passes when they are skipped.
 
 ## Preview environment
 
