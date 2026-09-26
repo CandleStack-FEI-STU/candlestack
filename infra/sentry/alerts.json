@@ -1,0 +1,134 @@
+[
+  {
+    "actionFilters": [
+      {
+        "actions": [
+          {
+            "config": {
+              "targetIdentifier": "tech lead",
+              "targetType": "user"
+            },
+            "data": {},
+            "status": "active",
+            "type": "email"
+          }
+        ],
+        "conditions": [
+          {
+            "comparison": {
+              "interval": "1h",
+              "value": 50
+            },
+            "conditionResult": true,
+            "type": "event_frequency_count"
+          }
+        ],
+        "logicType": "all"
+      }
+    ],
+    "config": {
+      "frequency": 60
+    },
+    "enabled": true,
+    "environment": "prod",
+    "monitors": [
+      "Issue Stream"
+    ],
+    "name": "Prod: issue spike (50 events in 1h)",
+    "triggers": {
+      "conditions": [],
+      "logicType": "any-short"
+    }
+  },
+  {
+    "actionFilters": [
+      {
+        "actions": [
+          {
+            "config": {
+              "targetIdentifier": "tech lead",
+              "targetType": "user"
+            },
+            "data": {},
+            "status": "active",
+            "type": "email"
+          }
+        ],
+        "conditions": [],
+        "logicType": "all"
+      }
+    ],
+    "config": {
+      "frequency": 30
+    },
+    "enabled": true,
+    "environment": "prod",
+    "monitors": [
+      "Issue Stream",
+      "prod API health"
+    ],
+    "name": "Prod: new or regressed issue",
+    "triggers": {
+      "conditions": [
+        {
+          "comparison": true,
+          "conditionResult": true,
+          "type": "first_seen_event"
+        },
+        {
+          "comparison": true,
+          "conditionResult": true,
+          "type": "regression_event"
+        },
+        {
+          "comparison": true,
+          "conditionResult": true,
+          "type": "reappeared_event"
+        }
+      ],
+      "logicType": "any-short"
+    }
+  },
+  {
+    "actionFilters": [
+      {
+        "actions": [
+          {
+            "config": {
+              "targetIdentifier": null,
+              "targetType": "issue_owners"
+            },
+            "data": {
+              "fallthroughType": "ActiveMembers"
+            },
+            "status": "active",
+            "type": "email"
+          }
+        ],
+        "conditions": [],
+        "logicType": "any-short"
+      }
+    ],
+    "config": {
+      "frequency": 0
+    },
+    "enabled": true,
+    "environment": null,
+    "monitors": [
+      "Issue Stream: All Projects"
+    ],
+    "name": "Send a notification when pull requests are ready",
+    "triggers": {
+      "conditions": [
+        {
+          "comparison": [
+            "pr_ready_for_review"
+          ],
+          "conditionResult": true,
+          "type": "seer_activity_trigger"
+        }
+      ],
+      "logicType": "any-short"
+    }
+  }
+]

@@ -1,0 +1,64 @@
+[
+  {
+    "config": {},
+    "enabled": true,
+    "name": "Error Monitor",
+    "owner": null,
+    "project": "backend",
+    "type": "error"
+  },
+  {
+    "config": {},
+    "enabled": true,
+    "name": "Issue Stream",
+    "owner": null,
+    "project": "backend",
+    "type": "issue_stream"
+  },
+  {
+    "config": {},
+    "enabled": true,
+    "name": "Issue Stream: All Projects",
+    "owner": null,
+    "project": null,
+    "type": "issue_stream"
+  },
+  {
+    "check": [
+      {
+        "assertion": null,
+        "body": null,
+        "headers": [],
+        "intervalSeconds": 60,
+        "method": "GET",
+        "responseCaptureEnabled": true,
+        "timeoutMs": 10000,
+        "traceSampling": false,
+        "url": "https://app.candlestack.tech/api/health"
+      }
+    ],
+    "conditions": [
+      {
+        "comparison": "failure",
+        "conditionResult": 75,
+        "type": "eq"
+      },
+      {
+        "comparison": "success",
+        "conditionResult": 0,
+        "type": "eq"
+      }
+    ],
+    "config": {
+      "downtimeThreshold": 3,
+      "environment": "prod",
+      "mode": 1,
+      "recoveryThreshold": 1
+    },
+    "enabled": true,
+    "name": "prod API health",
+    "owner": "tech lead",
+    "project": "backend",
+    "type": "uptime_domain_failure"
+  }
+]
