@@ -4,6 +4,7 @@ The routes validate parameters, ask the ``DataService`` and turn its errors into
 details (docs/data.md, "Errors"). The service lives on ``app.state.data_service``.
 """
 
+import ipaddress
 import logging
 import math
 import re
@@ -182,20 +183,31 @@ def _problem(error: DataError) -> ProblemError | None:
 
 
 def _client_address(request: Request) -> str:
-    """The client's IP: Cloudflare's ``CF-Connecting-IP``, else the peer (local runs)."""
+    """The client as the rate limit counts it: Cloudflare's ``CF-Connecting-IP``, else the peer
+    (local runs). An IPv6 client counts as its /64 network: a subscriber usually gets a whole
+    /64, so single addresses would give one client any number of counters."""
     address = request.headers.get("cf-connecting-ip")
     if not address and request.client:
         address = request.client.host
-    return address or "unknown"
+    try:
+        ip = ipaddress.ip_address(address or "")
+    except ValueError:
+        return address or "unknown"
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            return str(ip.ipv4_mapped)
+        return str(ipaddress.IPv6Network((ip, 64), strict=False))
+    return str(ip)
 
 
 async def client_rate_limit(
     request: Request, settings: SettingsDep, limiter: RateLimiterDep
 ) -> None:
-    """``CLIENT_RATE_LIMIT`` candle requests per minute (UTC) and client IP; 429 beyond it.
+    """``CLIENT_RATE_LIMIT`` requests per minute (UTC) and client address to the endpoints that
+    can call a source (candles and instrument detail); 429 beyond it.
 
-    The counter is ``data:rl:client:<ip>:<minute>``; without Redis the limiter lets requests
-    through.
+    The counter is ``data:rl:client:<address>:<minute>``; without Redis the limiter lets
+    requests through.
     """
     limit = settings.client_rate_limit
     wait = await limiter.hit(f"data:rl:client:{_client_address(request)}", limit)
@@ -205,8 +217,8 @@ async def client_rate_limit(
             429,
             "rate-limited",
             "Too many requests",
-            f"More than {limit} candle requests in one minute from this address. "
-            f"Retry in {retry} seconds.",
+            f"More than {limit} candle and instrument requests in one minute from this "
+            f"address. Retry in {retry} seconds.",
             headers={"Retry-After": str(retry)},
             extensions={"limit": limit},
         )
@@ -225,6 +237,10 @@ _SOURCE_ERRORS = {
     503: "The source is down or our request budget for it is spent (`source-unavailable`); "
     "`Retry-After` when waiting helps.",
 }
+_RATE_LIMITED = (
+    "More candle and instrument requests from this address than the per-minute limit "
+    "(`rate-limited`); see `Retry-After`."
+)
 
 
 @data.get(
@@ -261,10 +277,12 @@ async def search_instruments(
 @data.get(
     "/instruments/{instrument_id}",
     summary="Instrument detail",
+    dependencies=[Depends(client_rate_limit)],
     responses=_errors(
         {
             404: "The instrument is not in the catalog (`instrument-not-found`).",
             422: "Malformed instrument id (`validation`).",
+            429: _RATE_LIMITED,
             **_SOURCE_ERRORS,
         }
     ),
@@ -277,7 +295,8 @@ async def instrument_detail(
     ],
 ) -> InstrumentDetailOut:
     """An instrument with its timeframes, available period and the candle limit: what a valid
-    `/candles` request can ask for."""
+    `/candles` request can ask for. Counts against the per-minute limit of requests per client
+    address, like `/candles`."""
     with _problems():
         info = await service.instrument(InstrumentId.parse(instrument_id))
     return InstrumentDetailOut.of_info(info)
@@ -293,8 +312,7 @@ async def instrument_detail(
             404: "The instrument is not in the catalog (`instrument-not-found`).",
             422: "Invalid parameters (`validation`), a period outside the available data "
             "(`period-out-of-range`) or more candles than `max_candles` (`too-many-candles`).",
-            429: "More candle requests from this address than the per-minute limit "
-            "(`rate-limited`); see `Retry-After`.",
+            429: _RATE_LIMITED,
             **_SOURCE_ERRORS,
         }
     ),
@@ -326,7 +344,7 @@ async def candles(
     Stocks have regular-session candles only (09:30-16:00 New York), aligned to the session
     open. Missing candles are never filled; `meta.gaps` reports them. Limits: `max_candles`
     expected candles per request (see the instrument detail) and a per-minute number of
-    requests per client address.
+    candle and instrument requests per client address.
     """
     now = end is None
     if end is None:

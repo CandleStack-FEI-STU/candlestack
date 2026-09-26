@@ -588,8 +588,8 @@ def test_rate_limited(client: TestClient, service: FakeDataService, limiter: Fak
         "type": PROBLEMS + "rate-limited",
         "title": "Too many requests",
         "status": 429,
-        "detail": "More than 60 candle requests in one minute from this address. "
-        "Retry in 13 seconds.",
+        "detail": "More than 60 candle and instrument requests in one minute from this "
+        "address. Retry in 13 seconds.",
         "limit": 60,
     }
     assert service.calls == []
@@ -604,11 +604,41 @@ def test_rate_limit_comes_before_validation(client: TestClient, limiter: FakeLim
     assert response.headers["retry-after"] == "1"
 
 
-def test_search_and_detail_are_not_rate_limited(client: TestClient, limiter: FakeLimiter) -> None:
+@pytest.mark.parametrize(
+    ("address", "key"),
+    [
+        ("2001:db8:1:2:3:4:5:6", "2001:db8:1:2::/64"),
+        ("2001:DB8:1:2::ABCD", "2001:db8:1:2::/64"),
+        ("::ffff:203.0.113.7", "203.0.113.7"),
+    ],
+)
+def test_rate_limit_key_of_an_ipv6_client_is_its_64_network(
+    client: TestClient, limiter: FakeLimiter, address: str, key: str
+) -> None:
+    client.get(CANDLES, headers={"CF-Connecting-IP": address})
+
+    assert limiter.calls == [(f"data:rl:client:{key}", 60)]
+
+
+def test_instrument_detail_is_rate_limited(
+    client: TestClient, service: FakeDataService, limiter: FakeLimiter
+) -> None:
+    # An uncached detail asks the source for the first candle, from the environment's budget.
+    client.get("/api/v1/data/instruments/stock:AAPL", headers={"CF-Connecting-IP": "203.0.113.7"})
+    limiter.wait = 30
+
+    response = client.get("/api/v1/data/instruments/stock:AAPL")
+
+    problem(response, 429, "rate-limited")
+    assert response.headers["retry-after"] == "30"
+    assert limiter.calls == [("data:rl:client:203.0.113.7", 60), ("data:rl:client:testclient", 60)]
+    assert service.calls == [("instrument", (AAPL.id,))]
+
+
+def test_search_is_not_rate_limited(client: TestClient, limiter: FakeLimiter) -> None:
     limiter.wait = 30
 
     assert client.get("/api/v1/data/instruments?q=btc").status_code == 200
-    assert client.get("/api/v1/data/instruments/stock:AAPL").status_code == 200
     assert limiter.calls == []
 
 
@@ -673,6 +703,8 @@ def test_openapi_documents_the_data_api(client: TestClient) -> None:
     for status in ("404", "422", "429", "502", "503"):
         assert list(candles["responses"][status]["content"]) == [PROBLEM]
     assert "too-many-candles" in candles["responses"]["422"]["description"]
+    detail = paths["/api/v1/data/instruments/{instrument_id}"]["get"]
+    assert set(detail["responses"]) == {"200", "404", "422", "429", "502", "503"}
     assert set(paths) >= {
         "/api/v1/data/instruments",
         "/api/v1/data/instruments/{instrument_id}",

@@ -56,7 +56,9 @@ leads them); symbol prefix; prefix of a word in the name; substring of the symbo
 of the name. Other ties: shorter symbol first, then alphabetical.
 
 `GET /api/v1/data/instruments/{id}` returns the instrument plus what a client needs to build a
-valid `/candles` request (404 `instrument-not-found` if the id is not in the catalog):
+valid `/candles` request (404 `instrument-not-found` if the id is not in the catalog). It counts
+against the client rate limit like `/candles`, because its first-candle lookup can call the
+source:
 
 ```json
 {
@@ -262,7 +264,7 @@ requested timeframe.
 
 | Limit | Counted per | Default | When spent |
 | --- | --- | --- | --- |
-| Clients: `CLIENT_RATE_LIMIT` | client IP (`CF-Connecting-IP`, else the peer address); every `/candles` request, cached or not | 60 per minute, `0` disables | 429 `rate-limited` with `Retry-After` |
+| Clients: `CLIENT_RATE_LIMIT` | client IP (`CF-Connecting-IP`, else the peer address; an IPv6 address counts as its /64 network); every `/candles` and instrument-detail request, cached or not | 60 per minute, `0` disables | 429 `rate-limited` with `Retry-After` |
 | Alpaca: `ALPACA_RATE_LIMIT` | environment; each Alpaca request | prod 150, stage 60, `pr-*` 30 | 503 `source-unavailable` with `Retry-After` |
 | Binance REST: `BINANCE_WEIGHT_LIMIT` | environment; request weight of each REST call | 1000 | 503 `source-unavailable` with `Retry-After` |
 | `data.binance.vision` | not limited | | |
@@ -295,7 +297,7 @@ again. Keys:
 | `data:v1:first:<instrument>` | `available_from` | 7 days; 1 hour while the instrument has no candle |
 | `data:v1:health:<source>` | reachability of the source | 60 s |
 | `data:lock:<key without data:v1:>` | single-flight lock for a key being fetched | 30 s |
-| `data:rl:client:<ip>:<minute>`, `data:rl:alpaca:<minute>`, `data:rl:binance:<minute>` | fixed-window counters; `<minute>` is Unix time // 60 | 61 s |
+| `data:rl:client:<ip>:<minute>`, `data:rl:alpaca:<minute>`, `data:rl:binance:<minute>` | fixed-window counters; `<ip>` is an IPv4 address or an IPv6 /64 network, `<minute>` is Unix time // 60 | 61 s |
 
 | Chunk | `<chunk>` | Crypto | Stock |
 | --- | --- | --- | --- |
@@ -461,7 +463,7 @@ Retry-After: 17
   "type": "https://candlestack.tech/problems/rate-limited",
   "title": "Too many requests",
   "status": 429,
-  "detail": "More than 60 candle requests in one minute from this address. Retry in 17 seconds.",
+  "detail": "More than 60 candle and instrument requests in one minute from this address. Retry in 17 seconds.",
   "limit": 60
 }
 ```

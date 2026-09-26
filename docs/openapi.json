@@ -801,7 +801,7 @@
     },
     "/api/v1/data/candles": {
       "get": {
-        "description": "Closed candles of one instrument and timeframe with `start <= t < end`.\n\nStocks have regular-session candles only (09:30-16:00 New York), aligned to the session\nopen. Missing candles are never filled; `meta.gaps` reports them. Limits: `max_candles`\nexpected candles per request (see the instrument detail) and a per-minute number of\nrequests per client address.",
+        "description": "Closed candles of one instrument and timeframe with `start <= t < end`.\n\nStocks have regular-session candles only (09:30-16:00 New York), aligned to the session\nopen. Missing candles are never filled; `meta.gaps` reports them. Limits: `max_candles`\nexpected candles per request (see the instrument detail) and a per-minute number of\ncandle and instrument requests per client address.",
         "operationId": "candles_api_v1_data_candles_get",
         "parameters": [
           {
@@ -928,7 +928,7 @@
                 }
               }
             },
-            "description": "More candle requests from this address than the per-minute limit (`rate-limited`); see `Retry-After`."
+            "description": "More candle and instrument requests from this address than the per-minute limit (`rate-limited`); see `Retry-After`."
           },
           "502": {
             "content": {
@@ -1061,7 +1061,7 @@
     },
     "/api/v1/data/instruments/{instrument_id}": {
       "get": {
-        "description": "An instrument with its timeframes, available period and the candle limit: what a valid\n`/candles` request can ask for.",
+        "description": "An instrument with its timeframes, available period and the candle limit: what a valid\n`/candles` request can ask for. Counts against the per-minute limit of requests per client\naddress, like `/candles`.",
         "operationId": "instrument_detail_api_v1_data_instruments__instrument_id__get",
         "parameters": [
           {
@@ -1109,6 +1109,16 @@
               }
             },
             "description": "Malformed instrument id (`validation`)."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "More candle and instrument requests from this address than the per-minute limit (`rate-limited`); see `Retry-After`."
           },
           "502": {
             "content": {
