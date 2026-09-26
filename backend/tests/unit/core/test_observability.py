@@ -212,7 +212,9 @@ def test_before_send_log_outside_a_request() -> None:
     assert inside["attributes"]["request_id"] == "8c1f0e2d"
 
 
-@pytest.mark.parametrize(("app_env", "status"), [("stage", 500), ("local", 500), ("prod", 404)])
+@pytest.mark.parametrize(
+    ("app_env", "status"), [("stage", 500), ("prod", 404), ("pr-12", 404), ("local", 404)]
+)
 def test_the_check_route_is_on_stage_only(app_env: str, status: int) -> None:
     with TestClient(create_app(Settings(app_env=app_env)), raise_server_exceptions=False) as client:
         assert client.get("/api/debug/sentry-error").status_code == status
