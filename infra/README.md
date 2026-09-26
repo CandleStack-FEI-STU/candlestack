@@ -61,13 +61,16 @@ CPU, memory and disk, containers and the health of every preview. The agent keep
 and holds no secrets; its JSON is a contract with the ops repository (schema 1).
 
 Each commit of `main` is built once. A release does not rebuild: it deploys the exact images
-(same digests) that stage already runs for the tagged commit, started with that commit's own
+(same digests) that stage last ran for the tagged commit, started with that commit's own
 `infra/env/compose.yaml` rather than whatever main's checkout has by then (`edge` keeps
-resetting it to origin/main on every stage deploy). Removing the `preview` label or closing the
-pull request removes its environment. Pull requests from forks never deploy.
+resetting it to origin/main on every stage deploy). The VM takes those images from its stage
+record (below), not from the registry: any workflow run allowed to write packages, including
+one from a pull request's branch, could move a registry tag. Removing the `preview` label or
+closing the pull request removes its environment. Pull requests from forks never deploy.
 
 To release: `git tag v0.2.0 <commit on main> && git push origin v0.2.0`, then approve the
-deployment in the Actions tab. After every deployment the workflow waits for `/api/health` to
+deployment in the Actions tab. Only a commit that stage has deployed can be released; any other
+fails before prod changes. After every deployment the workflow waits for `/api/health` to
 report the new commit or version, then runs `.github/scripts/smoke.sh` against the environment:
 
 | Check | What it expects |
@@ -94,19 +97,27 @@ Behind it, the `deploy` user has one key per environment, and each key is forced
 `vm/candlestack-deploy` for its own scope only (for example, the preview key cannot touch prod).
 
 ```
-up <env> <version> <backend image@digest> <frontend image@digest>
+up <env> <version> <backend image@digest> <frontend image@digest>     (stage and pr-<N>)
+up prod <release tag>
 ```
 
+Every `up stage` adds a line `<version> <backend@digest> <frontend@digest>` to the stage record,
+`/home/deploy/stage-images` on the VM, once its containers run. `up prod` takes no images: it
+finds the commit of the release tag and runs the images of the last `up stage main-<commit>` in
+the record, or fails when there is none. Only the stage key writes the record, and only the
+workflow of `main` holds that key. Every `up` prints `images <backend@digest> <frontend@digest>`
+at the end; the release tags those images with the version in the registry.
+
 `up` reads its stdin: the first line is a GHCR token used once for the pull, then `KEY=VALUE`
-lines with the backend's secrets. Only `ALPACA_KEY_ID` and `ALPACA_SECRET_KEY` are accepted
-(at most 256 printable characters, no spaces or quotes). The script hands them to
-`docker compose` in its environment only: it writes no file and prints nothing (Docker itself
-keeps them in the container's configuration, as with any container environment variable). The
-workflows send them with the `env-secrets` input of `.github/actions/deploy`. After `up` and
-`down` the script removes the images no container uses any more (every backend build adds a
-source layer of about 150 KB, and a dependency layer of about 250 MB when `uv.lock` changes).
-The other commands are `down pr-<N>` (preview key), `edge` and `agent <image@digest>` (stage
-key); the header of `vm/candlestack-deploy` lists which key may run what.
+lines with the backend's secrets. Only `ALPACA_KEY_ID` and `ALPACA_SECRET_KEY` are accepted (at
+most 256 printable characters, no spaces or quotes). The script hands them to `docker compose`
+in its environment only: it never writes them to a file or prints them (Docker itself keeps them
+in the container's configuration, as with any container environment variable). The workflows
+send them with the `env-secrets` input of `.github/actions/deploy`. After `up` and `down` the
+script removes the images no container uses any more (every backend build adds a source layer of
+about 150 KB, and a dependency layer of about 250 MB when `uv.lock` changes). The other commands
+are `down pr-<N>` (preview key), `edge` and `agent <image@digest>` (stage key); the header of
+`vm/candlestack-deploy` lists which key may run what.
 
 | Secret or variable | Where | What |
 | --- | --- | --- |
@@ -150,8 +161,10 @@ cd backend && uv run ruff check ../infra/agent && uv run ruff format --check ../
   token and secrets on stdin) with fake `docker` and `git` that record their calls. It checks
   which key may run what, that malformed images, versions, preview numbers and secrets are
   refused before anything runs, that prod takes only a release tag on main's history and
-  starts with that tag's compose file, that no token or secret is printed, and the Docker
-  commands of every allowed command. It touches nothing outside a temporary directory.
+  starts with that tag's compose file and the images stage last ran for its commit, that only
+  a successful `up stage` adds to the stage record, that no token or secret is printed, and
+  the Docker commands of every allowed command. It touches nothing outside a temporary
+  directory.
 - `agent/test_agent.py` (standard library `unittest`, like the agent) pins the schema-1
   snapshot that ops reads, the order of its containers and the HTTP answers (`starting`, the
   snapshot, `stale`), with a stub Docker API and fixture files for `/proc`. The agent is linted
@@ -183,15 +196,20 @@ needs a fresh deploy afterwards.
    replace the `DEPLOY_KNOWN_HOSTS` repository variable (Settings > Secrets and variables >
    Actions > Variables) with `ssh.candlestack.tech` followed by the key's type and base64
    fields, in the format the variable already holds.
-4. Redeploy every environment, since nothing but the edge Caddy is running yet:
+4. Copy the stage record, without which prod cannot be redeployed: its lines from the old VM
+   (SSM: `sudo cat /home/deploy/stage-images`) into the same file on the new one (SSM:
+   `sudo -u deploy tee /home/deploy/stage-images`, paste, Ctrl-D). If the old VM is gone, re-run
+   the stage workflow run of the released commit before the release run in the next step, and
+   the latest stage run after it.
+5. Redeploy every environment, since nothing but the edge Caddy is running yet:
    - stage: `stage.yml` has no manual trigger, so re-run its latest workflow run, or push to
      `main`; this also deploys the server agent.
    - prod: re-run the latest release workflow run and approve the deployment again.
    - previews: push to the pull request, or remove and re-add the `preview` label.
-5. Two things no deploy repeats, on this VM or the next one, because cloud-init only did them
+6. Two things no deploy repeats, on this VM or the next one, because cloud-init only did them
    once at boot: after a change to `infra/cloudflared/config.yml`, restart cloudflared on the
    VM (SSM: `sudo systemctl restart cloudflared`); after a change to
    `infra/vm/deploy_authorized_keys`, reinstall it for the deploy user by hand (SSM:
    `sudo install -o deploy -g deploy -m 600 /opt/candlestack/infra/vm/deploy_authorized_keys
    /home/deploy/.ssh/authorized_keys`). cloudflared itself is also never upgraded after boot.
-6. Once the new VM is confirmed healthy, terminate the old one.
+7. Once the new VM is confirmed healthy, terminate the old one.

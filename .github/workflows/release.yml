@@ -1,10 +1,12 @@
 name: Release
 
-# A v* tag on a commit of main promotes the backend and frontend images that stage already
-# runs for that commit to prod (app.candlestack.tech). Nothing is rebuilt. The production
-# environment requires the tech lead's approval before the deploy starts. The images get the
-# version tag in the registry only after prod runs them; the job that deploys, and the token it
-# gives the VM, can only read packages.
+# A v* tag on a commit of main promotes the backend and frontend images that stage ran for
+# that commit to prod (app.candlestack.tech). Nothing is rebuilt. The VM picks the images from
+# its record of stage deploys, which only the stage key writes, not from a registry tag that any
+# workflow allowed to write packages could move (see infra/vm/candlestack-deploy). The
+# production environment requires the tech lead's approval before the deploy starts. The images
+# get the version tag in the registry only after prod runs them; the job that deploys, and the
+# token it gives the VM, can only read packages.
 on:
   push:
     tags: ['v*']
@@ -14,9 +16,6 @@ permissions: {}
 concurrency:
   group: prod
   cancel-in-progress: false
-
-env:
-  REGISTRY: ghcr.io/candlestack-fei-stu/candlestack
 
 jobs:
   no-ai-signs:
@@ -35,35 +34,16 @@ jobs:
       contents: read
       packages: read
     outputs:
-      backend: ${{ steps.images.outputs.backend }}
-      frontend: ${{ steps.images.outputs.frontend }}
+      images: ${{ steps.deploy.outputs.images }}
     steps:
       - uses: actions/checkout@v7
 
-      - uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Find the stage images of this commit
-        id: images
-        run: |
-          # Both images must exist before either is deployed.
-          for name in backend frontend; do
-            if ! manifest=$(docker buildx imagetools inspect "$REGISTRY/$name:sha-$GITHUB_SHA" --format '{{json .Manifest}}'); then
-              echo "::error::No $name image for $GITHUB_SHA. Tag a commit of main that has been deployed to stage."
-              exit 1
-            fi
-            echo "$name=$REGISTRY/$name@$(jq -r .digest <<<"$manifest")" >> "$GITHUB_OUTPUT"
-          done
-
+      # Fails, before anything changes, when stage has not run the tagged commit.
       - name: Deploy prod
+        id: deploy
         uses: ./.github/actions/deploy
         with:
-          command: >-
-            up prod ${{ github.ref_name }}
-            ${{ steps.images.outputs.backend }} ${{ steps.images.outputs.frontend }}
+          command: up prod ${{ github.ref_name }}
           ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
           known-hosts: ${{ vars.DEPLOY_KNOWN_HOSTS }}
           access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
@@ -95,9 +75,13 @@ jobs:
 
       - name: Tag the deployed images with the version
         env:
-          BACKEND: ${{ needs.deploy.outputs.backend }}
-          FRONTEND: ${{ needs.deploy.outputs.frontend }}
+          IMAGES: ${{ needs.deploy.outputs.images }}
         run: |
-          for image in "$BACKEND" "$FRONTEND"; do
+          read -r backend frontend _ <<<"$IMAGES"
+          if [[ -z $backend || -z $frontend ]]; then
+            echo "::error::The deploy reported no images: '$IMAGES'"
+            exit 1
+          fi
+          for image in "$backend" "$frontend"; do
             docker buildx imagetools create --tag "${image%@*}:$GITHUB_REF_NAME" "$image"
           done

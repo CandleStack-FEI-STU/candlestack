@@ -35,6 +35,13 @@ inputs:
     description: Text the health response must contain
     required: false
 
+outputs:
+  images:
+    description: >-
+      The images an "up" command started, "<backend@digest> <frontend@digest>" (for "up prod",
+      the ones the VM chose from its stage record); empty for other commands
+    value: ${{ steps.run.outputs.images }}
+
 runs:
   using: composite
   steps:
@@ -82,6 +89,7 @@ runs:
         EOF
 
     - name: Run ${{ inputs.command }}
+      id: run
       shell: bash
       env:
         COMMAND: ${{ inputs.command }}
@@ -96,7 +104,9 @@ runs:
           if [[ -n $ENV_SECRETS ]]; then
             printf '%s\n' "$ENV_SECRETS"
           fi
-        } | ssh candlestack "$COMMAND"
+        } | ssh candlestack "$COMMAND" | tee "$RUNNER_TEMP/deploy-output"
+        # "up" ends with "images <backend@digest> <frontend@digest>".
+        sed -n 's/^images /images=/p' "$RUNNER_TEMP/deploy-output" >>"$GITHUB_OUTPUT"
 
     - name: Wait until healthy
       if: inputs.health-url != ''
