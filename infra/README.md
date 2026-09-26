@@ -41,6 +41,11 @@ Redis is a cache for the backend: no persistence, least recently used keys are e
 All containers run with a read-only root filesystem, no Linux capabilities and
 `no-new-privileges`.
 
+The backend, frontend and agent images are built for every deployment. The images that keep
+running on the VM (Redis, the edge Caddy, the agent's Docker socket proxy) are pinned in the
+compose files, and Dependabot proposes their updates; `edge` recreates the edge Caddy when its
+version changes.
+
 stage, previews and https://ops.candlestack.tech (the team status page) are behind Cloudflare
 Access: members of the `CandleStack-FEI-STU` GitHub organization sign in with GitHub. prod is
 public. Any new subdomain is team-only by default (Access application `*.candlestack.tech`).
