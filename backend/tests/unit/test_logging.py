@@ -85,3 +85,12 @@ def test_request_id_is_random_without_cf_ray(client: TestClient) -> None:
 
     assert len(first) == 16
     assert first != second
+
+
+@pytest.mark.parametrize("path", ["/api/health", "/api/nothing-here"])
+def test_server_timing(client: TestClient, path: str) -> None:
+    timing = client.get(path).headers["server-timing"]
+
+    name, duration = timing.split(";dur=")
+    assert name == "app"
+    assert float(duration) >= 0
