@@ -152,3 +152,28 @@ class CandleSet:
     gaps: list[tuple[int, int]]
     gaps_total: int
     fingerprint: str
+
+
+@dataclass(frozen=True)
+class InstrumentInfo:
+    """An instrument plus what a client needs to build a valid candles request.
+
+    ``available_from`` is the open time of the first candle (``None`` when the source has none
+    or could not be asked), ``available_to`` the open time of the newest closed 1m bin at the
+    time of the answer (for stocks the last minute of the latest session that has begun).
+    """
+
+    instrument: Instrument
+    timeframes: tuple[Timeframe, ...]
+    available_from: int | None
+    available_to: int
+    max_candles: int
+
+
+@dataclass(frozen=True)
+class SourceHealth:
+    """Whether a source answered its cheapest request; ``detail`` says why not."""
+
+    ok: bool
+    latency_ms: int | None
+    detail: str | None

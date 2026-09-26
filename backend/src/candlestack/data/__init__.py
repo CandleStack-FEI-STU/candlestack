@@ -36,11 +36,14 @@ from candlestack.data.models import (
     Feed,
     Instrument,
     InstrumentId,
+    InstrumentInfo,
     Market,
     Source,
+    SourceHealth,
     Timeframe,
     empty_candles,
 )
+from candlestack.data.service import DataService, build_data_service
 from candlestack.data.sessions import Session, parse_calendar, session_bins, sessions_between
 
 __all__ = [
@@ -50,19 +53,23 @@ __all__ = [
     "Catalog",
     "DataError",
     "DataIntegrityError",
+    "DataService",
     "Feed",
     "Gaps",
     "Instrument",
     "InstrumentId",
+    "InstrumentInfo",
     "InstrumentNotFound",
     "InvalidRequest",
     "Market",
     "PeriodOutOfRange",
     "Session",
     "Source",
+    "SourceHealth",
     "SourceUnavailable",
     "Timeframe",
     "TooManyCandles",
+    "build_data_service",
     "candle_count",
     "closed_only",
     "empty_candles",
