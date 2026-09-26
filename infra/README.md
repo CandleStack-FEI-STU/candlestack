@@ -63,7 +63,7 @@ Each commit of `main` is built once. A release does not rebuild: it deploys the 
 (same digests) that stage already runs for the tagged commit. Removing the `preview` label or
 closing the pull request removes its environment. Pull requests from forks never deploy.
 
-To release: `git tag v0.1.0 <commit on main> && git push origin v0.1.0`, then approve the
+To release: `git tag v0.2.0 <commit on main> && git push origin v0.2.0`, then approve the
 deployment in the Actions tab. After every deployment the workflow waits for `/api/health` to
 report the new commit or version, then runs `.github/scripts/smoke.sh` against the environment
 (health, the OpenAPI schema, the API reference and the frontend page).
@@ -96,8 +96,9 @@ lines with the backend's secrets. Only `ALPACA_KEY_ID` and `ALPACA_SECRET_KEY` a
 keeps them in the container's configuration, as with any container environment variable). The
 workflows send them with the `env-secrets` input of `.github/actions/deploy`. After `up` and
 `down` the script removes the images no container uses any more (every backend build adds a
-layer of about 250 MB). The other commands are `down pr-<N>` (preview key), `edge` and `agent <image@digest>` (stage key); the
-header of `vm/candlestack-deploy` lists which key may run what.
+source layer of about 150 KB, and a dependency layer of about 250 MB when `uv.lock` changes).
+The other commands are `down pr-<N>` (preview key), `edge` and `agent <image@digest>` (stage
+key); the header of `vm/candlestack-deploy` lists which key may run what.
 
 | Secret or variable | Where | What |
 | --- | --- | --- |
