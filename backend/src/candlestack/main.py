@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse
 from scalar_fastapi import AgentScalarConfig, get_scalar_api_reference
 
 from candlestack.core import (
+    RateLimiter,
     RequestContextMiddleware,
     Settings,
     create_http_client,
@@ -41,10 +42,11 @@ class CandleStackAPI(FastAPI):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Opens the shared clients on ``app.state`` (``redis``, ``http``) and builds the market
-    data service on them (``data_service``)."""
+    """Opens the shared clients on ``app.state`` (``redis``, ``http``) and builds what uses
+    them: the client ``rate_limiter`` and the market ``data_service``."""
     settings: Settings = app.state.settings
     app.state.redis = create_redis(settings.redis_url)
+    app.state.rate_limiter = RateLimiter(app.state.redis)
     try:
         async with create_http_client(settings) as http:
             app.state.http = http

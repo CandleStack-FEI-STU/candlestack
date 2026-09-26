@@ -18,7 +18,7 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import AfterValidator, BeforeValidator, WithJsonSchema
 from pydantic_core import PydanticCustomError
 
-from candlestack.core import Problem, ProblemError, RateLimiter, RedisDep, SettingsDep
+from candlestack.core import Problem, ProblemError, RateLimiter, SettingsDep
 from candlestack.data.errors import (
     DataError,
     DataIntegrityError,
@@ -56,8 +56,8 @@ def get_data_service(request: Request) -> DataService:
     return request.app.state.data_service
 
 
-def get_rate_limiter(redis: RedisDep) -> RateLimiter:
-    return RateLimiter(redis)
+def get_rate_limiter(request: Request) -> RateLimiter:
+    return request.app.state.rate_limiter
 
 
 DataServiceDep = Annotated[DataService, Depends(get_data_service)]
