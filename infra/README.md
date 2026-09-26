@@ -61,8 +61,10 @@ CPU, memory and disk, containers and the health of every preview. The agent keep
 and holds no secrets; its JSON is a contract with the ops repository (schema 1).
 
 Each commit of `main` is built once. A release does not rebuild: it deploys the exact images
-(same digests) that stage already runs for the tagged commit. Removing the `preview` label or
-closing the pull request removes its environment. Pull requests from forks never deploy.
+(same digests) that stage already runs for the tagged commit, started with that commit's own
+`infra/env/compose.yaml` rather than whatever main's checkout has by then (`edge` keeps
+resetting it to origin/main on every stage deploy). Removing the `preview` label or closing the
+pull request removes its environment. Pull requests from forks never deploy.
 
 To release: `git tag v0.2.0 <commit on main> && git push origin v0.2.0`, then approve the
 deployment in the Actions tab. After every deployment the workflow waits for `/api/health` to
