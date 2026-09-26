@@ -32,7 +32,17 @@ cp .env.example .env    # optional: Alpaca paper keys for US stocks
 docker compose -f compose.dev.yaml up --build
 ```
 
-The API reference is then at http://localhost:8000/api/v1/docs.
+The API reference is then at http://localhost:8000/api/v1/docs. Every endpoint there has a
+test request panel to try it, for example:
+
+| Try | Request |
+| --- | --- |
+| search instruments | `GET /api/v1/data/instruments?q=btc` |
+| instrument detail | `GET /api/v1/data/instruments/crypto:BTCUSDT` |
+| candles | `GET /api/v1/data/candles?instrument=crypto:BTCUSDT&timeframe=1h&start=2024-06-03&end=2024-06-04` |
+| sources reachable | `GET /api/health/sources` |
+
+Crypto needs no keys; US stocks (`stock:AAPL`) need Alpaca paper keys in `.env`.
 
 More: [architecture](docs/architecture.md), [market data](docs/data.md),
 [contributing](CONTRIBUTING.md), [infrastructure](infra/README.md).

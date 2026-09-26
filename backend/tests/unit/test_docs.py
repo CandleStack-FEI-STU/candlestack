@@ -2,7 +2,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from candlestack.core import problem_responses
+from candlestack.core import Problem, problem_responses
 
 
 def test_scalar_docs_page(client: TestClient) -> None:
@@ -40,5 +40,28 @@ def test_errors_are_documented_as_problem_details(app: FastAPI) -> None:
     problem = {"application/problem+json": {"schema": {"$ref": "#/components/schemas/Problem"}}}
     assert responses["404"]["content"] == problem
     assert responses["422"]["content"] == problem
+    assert responses["422"]["description"] == "Invalid request"
     assert "Problem" in schema["components"]["schemas"]
     assert "HTTPValidationError" not in schema["components"]["schemas"]
+
+
+def test_an_explicit_422_description_is_kept(app: FastAPI) -> None:
+    @app.get("/api/test/items", responses=problem_responses(422))
+    async def items(limit: int = 1) -> dict[str, int]:
+        return {"limit": limit}
+
+    @app.get(
+        "/api/test/limited",
+        responses={422: {"model": Problem, "description": "Period out of range"}},
+    )
+    async def limited(limit: int = 1) -> dict[str, int]:
+        return {"limit": limit}
+
+    paths = app.openapi()["paths"]
+
+    assert paths["/api/test/items"]["get"]["responses"]["422"]["description"] == (
+        "Unprocessable Content"
+    )
+    assert paths["/api/test/limited"]["get"]["responses"]["422"]["description"] == (
+        "Period out of range"
+    )

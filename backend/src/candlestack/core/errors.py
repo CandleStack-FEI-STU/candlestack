@@ -191,6 +191,6 @@ def document_problems(schema: dict[str, Any]) -> dict[str, Any]:
                     response["content"] = {
                         PROBLEM_MEDIA_TYPE: {"schema": {"$ref": "#/components/schemas/Problem"}}
                     }
-                    if code == "422":
-                        response["description"] = "Invalid request"
+                    if code == "422" and response.get("description") == "Validation Error":
+                        response["description"] = "Invalid request"  # FastAPI's own 422
     return schema

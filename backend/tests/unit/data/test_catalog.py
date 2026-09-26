@@ -76,12 +76,40 @@ def test_normalise_query(query: str, normalised: str) -> None:
 def test_search_ranks_symbol_then_name_matches(catalog: Catalog) -> None:
     assert ids(catalog.search("btc")) == [
         "stock:BTC",  # exact symbol
-        "crypto:BTCUSDC",  # symbol prefix; same length, alphabetical
-        "crypto:BTCUSDT",
+        "crypto:BTCUSDT",  # pairs of the base asset BTC, the quote with the most pairs first
+        "crypto:BTCUSDC",
         "crypto:ETHBTC",  # a word of the name starts with the query (ETH/BTC)
         "stock:XBTC",  # substring of the symbol
         "crypto:WBTCUSDT",
     ]
+
+
+def test_search_ranks_symbol_prefixes_by_length(catalog: Catalog) -> None:
+    assert ids(catalog.search("btcusd")) == [
+        "crypto:BTCUSDC",
+        "crypto:BTCUSDT",
+        "crypto:WBTCUSDT",  # substring of the symbol
+    ]
+    assert ids(catalog.search("bt", limit=3)) == ["stock:BTC", "crypto:BTCUSDC", "crypto:BTCUSDT"]
+
+
+def test_base_asset_pairs_come_first_in_a_full_catalog() -> None:
+    """``btc`` must find BTCUSDT in the default 20 results among many longer and shorter
+    matches, as in the real catalogs (Binance has about 40 BTC pairs)."""
+    quotes = ["TRY", "EUR", "BRL", "JPY", "ARS", "PLN", "RON", "ZAR", "USDC", "FDUSD", "USD1"]
+    others = [crypto(f"{base}USDT", base, "USDT") for base in ("ETH", "SOL", "XRP", "DOGE")]
+    instruments = [
+        *(crypto(f"BTC{quote}", "BTC", quote) for quote in quotes),
+        crypto("BTCUSDT", "BTC", "USDT"),
+        *others,
+        *(stock(f"BTC{letter}", f"Bitcoin Fund {letter}") for letter in "CIOWZLMST"),
+        stock("BTC", "Grayscale Bitcoin Mini Trust ETF", "ARCA"),
+    ]
+
+    found = ids(Catalog(instruments).search("btc", limit=3))
+
+    # Then the other BTC pairs (one pair per quote here): shorter symbol, then alphabetical.
+    assert found == ["stock:BTC", "crypto:BTCUSDT", "crypto:BTCARS"]
 
 
 def test_search_name_substring_comes_last(catalog: Catalog) -> None:
@@ -108,7 +136,7 @@ def test_search_dotted_and_non_ascii_symbols(catalog: Catalog) -> None:
 
 def test_search_market_and_limit(catalog: Catalog) -> None:
     assert ids(catalog.search("btc", market=Market.STOCK)) == ["stock:BTC", "stock:XBTC"]
-    assert ids(catalog.search("btc", limit=2)) == ["stock:BTC", "crypto:BTCUSDC"]
+    assert ids(catalog.search("btc", limit=2)) == ["stock:BTC", "crypto:BTCUSDT"]
     assert catalog.search("btc", limit=0) == []
 
 
@@ -126,6 +154,6 @@ def test_catalog_lookup(catalog: Catalog) -> None:
 
 def test_search_function_takes_a_list() -> None:
     assert ids(search(INSTRUMENTS, "eth", market=Market.CRYPTO)) == [
-        "crypto:ETHBTC",
         "crypto:ETHUSDT",
+        "crypto:ETHBTC",
     ]

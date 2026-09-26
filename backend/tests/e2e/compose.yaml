@@ -1,4 +1,6 @@
 # The backend image with Redis, hardened like the deployed environments, for the e2e tests.
+# Binance and Alpaca are faked by mock_sources.py, which serves the committed fixtures
+# (tests/fixtures) under the sources' paths, so the tests need no network and no keys.
 # The host port, the project name and the image tag come from E2E_PORT, so several stacks
 # (each built from its own checkout) can run at once:
 #   E2E_PORT=18001 docker compose -f tests/e2e/compose.yaml up -d --build --wait
@@ -16,10 +18,18 @@ services:
       APP_ENV: test
       APP_VERSION: e2e
       REDIS_URL: redis://redis:6379/0
+      BINANCE_API_URL: http://sources:8080
+      BINANCE_DATA_URL: http://sources:8080
+      ALPACA_API_URL: http://sources:8080
+      ALPACA_DATA_URL: http://sources:8080
+      ALPACA_KEY_ID: e2e-key
+      ALPACA_SECRET_KEY: e2e-secret
     ports:
       - 127.0.0.1:${E2E_PORT:-18000}:8000
     depends_on:
       redis:
+        condition: service_healthy
+      sources:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)"]
@@ -41,4 +51,21 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 2s
       timeout: 2s
+      retries: 15
+
+  # Fake Binance and Alpaca; each answer takes LATENCY_MS, like a call over the internet.
+  sources:
+    image: python:3.13-alpine
+    command: ["python", "/app/mock_sources.py"]
+    environment:
+      FIXTURES: /fixtures
+      PORT: "8080"
+      LATENCY_MS: "50"
+    volumes:
+      - ./mock_sources.py:/app/mock_sources.py:ro
+      - ../fixtures:/fixtures:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/v3/ping', timeout=2)"]
+      interval: 2s
+      timeout: 3s
       retries: 15

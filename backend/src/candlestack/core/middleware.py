@@ -18,7 +18,9 @@ class RequestContextMiddleware:
     """Tags each request with an id, logs one access line and turns a crash into a 500 problem.
 
     The id is Cloudflare's ``CF-Ray`` when present (so our logs match Cloudflare's), else random.
-    It is sent back as ``X-Request-ID`` and added to every log record of the request.
+    It is sent back as ``X-Request-ID`` and added to every log record of the request. Every
+    response also carries ``Server-Timing: app;dur=<ms>``, the time the app took until the
+    response started, so it can be measured from outside.
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -40,7 +42,9 @@ class RequestContextMiddleware:
             if message["type"] == "http.response.start":
                 status = message["status"]
                 started = True
-                MutableHeaders(scope=message)["X-Request-ID"] = request_id
+                headers = MutableHeaders(scope=message)
+                headers["X-Request-ID"] = request_id
+                headers["Server-Timing"] = f"app;dur={_elapsed_ms(start)}"
             await send(message)
 
         try:
@@ -60,8 +64,12 @@ class RequestContextMiddleware:
                     "method": scope["method"],
                     "path": scope["path"],
                     "status": status,
-                    "duration_ms": round((time.perf_counter() - start) * 1000, 1),
+                    "duration_ms": _elapsed_ms(start),
                     "request_id": request_id,
                 },
             )
             request_id_var.reset(token)
+
+
+def _elapsed_ms(start: float) -> float:
+    return round((time.perf_counter() - start) * 1000, 1)

@@ -20,3 +20,11 @@ Real source responses, recorded once and committed so the tests need no network 
 | `alpaca/clock.json` | `GET /v2/clock` while the market was closed | 2026-09-25 with the stage paper keys |
 | `alpaca/error-no-auth.html` | the 401 of a request without keys: an nginx `text/html` page (line endings normalised to LF) | 2026-09-25 with the stage paper keys |
 | `alpaca/error-unknown-symbol-multi.json` | `GET /v2/stocks/bars?symbols=NOTAREALSYM`: 200 with no bars | 2026-09-25 with the stage paper keys |
+| `binance/archive/monthly/BTCUSDT-1d-2024-01.zip` and `.CHECKSUM` | monthly 1d kline archive, 31 rows, open times in milliseconds | 2026-09-25 from a developer machine |
+| `binance/rest/klines-BTCUSDT-1d-first.json` | `GET /api/v3/klines?symbol=BTCUSDT&interval=1d&startTime=0&limit=1`: the first BTCUSDT candle, 2017-08-17 | 2026-09-25 from a developer machine |
+| `alpaca/calendar-2020-07.json` | the 22 trading days of July 2020 from `GET /v2/calendar?start=2016-01-01&end=2026-12-31`, so that the first IEX bar (2020-07-27) has its session | 2026-09-25 with the stage paper keys, other days removed |
+
+`tests/e2e/mock_sources.py` fakes Binance and Alpaca for the e2e tests from these files (it finds
+them by name): the archives under their data.binance.vision paths, klines cut from the archives
+(`startTime=0`, the first-candle lookup, gets `klines-<SYMBOL>-<tf>-first.json`), and Alpaca
+bars merged from every `bars-<SYMBOL>-<timeframe>-*.json`.

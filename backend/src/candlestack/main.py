@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse
 from scalar_fastapi import AgentScalarConfig, get_scalar_api_reference
 
 from candlestack.core import (
+    RateLimiter,
     RequestContextMiddleware,
     Settings,
     create_http_client,
@@ -19,12 +20,13 @@ from candlestack.core import (
     install_error_handlers,
     setup_logging,
 )
+from candlestack.data import build_data_service, data_router
 
 TITLE = "CandleStack API"
 DESCRIPTION = (
     "HTTP API of CandleStack, a lab for experiments on financial time series. "
     "Market data covers crypto from Binance and US stocks from Alpaca. "
-    "Times are UTC epoch seconds. "
+    "Times in responses are UTC epoch seconds; requests also accept ISO 8601. "
     "Errors are RFC 9457 problem details (`application/problem+json`)."
 )
 OPENAPI_URL = "/api/v1/openapi.json"
@@ -40,12 +42,15 @@ class CandleStackAPI(FastAPI):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Opens the shared clients on ``app.state``: ``redis`` and ``http``."""
+    """Opens the shared clients on ``app.state`` (``redis``, ``http``) and builds what uses
+    them: the client ``rate_limiter`` and the market ``data_service``."""
     settings: Settings = app.state.settings
     app.state.redis = create_redis(settings.redis_url)
+    app.state.rate_limiter = RateLimiter(app.state.redis)
     try:
         async with create_http_client(settings) as http:
             app.state.http = http
+            app.state.data_service = build_data_service(settings, app.state.redis, http)
             yield
     finally:
         await app.state.redis.aclose()
@@ -69,6 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(RequestContextMiddleware)
     install_error_handlers(app)
     app.include_router(health_router)
+    app.include_router(data_router)
 
     @app.get(DOCS_URL, include_in_schema=False)
     async def docs() -> HTMLResponse:

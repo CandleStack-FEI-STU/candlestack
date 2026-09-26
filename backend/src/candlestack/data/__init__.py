@@ -4,6 +4,7 @@ Other modules import only from here (``from candlestack.data import InstrumentId
 the submodules. The contract is docs/data.md.
 """
 
+from candlestack.data.api import router as data_router
 from candlestack.data.candles import (
     MAX_GAP_RANGES,
     Gaps,
@@ -72,6 +73,7 @@ __all__ = [
     "build_data_service",
     "candle_count",
     "closed_only",
+    "data_router",
     "empty_candles",
     "expected_bins_fixed",
     "expected_bins_sessions",

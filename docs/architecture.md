@@ -44,10 +44,14 @@ flowchart LR
 | `GET /api/v1/docs` | API reference (Scalar); public on prod |
 | `GET /api/v1/openapi.json` | OpenAPI schema; snapshot committed as [openapi.json](openapi.json) |
 
-- Responses are JSON (orjson). Errors are RFC 9457 `application/problem+json` with
+- Responses are JSON. Pydantic response models serialize themselves; the candles body, up to
+  50000 candles, is written with orjson straight from the Polars columns (its model only
+  documents it). Errors are RFC 9457 `application/problem+json` with
   `type` `https://candlestack.tech/problems/<slug>`, `title`, `status`, a `detail` that says
   which limit fired and what to do, and extension fields. Request validation errors use slug
   `validation` (422).
+- Every response carries `X-Request-ID` and `Server-Timing: app;dur=<ms>` (the app's time
+  until the response started), so response times can be measured from outside.
 - Logs: one JSON object per line on stdout (`ts`, `level`, `logger`, `msg`); the access line
   adds `method`, `path`, `status`, `duration_ms`, `request_id` (the `CF-Ray` header, else a
   random hex).
