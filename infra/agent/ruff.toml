@@ -1,0 +1,7 @@
+# ruff for the server agent and its tests. CI runs the backend's ruff release (backend/uv.lock)
+# with the backend's rules, except the pytest ones: the agent's tests use unittest.
+line-length = 100
+target-version = "py313"
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]

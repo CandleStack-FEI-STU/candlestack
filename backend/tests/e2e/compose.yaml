@@ -36,6 +36,8 @@ services:
       interval: 2s
       timeout: 3s
       retries: 15
+    # The limit of the deployed backends (infra/env/compose.yaml): the tests run within it.
+    mem_limit: 320m
     read_only: true
     tmpfs:
       - /tmp

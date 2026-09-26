@@ -78,6 +78,29 @@ jobs:
           access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
 
+      # The edge Caddy routes prod too, and the smoke test below checks only stage. prod is
+      # public: checked without the Access token, as anyone reaches it.
+      - name: Check prod behind the updated edge
+        run: |
+          # check <url> <text>: HTTP 200 with the text in the body, retried for about 30 s.
+          check() {
+            local status body
+            for _ in $(seq 1 10); do
+              rm -f "$RUNNER_TEMP/prod"
+              status=$(curl -sS --max-time 10 -o "$RUNNER_TEMP/prod" -w '%{http_code}' "$1" || true)
+              body=$(cat "$RUNNER_TEMP/prod" 2>/dev/null || true)
+              if [[ $status == 200 && $body == *"$2"* ]]; then
+                echo "ok    $1"
+                return 0
+              fi
+              sleep 3
+            done
+            echo "::error::$1 did not answer 200 with '$2' after the edge update (last: HTTP ${status:-none} ${body:0:300})"
+            return 1
+          }
+          check https://app.candlestack.tech/api/health '"status":"ok"'
+          check https://app.candlestack.tech/ '<html'
+
       - name: Deploy the server agent
         uses: ./.github/actions/deploy
         with:
