@@ -172,8 +172,8 @@ most every 30 minutes), 50 events of one issue in an hour on prod, and prod down
 none. Every deploy records its release in Sentry (`.github/scripts/sentry-release.sh`), which
 links an issue to its suspect commit.
 
-`GET /api/debug/sentry-error`, on stage and in local runs only and not in the API reference,
-fails on purpose to check that an error reaches Sentry. The Sentry settings are recorded in
+`GET /api/debug/sentry-error`, on stage only and not in the API reference, fails on purpose
+to check that an error reaches Sentry. The Sentry settings are recorded in
 [`infra/sentry/`](../infra/sentry/README.md).
 
 ## Not in this milestone

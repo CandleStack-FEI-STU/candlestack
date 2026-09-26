@@ -46,9 +46,9 @@ SERVERS = [{"url": "/", "description": "This environment"}]
 SCALAR_JS_URL = "https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.72.1"
 # The CandleStack theme: the colours and fonts of the website and the ops page.
 DOCS_CSS = (files("candlestack") / "docs_theme.css").read_text(encoding="utf-8")
-# Environments with /api/debug/sentry-error, which fails on purpose to check Sentry: stage is
-# team-only (Cloudflare Access), and a local run sends nothing without SENTRY_DSN.
-SENTRY_CHECK_ENVS = frozenset({"local", "stage"})
+# The only environment with /api/debug/sentry-error, which fails on purpose to check Sentry:
+# stage, which is team-only (Cloudflare Access).
+SENTRY_CHECK_ENV = "stage"
 
 
 class CandleStackAPI(FastAPI):
@@ -95,7 +95,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     install_error_handlers(app)
     app.include_router(health_router)
     app.include_router(data_router)
-    if settings.app_env in SENTRY_CHECK_ENVS:
+    if settings.app_env == SENTRY_CHECK_ENV:
         app.include_router(sentry_check_router)
 
     @app.get(DOCS_URL, include_in_schema=False)

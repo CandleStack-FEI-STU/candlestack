@@ -161,8 +161,8 @@ def tag_request(request_id: str) -> None:
     sentry_sdk.get_isolation_scope().set_tag("request_id", request_id)
 
 
-# Stage only (and a local run), hidden from the API reference: lets the team check that an
-# unhandled error reaches Sentry after a deploy.
+# Stage only, hidden from the API reference: lets the team check that an unhandled error
+# reaches Sentry after a deploy.
 check_router = APIRouter(include_in_schema=False)
 
 

@@ -108,5 +108,6 @@ the tech lead grants access). What it records is in
 - Never swallow an exception (`except Exception: pass`), and never put keys, tokens or personal
   data in a log message or its `extra`.
 - Only `candlestack.core` imports `sentry_sdk`; `lint-imports` checks it.
-- Without `SENTRY_DSN` (local runs, tests, previews) nothing is sent. To see it work locally,
-  put the DSN in `.env` and open http://localhost:8000/api/debug/sentry-error.
+- Without `SENTRY_DSN` (local runs, tests, previews) nothing is sent. To check that errors
+  reach Sentry, open https://stage.candlestack.tech/api/debug/sentry-error (stage only): it
+  fails on purpose, and the error shows up in Sentry under the environment `stage`.
