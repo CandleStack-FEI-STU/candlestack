@@ -243,7 +243,8 @@ Source data is checked before it is cached:
 - Binance archives match their checksum
 
 Data that fails is not cached, the failure is logged, and the request gets 502
-`source-data-invalid`.
+`source-data-invalid`. Its detail names the source and what to do; what failed (the rule, a
+parser message) is only in the log.
 
 ## Fingerprint
 
@@ -305,6 +306,7 @@ again. Keys:
 | `data:v1:first:<instrument>` | `available_from` | 7 days; 1 hour while the instrument has no candle |
 | `data:v1:health:<source>` | reachability of the source | 60 s |
 | `data:lock:<key without data:v1:>` | single-flight lock for a key being fetched | 30 s |
+| `data:fail:<key without data:v1:>` | the error of a failed fetch of that key (source unavailable or invalid data) | 10 s, or the error's `Retry-After` when shorter |
 | `data:rl:client:<ip>:<minute>`, `data:rl:alpaca:<minute>`, `data:rl:binance:<minute>` | fixed-window counters; `<ip>` is an IPv4 address or an IPv6 /64 network, `<minute>` is Unix time // 60 | 61 s |
 
 | Chunk | `<chunk>` | Crypto | Stock |
@@ -321,7 +323,8 @@ again. Keys:
   chunk is fetched again.
 - Single-flight: the first request for a missing key takes the lock (`SET NX`), fetches and
   stores the value; concurrent requests for the same key, in any process, wait for the value
-  instead of calling the source again.
+  instead of calling the source again. When the fetch fails, its error is kept for 10 s: the
+  waiting requests and new ones get the same 502 or 503 at once, without calling the source.
 - The catalogs are also kept in process memory for search (about 15k instruments, a search takes
   a few ms). A process whose copy is older than 24 h first adopts a newer list from Redis.
 - When Redis fails, values are fetched from the source and not cached for 5 s at a time; a

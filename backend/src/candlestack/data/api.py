@@ -46,6 +46,7 @@ router = APIRouter()
 data = APIRouter(prefix="/api/v1/data", tags=["data"])
 health = APIRouter(tags=["health"])
 
+_SOURCE_TITLES = {"binance": "Binance", "alpaca": "Alpaca"}
 # Patched by tests to move the clock.
 _time = time.time
 # 9999-12-31T23:59:59Z: a larger number is not epoch seconds (most likely milliseconds).
@@ -171,12 +172,15 @@ def _problem(error: DataError) -> ProblemError | None:
                 extensions={"source": error.source},
             )
         case DataIntegrityError():
+            # What failed is for the logs; the client learns which source and what to do.
             logger.error("Invalid data from %s: %s", error.source or "a source", detail)
+            title = _SOURCE_TITLES.get(error.source or "", "The data source")
             return ProblemError(
                 502,
                 "source-data-invalid",
                 "Invalid data from the source",
-                detail,
+                f"{title} sent data for this request that failed validation, so it was not "
+                "used. Try again later, or ask for another period.",
                 extensions={"source": error.source},
             )
     return None

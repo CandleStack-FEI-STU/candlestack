@@ -53,7 +53,7 @@ async def test_search_leaves_out_a_market_that_cannot_be_loaded(service: DataSer
 
 
 async def test_search_does_not_wait_for_a_market_being_loaded(
-    service: DataService, upstream, monkeypatch: pytest.MonkeyPatch
+    service: DataService, upstream, redis, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setattr(catalog_store, "LOAD_RETRY_SECONDS", 0)  # retry at once
     upstream.exchange_info()
@@ -72,6 +72,7 @@ async def test_search_does_not_wait_for_a_market_being_loaded(
     upstream.router.get(f"{upstream.ALPACA_API}/v2/assets").mock(side_effect=assets)
 
     assert (await service.search("apple")).unavailable == [Market.STOCK]
+    await redis.delete("data:fail:catalog:stock")  # the error Redis keeps for 10 s
     # Crypto is loaded: the next search answers while stocks are retried in the background.
     found = await asyncio.wait_for(service.search("apple"), timeout=2)
     assert (ids(found), found.unavailable) == ([], [Market.STOCK])
@@ -84,6 +85,17 @@ async def test_search_does_not_wait_for_a_market_being_loaded(
 
     assert (ids(found), found.unavailable) == (["stock:AAPL"], [])
     assert calls == 4
+
+
+async def test_unreadable_stored_catalog_is_fetched_again(service: DataService, upstream, redis):
+    await redis.set("data:v1:catalog:crypto", b'{"fetched_at": "not a list"}')
+    info = upstream.exchange_info()
+
+    found = await service.search("btcusdt", Market.CRYPTO)
+
+    assert ids(found) == ["crypto:BTCUSDT"]
+    assert info.call_count == 1
+    assert json.loads(await redis.get("data:v1:catalog:crypto"))["items"]
 
 
 async def test_stale_catalog_is_served_while_it_refreshes(

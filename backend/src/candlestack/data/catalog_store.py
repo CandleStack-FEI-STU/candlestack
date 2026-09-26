@@ -114,13 +114,18 @@ class CatalogStore:
         retry_at, error = self._failed.get(market, (0.0, None))
         if error is not None and time.monotonic() < retry_at:
             raise error.with_traceback(None)
+        name = f"catalog:{market}"
         try:
-            blob = await self._cache.get_or_fetch(f"catalog:{market}", lambda: self._fetch(market))
+            blob = await self._cache.get_or_fetch(name, lambda: self._fetch(market))
+            entry = await self._decode_stored(market, blob)
+            if entry is None:  # an unreadable list in Redis: fetch it again
+                await self._cache.delete(name)
+                blob = await self._cache.get_or_fetch(name, lambda: self._fetch(market))
+                entry = await to_thread.run_sync(self._decode, market, blob)
         except DataError as exc:
             logger.warning("The %s catalog cannot be loaded: %s", market, exc.detail)
             self._failed[market] = (time.monotonic() + LOAD_RETRY_SECONDS, exc)
             raise
-        entry = await to_thread.run_sync(self._decode, market, blob)
         self._adopt(market, entry)
         return entry
 
@@ -128,6 +133,14 @@ class CatalogStore:
         instruments = await self._sources[market].list_instruments()
         items = [[i.symbol, i.name, i.exchange, i.base, i.quote] for i in instruments]
         return orjson.dumps({"fetched_at": int(_time()), "items": items}), KEEP_TTL
+
+    async def _decode_stored(self, market: Market, blob: bytes) -> _Entry | None:
+        """The list stored in Redis, or ``None`` (logged) when it cannot be read."""
+        try:
+            return await to_thread.run_sync(self._decode, market, blob)
+        except DataIntegrityError as exc:
+            logger.warning("Dropping the stored %s catalog: %s", market, exc.detail)
+            return None
 
     def _decode(self, market: Market, blob: bytes) -> _Entry:
         source = self._sources[market]
@@ -190,11 +203,10 @@ class CatalogStore:
         name = f"catalog:{market}"
         try:
             stored = await self._cache.get(name)
-            if stored is not None:
-                entry = await to_thread.run_sync(self._decode, market, stored)
-                if _time() - entry.fetched_at < REFRESH_AFTER:
-                    self._adopt(market, entry)  # another process refreshed it already
-                    return
+            entry = None if stored is None else await self._decode_stored(market, stored)
+            if entry is not None and _time() - entry.fetched_at < REFRESH_AFTER:
+                self._adopt(market, entry)  # another process refreshed it already
+                return
             token = await self._cache.lock(name)
             if token is None:
                 return  # another process is refreshing it; adopted on the next attempt
