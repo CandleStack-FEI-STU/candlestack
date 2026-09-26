@@ -32,11 +32,12 @@ Both are required to merge:
 | Check | What it runs |
 | --- | --- |
 | `no-ai-signs / No AI signs` | commit messages, authors and the pull request text |
-| `ci` | the backend jobs `lint` (ruff, ty, import-linter), `unit`, `integration` (Redis) and `e2e` (the built image); `infra` (actionlint with shellcheck on the workflows, shellcheck on the deploy and smoke scripts, the edge Caddyfile and the tunnel ingress rules validated, the frontend and server agent images built) |
+| `ci` | the backend jobs `lint` (ruff, ty, import-linter, the root `compose.yaml` validated and its dev image built), `unit`, `integration` (Redis) and `e2e` (the built image); `infra` (actionlint with shellcheck on the workflows, shellcheck on the deploy and smoke scripts, the deploy script's tests, the compose files of `infra/` validated, the server agent's ruff and tests, the edge Caddyfile and the tunnel ingress rules validated, the frontend and server agent images built; see [infra/README.md](infra/README.md#tests)) |
 
 The backend jobs run only when `backend/`, `docs/openapi.json`, a `compose*.yaml` file in the
 repository root (`compose.yaml`) or `.github/workflows/ci.yml` changed, and `infra` only when
-`infra/`, `frontend/` or `.github/` changed; `ci` passes when they are skipped.
+`infra/`, `frontend/`, `.github/` or `backend/uv.lock` (the agent is linted with the backend's
+ruff) changed; `ci` passes when they are skipped.
 
 ## Preview environment
 

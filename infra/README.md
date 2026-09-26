@@ -68,8 +68,23 @@ pull request removes its environment. Pull requests from forks never deploy.
 
 To release: `git tag v0.2.0 <commit on main> && git push origin v0.2.0`, then approve the
 deployment in the Actions tab. After every deployment the workflow waits for `/api/health` to
-report the new commit or version, then runs `.github/scripts/smoke.sh` against the environment
-(health, the OpenAPI schema, the API reference and the frontend page).
+report the new commit or version, then runs `.github/scripts/smoke.sh` against the environment:
+
+| Check | What it expects |
+| --- | --- |
+| `health` | `/api/health` answers 200 with `status` `ok` |
+| `openapi`, `docs` | the OpenAPI schema, and the API reference page that loads Scalar |
+| `frontend` | the page at `/` |
+| `access` | stage and previews only: `/api/health` without the Access token gets Access (a redirect to its login, or 401/403), not the app |
+| `sources` | `/api/health/sources`: Binance and Alpaca reachable |
+| `search` | `btc` finds `crypto:BTCUSDT` and `apple` finds `stock:AAPL` first, with both markets loaded |
+| `instruments` | the detail of both, with `available_from` |
+| `crypto_candles`, `stock_candles` | the 24 BTCUSDT and the 7 AAPL 1h candles of 2024-06-03 |
+| `timings` | a year of BTCUSDT 1h candles twice; prints both times and warns (without failing) when the app takes over 3 s the first time or over 300 ms from the cache |
+
+The stage deployment also reloads the edge Caddy, which serves prod too, so right after that it
+checks that https://app.candlestack.tech/api/health reports `ok` and the page at `/` answers
+200 (without the Access token: prod is public).
 
 ### Transition to the backend + frontend layout
 
@@ -117,6 +132,7 @@ key); the header of `vm/candlestack-deploy` lists which key may run what.
 | `vm/cloud-init.yaml` | Provider-neutral bootstrap: Docker, swap, cloudflared, edge, deploy user |
 | `vm/aws-create.sh` | Creates the VM on AWS EC2 (t3.small, no inbound, SSM shell access) |
 | `vm/candlestack-deploy` | The only command the deploy keys can run |
+| `vm/test-candlestack-deploy.sh` | Tests of `candlestack-deploy` (see [Tests](#tests)) |
 | `vm/deploy_authorized_keys` | Public deploy keys with their scopes |
 | `cloudflared/config.yml` | Tunnel ingress: SSH for deployments, everything else to the edge |
 | `edge/` | Caddy that routes each hostname to its environment |
@@ -124,6 +140,30 @@ key); the header of `vm/candlestack-deploy` lists which key may run what.
 | `agent/` | Server agent for ops: host metrics, containers and preview health as JSON, read-only Docker proxy |
 
 The images of an environment are built from `backend/` and `frontend/` at the repository root.
+
+## Tests
+
+The CI `infra` job runs these, besides actionlint, shellcheck and validating the compose files,
+the Caddyfiles and the tunnel ingress rules. Locally, from the repository root:
+
+```sh
+infra/vm/test-candlestack-deploy.sh    # bash with GNU tools (Linux, WSL), or in a container:
+docker run --rm -v "$PWD:/repo:ro" -w /repo ubuntu:24.04 infra/vm/test-candlestack-deploy.sh
+docker run --rm -v "$PWD/infra/agent:/agent:ro" -w /agent python:3.13-alpine python -m unittest -v
+cd backend && uv run ruff check ../infra/agent && uv run ruff format --check ../infra/agent
+```
+
+- `vm/test-candlestack-deploy.sh` runs the real `vm/candlestack-deploy` as sshd runs it for each
+  key (the scope from `vm/deploy_authorized_keys`, the command in `SSH_ORIGINAL_COMMAND`, the
+  token and secrets on stdin) with fake `docker` and `git` that record their calls. It checks
+  which key may run what, that malformed images, versions, preview numbers and secrets are
+  refused before anything runs, that prod takes only a release tag on main's history and
+  starts with that tag's compose file, that no token or secret is printed, and the Docker
+  commands of every allowed command. It touches nothing outside a temporary directory.
+- `agent/test_agent.py` (standard library `unittest`, like the agent) pins the schema-1
+  snapshot that ops reads, the order of its containers and the HTTP answers (`starting`, the
+  snapshot, `stale`), with a stub Docker API and fixture files for `/proc`. The agent is linted
+  with the backend's ruff release and `agent/ruff.toml`.
 
 ## Create the VM on AWS
 

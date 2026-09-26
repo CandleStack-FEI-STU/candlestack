@@ -56,7 +56,8 @@ jobs:
           if grep -qE '^(backend/|docs/openapi\.json$|compose[^/]*\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
             backend=true
           fi
-          if grep -qE '^(infra/|frontend/|\.github/)' <<<"$changed"; then
+          # backend/uv.lock: the server agent is linted with the backend's ruff release.
+          if grep -qE '^(infra/|frontend/|\.github/|backend/uv\.lock$)' <<<"$changed"; then
             infra=true
           fi
           echo "backend=$backend" | tee -a "$GITHUB_OUTPUT"
@@ -85,6 +86,12 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run ty check --output-format=github
       - run: uv run lint-imports
+
+      # The local development setup: the root compose.yaml and the dev image it builds.
+      - name: Dev compose file and image
+        run: |
+          docker compose -f ../compose.yaml config --quiet
+          docker build --quiet --target dev . >/dev/null
 
   unit:
     needs: changes
@@ -190,8 +197,9 @@ jobs:
         run: docker compose -f tests/e2e/compose.yaml down --volumes
 
   # What only the post-merge deploy would otherwise exercise: the workflows and their scripts,
-  # the deploy script the VM runs as a forced command, the edge and tunnel configuration and
-  # the images other than the backend's. A broken one on main breaks the next deploy.
+  # the deploy script the VM runs as a forced command, the compose files, the edge and tunnel
+  # configuration, the server agent and the images other than the backend's. A broken one on
+  # main breaks the next deploy.
   infra:
     needs: changes
     if: needs.changes.outputs.infra == 'true'
@@ -210,6 +218,30 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.11.0 \
             infra/vm/candlestack-deploy infra/vm/*.sh .github/scripts/*.sh
+
+      # The real script as sshd runs it for each key, with fake docker and git.
+      - name: Deploy script tests
+        run: infra/vm/test-candlestack-deploy.sh
+
+      # With dummy values for the variables the deploy script sets.
+      - name: Compose files
+        run: |
+          ENV_NAME=pr-1 APP_VERSION=check BACKEND_IMAGE=backend FRONTEND_IMAGE=frontend \
+            REDIS_MAXMEMORY=64mb REDIS_MEM_LIMIT=96m docker compose -f infra/env/compose.yaml config --quiet
+          docker compose -f infra/edge/compose.yaml config --quiet
+          IMAGE=agent docker compose -f infra/agent/compose.yaml config --quiet
+
+      # ruff at the backend's release (backend/uv.lock) with infra/agent/ruff.toml, then the
+      # tests on the Python the agent image is built from.
+      - name: Server agent lint and tests
+        run: |
+          version=$(sed -n '/^name = "ruff"$/{n;s/^version = "\(.*\)"$/\1/p;}' backend/uv.lock)
+          [[ -n $version ]] || { echo "::error::No ruff in backend/uv.lock"; exit 1; }
+          ruff=(docker run --rm -v "$PWD/infra/agent:/io" "ghcr.io/astral-sh/ruff:$version")
+          "${ruff[@]}" check --no-cache --output-format=github .
+          "${ruff[@]}" format --no-cache --check .
+          docker run --rm -v "$PWD/infra/agent:/agent:ro" -w /agent -e PYTHONDONTWRITEBYTECODE=1 \
+            python:3.13-alpine python -m unittest -v
 
       # With the Caddy image the edge runs.
       - name: Edge Caddyfile

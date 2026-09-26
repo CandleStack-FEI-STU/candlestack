@@ -19,7 +19,7 @@ import threading
 import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -33,6 +33,7 @@ ORDER = {"prod": 0, "stage": 1, "edge": 2, "agent": 3}
 
 
 # --- collection ------------------------------------------------------------------------
+
 
 def http_json(url, timeout=10):
     request = urllib.request.Request(url, headers={"User-Agent": "candlestack-agent/1.0"})
@@ -68,7 +69,8 @@ def started_at(container_id):
     """Unix seconds of the container's last start; a restart changes it, a new container too."""
     try:
         value = docker(f"/containers/{container_id}/json")["State"]["StartedAt"]
-        return int(datetime.strptime(value[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc).timestamp())
+        started = datetime.strptime(value[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=UTC)
+        return int(started.timestamp())
     except Exception:
         return None
 
@@ -171,6 +173,7 @@ def sampler():
 
 
 # --- HTTP ------------------------------------------------------------------------------
+
 
 class Handler(BaseHTTPRequestHandler):
     def send(self, code, body):

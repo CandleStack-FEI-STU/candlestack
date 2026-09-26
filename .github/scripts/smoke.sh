@@ -13,7 +13,7 @@
 # shellcheck disable=SC2329 # the checks are called by name from the loop at the end
 set -euo pipefail
 
-CHECKS=(health openapi docs frontend sources search instruments crypto_candles stock_candles timings)
+CHECKS=(health openapi docs frontend access sources search instruments crypto_candles stock_candles timings)
 
 base=${1:?usage: smoke.sh <base-url>}
 base=${base%/}
@@ -28,6 +28,15 @@ fi
 fail() {
   echo "$*" >&2
   exit 1
+}
+
+# warn <message>: a finding that does not fail the check; an annotation in GitHub Actions.
+warn() {
+  if [[ -n ${GITHUB_ACTIONS:-} ]]; then
+    echo "::warning title=Smoke test::$*"
+  else
+    echo "warning: $*"
+  fi
 }
 
 # get <path>: GET base-url + path. Sets $status, $type (the media type), $body, $seconds (the
@@ -73,6 +82,30 @@ check_docs() {
 check_frontend() {
   get /
   expect 200 text/html
+}
+
+# stage and previews are team-only: without the service token, Cloudflare Access answers
+# instead of the app, with a redirect to its login (or 401/403). prod is public: skipped.
+check_access() {
+  local meta status location
+  if [[ -z ${CF_ACCESS_CLIENT_ID:-} ]]; then
+    echo "skipped: no Access token, the environment is public"
+    return
+  fi
+  meta=$(curl --silent --show-error --max-time 20 --retry 2 --output /dev/null \
+    --write-out '%{http_code} %{redirect_url}' "$base/api/health") ||
+    fail "GET /api/health without the token: request failed"
+  status=${meta%% *}
+  location=${meta#* }
+  case $status in
+    401 | 403) echo "HTTP $status without the token" ;;
+    30[1237] | 308)
+      [[ $location == https://*.cloudflareaccess.com/cdn-cgi/access/login/* ]] ||
+        fail "without the token, /api/health redirects elsewhere than the Access login: $location"
+      echo "HTTP $status to the Access login without the token"
+      ;;
+    *) fail "without the token, /api/health answered HTTP $status, not Access" ;;
+  esac
 }
 
 check_sources() {
@@ -127,17 +160,34 @@ check_stock_candles() {
 }
 
 # One year of 1h candles of a random year, so most likely not cached yet, then the same request
-# again from the cache. Prints both times; the targets are 3 s cold and 300 ms cached.
+# again from the cache. Prints both times; the targets are 3 s cold and 300 ms cached, for the
+# app's own time (the network from the runner adds its part to curl's). Missing a target is a
+# warning, not a failure.
 check_timings() {
-  local year=$((2018 + RANDOM % 8)) path first
+  local year=$((2018 + RANDOM % 8)) path first first_ms
   path="/api/v1/data/candles?instrument=crypto:BTCUSDT&timeframe=1h&start=$year-01-01&end=$((year + 1))-01-01"
   get "$path"
   expect 200 application/json
   first="$seconds s (app ${app_ms:-?} ms)"
+  first_ms=$(took_ms)
   get "$path"
   expect 200 application/json
   echo "BTCUSDT 1h of $year, $(jq .meta.count <<<"$body") candles: first $first," \
     "repeated $seconds s (app ${app_ms:-?} ms)"
+  over_target "the first request of a year of 1h candles" "$first_ms" 3000
+  over_target "the repeated (cached) request" "$(took_ms)" 300
+}
+
+# took_ms: the app's time of the last response in whole ms (curl's total without the header).
+took_ms() {
+  awk -v app="${app_ms:-}" -v total="$seconds" 'BEGIN { printf "%d", app != "" ? app : total * 1000 }'
+}
+
+# over_target <what> <ms> <target ms>: warns when the time is over the target.
+over_target() {
+  if (($2 > $3)); then
+    warn "$1 took $2 ms, the target is $3 ms"
+  fi
 }
 
 failed=0
