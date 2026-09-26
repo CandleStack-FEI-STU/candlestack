@@ -8,8 +8,8 @@ Internet -> Cloudflare (TLS) -> Tunnel -> cloudflared on the VM -> edge Caddy ->
 ```
 
 The VM has no open inbound ports. `app`, `stage` and `*` under `candlestack.tech`
-are proxied CNAMEs to the tunnel, so moving to another server does not touch DNS: boot a
-new VM with the same tunnel credentials and turn the old one off.
+are proxied CNAMEs to the tunnel, so moving to another server does not touch DNS; see
+[Replace the VM](#replace-the-vm) for the swap itself.
 
 ## Environments
 
@@ -134,4 +134,30 @@ infra/vm/aws-create.sh ~/.cloudflared/<tunnel-id>.json main
 
 Shell on the VM: `aws ssm start-session --profile candlestack --region eu-north-1 --target <instance-id>`
 (needs the AWS Session Manager plugin), or EC2 console > the instance > Connect > Session Manager.
-After a new VM, update the `DEPLOY_KNOWN_HOSTS` variable with its SSH host key.
+
+## Replace the VM
+
+Both VMs would run cloudflared on the same tunnel, so until the old one stops, Cloudflare
+balances `ssh.candlestack.tech` and all web traffic between them: deploys can reach the wrong
+machine or fail the host-key check. cloud-init only starts the edge Caddy, so every environment
+needs a fresh deploy afterwards.
+
+1. Boot the new VM (above), with the same tunnel credentials file as the old one.
+2. Before deploying anything to the new VM, stop the old VM's tunnel (SSM shell:
+   `sudo systemctl stop cloudflared`) or shut the old VM down.
+3. Read the new VM's SSH host key (SSM shell: `cat /etc/ssh/ssh_host_ed25519_key.pub`) and
+   replace the `DEPLOY_KNOWN_HOSTS` repository variable (Settings > Secrets and variables >
+   Actions > Variables) with `ssh.candlestack.tech` followed by the key's type and base64
+   fields, in the format the variable already holds.
+4. Redeploy every environment, since nothing but the edge Caddy is running yet:
+   - stage: `stage.yml` has no manual trigger, so re-run its latest workflow run, or push to
+     `main`; this also deploys the server agent.
+   - prod: re-run the latest release workflow run and approve the deployment again.
+   - previews: push to the pull request, or remove and re-add the `preview` label.
+5. Two things no deploy repeats, on this VM or the next one, because cloud-init only did them
+   once at boot: after a change to `infra/cloudflared/config.yml`, restart cloudflared on the
+   VM (SSM: `sudo systemctl restart cloudflared`); after a change to
+   `infra/vm/deploy_authorized_keys`, reinstall it for the deploy user by hand (SSM:
+   `sudo install -o deploy -g deploy -m 600 /opt/candlestack/infra/vm/deploy_authorized_keys
+   /home/deploy/.ssh/authorized_keys`). cloudflared itself is also never upgraded after boot.
+6. Once the new VM is confirmed healthy, terminate the old one.
