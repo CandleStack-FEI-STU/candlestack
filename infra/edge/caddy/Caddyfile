@@ -2,9 +2,18 @@
 	auto_https off
 }
 
+# Responses of the environments are compressed on the way to Cloudflare, which gives each
+# client an encoding it accepts: a year of 1h candles is about 500 KB of JSON. Bodies under
+# 512 bytes (/api/health) are left as they are. Streamed responses still stream: the encoder is
+# flushed whenever the proxied response is.
+(compress) {
+	encode zstd gzip
+}
+
 # One environment: /api/* to its backend, everything else to its frontend.
 # Usage: import env <env name>
 (env) {
+	import compress
 	handle /api/* {
 		reverse_proxy {args[0]}-backend:8000
 	}
@@ -32,6 +41,7 @@
 
 	@prod host app.candlestack.tech
 	handle @prod {
+		import compress
 		handle /api/* {
 			reverse_proxy prod-backend:8000 prod-app:8080 {
 				import prod-app-fallback

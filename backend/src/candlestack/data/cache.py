@@ -24,7 +24,12 @@ from candlestack.data.errors import DataIntegrityError, SourceUnavailable
 
 logger = logging.getLogger(__name__)
 
-KEY_PREFIX = "data:v1:"
+# The version of each key family's values (the first part of a name; 1 when not listed). Redis
+# keeps its contents across deploys, so a family gets a new version whenever the meaning or
+# format of its values changes: values stored under the old version are never read again and
+# expire. candles 2: archive candles off the timeframe's grid are taken from REST.
+VERSIONS = {"candles": 2}
+
 LOCK_PREFIX = "data:lock:"
 FAIL_PREFIX = "data:fail:"
 LOCK_TTL_MS = 30_000
@@ -50,8 +55,14 @@ Fetch = Callable[[], Awaitable[tuple[bytes, int]]]
 """Produces a value to cache and the seconds to keep it."""
 
 
+def key(name: str) -> str:
+    """The Redis key of a value: ``data:v<version of its family>:<name>``, e.g.
+    ``data:v2:candles:crypto:BTCUSDT:1h:2024-01`` or ``data:v1:calendar``."""
+    return f"data:v{VERSIONS.get(name.partition(':')[0], 1)}:{name}"
+
+
 class Cache:
-    """Values under ``data:v1:<name>``; ``name`` is e.g. ``calendar`` or
+    """Values under ``data:v<version>:<name>`` (see ``key``); ``name`` is e.g. ``calendar`` or
     ``candles:crypto:BTCUSDT:1h:2024-01``."""
 
     def __init__(self, redis: Redis) -> None:
@@ -64,21 +75,21 @@ class Cache:
             return None
         try:
             # redis-py types values as bytes | str; this client never decodes (create_redis).
-            return await self._redis.get(KEY_PREFIX + name)  # ty: ignore[invalid-return-type]
+            return await self._redis.get(key(name))  # ty: ignore[invalid-return-type]
         except _REDIS_ERRORS as exc:
             self._failed(exc)
             return None
 
     async def set(self, name: str, value: bytes, ttl: int) -> None:
         """Stores a value for ``ttl`` seconds; a Redis failure only logs."""
-        await self._store(KEY_PREFIX + name, value, ttl)
+        await self._store(key(name), value, ttl)
 
     async def delete(self, name: str) -> None:
         """Removes a value; a Redis failure only logs."""
         if self._is_down():
             return
         try:
-            await self._redis.delete(KEY_PREFIX + name)
+            await self._redis.delete(key(name))
         except _REDIS_ERRORS as exc:
             self._failed(exc)
 
@@ -97,7 +108,7 @@ class Cache:
             if self._is_down():
                 return (await fetch())[0]
             try:
-                value, failure = await self._redis.mget(KEY_PREFIX + name, FAIL_PREFIX + name)
+                value, failure = await self._redis.mget(key(name), FAIL_PREFIX + name)
                 if value is not None:
                     # redis-py types values as bytes | str; this client never decodes.
                     return value  # ty: ignore[invalid-return-type]

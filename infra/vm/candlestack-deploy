@@ -48,9 +48,9 @@ compose() {
   docker compose -p "$env" -f "$repo/infra/env/compose.yaml" "$@"
 }
 
-# Every backend build brings a new layer of about 250 MB. Images no container uses any more
-# (earlier versions, removed previews) go, so the disk does not fill up; a deploy pulls what
-# it needs again anyway.
+# Every backend build brings a new source layer of about 150 KB, and a dependency layer of
+# about 250 MB when uv.lock changes. Images no container uses any more (earlier versions,
+# removed previews) go, so the disk does not fill up; a deploy pulls what it needs again anyway.
 prune_images() {
   docker image prune --all --force >/dev/null
 }
