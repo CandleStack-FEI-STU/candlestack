@@ -21,7 +21,7 @@ new VM with the same tunnel credentials and turn the old one off.
 
 Every environment is one compose project (`env/compose.yaml`) with three containers. The edge
 Caddy sends `/api/*` of the environment's hostname to its backend and everything else to its
-frontend.
+frontend, and compresses the responses (zstd or gzip) on the way to Cloudflare.
 
 | Container | Image | Reached as | Memory limit |
 | --- | --- | --- | --- |
