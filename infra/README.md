@@ -7,7 +7,7 @@ prod, stage and pull-request preview environments.
 Internet -> Cloudflare (TLS) -> Tunnel -> cloudflared on the VM -> edge Caddy -> environment
 ```
 
-The VM has no open inbound ports. `app`, `stage` and `*` under `candlestack.tech`
+The VM has no open inbound ports. `app`, `stage`, `ssh` and `*` under `candlestack.tech`
 are proxied CNAMEs to the tunnel, so moving to another server does not touch DNS; see
 [Replace the VM](#replace-the-vm) for the swap itself.
 
@@ -138,6 +138,8 @@ key); the header of `vm/candlestack-deploy` lists which key may run what.
 | `edge/` | Caddy that routes each hostname to its environment |
 | `env/compose.yaml` | One environment (prod, stage or `pr-<N>`): backend, frontend and Redis |
 | `agent/` | Server agent for ops: host metrics, containers and preview health as JSON, read-only Docker proxy |
+| `github/` | Snapshot of the organization's GitHub settings: rulesets, environments, Actions policy, security, project |
+| `cloudflare/` | Snapshot of the Cloudflare settings: zone, DNS, Access, tunnel, Workers |
 
 The images of an environment are built from `backend/` and `frontend/` at the repository root.
 

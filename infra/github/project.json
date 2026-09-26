@@ -1,0 +1,214 @@
+{
+  "closed": false,
+  "fields": [
+    {
+      "dataType": "TITLE",
+      "name": "Title"
+    },
+    {
+      "dataType": "ASSIGNEES",
+      "name": "Assignees"
+    },
+    {
+      "dataType": "SINGLE_SELECT",
+      "name": "Status",
+      "options": [
+        {
+          "color": "GRAY",
+          "description": "Ideas and tasks not planned yet",
+          "name": "Backlog"
+        },
+        {
+          "color": "BLUE",
+          "description": "Planned for the current sprint",
+          "name": "To Do"
+        },
+        {
+          "color": "YELLOW",
+          "description": "Someone is working on it",
+          "name": "In Progress"
+        },
+        {
+          "color": "PURPLE",
+          "description": "Pull request open, waiting for review",
+          "name": "Review"
+        },
+        {
+          "color": "GREEN",
+          "description": "Merged or finished",
+          "name": "Done"
+        }
+      ]
+    },
+    {
+      "dataType": "LABELS",
+      "name": "Labels"
+    },
+    {
+      "dataType": "LINKED_PULL_REQUESTS",
+      "name": "Linked pull requests"
+    },
+    {
+      "dataType": "MILESTONE",
+      "name": "Milestone"
+    },
+    {
+      "dataType": "REPOSITORY",
+      "name": "Repository"
+    },
+    {
+      "dataType": "REVIEWERS",
+      "name": "Reviewers"
+    },
+    {
+      "dataType": "PARENT_ISSUE",
+      "name": "Parent issue"
+    },
+    {
+      "dataType": "SUB_ISSUES_PROGRESS",
+      "name": "Sub-issues progress"
+    },
+    {
+      "dataType": "CREATED",
+      "name": "Created"
+    },
+    {
+      "dataType": "UPDATED",
+      "name": "Updated"
+    },
+    {
+      "dataType": "CLOSED",
+      "name": "Closed"
+    },
+    {
+      "configuration": {
+        "duration": 14,
+        "iterations": [
+          {
+            "duration": 14,
+            "startDate": "2026-09-21",
+            "title": "Sprint 1"
+          },
+          {
+            "duration": 14,
+            "startDate": "2026-10-05",
+            "title": "Sprint 2"
+          },
+          {
+            "duration": 14,
+            "startDate": "2026-10-19",
+            "title": "Sprint 3"
+          }
+        ],
+        "startDay": 1
+      },
+      "dataType": "ITERATION",
+      "name": "Sprint"
+    },
+    {
+      "dataType": "SINGLE_SELECT",
+      "name": "Priority",
+      "options": [
+        {
+          "color": "RED",
+          "description": "",
+          "name": "High"
+        },
+        {
+          "color": "ORANGE",
+          "description": "",
+          "name": "Medium"
+        },
+        {
+          "color": "GRAY",
+          "description": "",
+          "name": "Low"
+        }
+      ]
+    }
+  ],
+  "public": false,
+  "readme": null,
+  "repositories": [
+    ".github",
+    "candlestack",
+    "design",
+    "website"
+  ],
+  "shortDescription": null,
+  "teams": [
+    "developers"
+  ],
+  "title": "CandleStack",
+  "views": [
+    {
+      "fields": [
+        "Title",
+        "Assignees",
+        "Status",
+        "Linked pull requests",
+        "Sub-issues progress"
+      ],
+      "filter": null,
+      "groupByFields": [],
+      "layout": "BOARD_LAYOUT",
+      "name": "Board",
+      "number": 2,
+      "verticalGroupByFields": [
+        "Status"
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "enabled": true,
+      "name": "Auto-add sub-issues to project",
+      "number": 4
+    },
+    {
+      "enabled": true,
+      "name": "Auto-add to project",
+      "number": 8
+    },
+    {
+      "enabled": true,
+      "name": "Auto-archive items",
+      "number": 9
+    },
+    {
+      "enabled": true,
+      "name": "Auto-close issue",
+      "number": 3
+    },
+    {
+      "enabled": true,
+      "name": "Code changes requested",
+      "number": 10
+    },
+    {
+      "enabled": true,
+      "name": "Item added to project",
+      "number": 6
+    },
+    {
+      "enabled": true,
+      "name": "Item closed",
+      "number": 1
+    },
+    {
+      "enabled": true,
+      "name": "Item reopened",
+      "number": 7
+    },
+    {
+      "enabled": true,
+      "name": "Pull request linked to issue",
+      "number": 5
+    },
+    {
+      "enabled": true,
+      "name": "Pull request merged",
+      "number": 2
+    }
+  ]
+}
