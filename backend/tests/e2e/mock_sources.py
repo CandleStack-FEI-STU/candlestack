@@ -6,7 +6,7 @@ at it:
 
 - ``api.binance.com``: ``/api/v3/ping``, ``/api/v3/exchangeInfo``, ``/api/v3/klines`` (rows of
   the fixture archives; ``startTime=0`` is the first-candle lookup and gets the recorded
-  ``klines-<SYMBOL>-<tf>-first.json``)
+  ``klines-<SYMBOL>-<interval>-first.json`` of the requested interval)
 - ``data.binance.vision``: ``/data/spot/{monthly,daily}/klines/...`` (the fixture archives and
   their ``.CHECKSUM`` files, 404 for any other)
 - ``paper-api.alpaca.markets``: ``/v2/assets``, ``/v2/calendar``, ``/v2/clock``
@@ -126,11 +126,9 @@ def klines(query: dict[str, str]) -> None:
     start = int(query.get("startTime", 0))
     end = int(query.get("endTime", 2**62))
     limit = min(int(query.get("limit", 500)), KLINES_MAX)
-    first = [
-        name for name in FILES if re.fullmatch(rf"klines-{re.escape(symbol)}-.+-first\.json", name)
-    ]
-    if start == 0 and first:
-        raise Answer(200, fixture_json(first[0])[:limit])
+    first = f"klines-{symbol}-{interval}-first.json"
+    if start == 0 and first in FILES:
+        raise Answer(200, fixture_json(first)[:limit])
     rows = [row for row in kline_rows(symbol, interval) if start <= row[0] <= end]
     raise Answer(200, rows[:limit])
 

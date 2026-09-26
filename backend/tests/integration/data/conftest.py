@@ -92,8 +92,10 @@ class Upstream:
         return self.router.get(f"{BINANCE_API}/api/v3/exchangeInfo").respond(200, content=body)
 
     def first_kline(self, open_ms: int) -> respx.Route:
+        """The first-candle lookup, which asks for the first 1m kline."""
         return self.router.get(
-            f"{BINANCE_API}/api/v3/klines", params={"startTime": "0", "limit": "1"}
+            f"{BINANCE_API}/api/v3/klines",
+            params={"interval": "1m", "startTime": "0", "limit": "1"},
         ).respond(200, json=[kline(open_ms, 60_000)])
 
     def klines(self, start_ms: int, rows: list[list]) -> respx.Route:

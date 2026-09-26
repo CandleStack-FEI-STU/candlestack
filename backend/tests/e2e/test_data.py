@@ -69,7 +69,7 @@ def test_crypto_instrument(http: httpx.Client) -> None:
         "USDT",
     )
     assert body["timeframes"] == ["1m", "5m", "15m", "1h", "4h", "1d"]
-    assert body["available_from"] == 1502928000  # first BTCUSDT candle, 2017-08-17
+    assert body["available_from"] == 1502942400  # first BTCUSDT 1m candle, 2017-08-17T04:00Z
     assert body["max_candles"] == 50000
 
 
@@ -178,8 +178,8 @@ def test_period_out_of_range(http: httpx.Client) -> None:
     assert response.status_code == 422
     body = response.json()
     assert body["type"] == PROBLEMS + "period-out-of-range"
-    assert body["available_from"] == 1502928000
-    assert "Set start to 1502928000 or later." in body["detail"]
+    assert body["available_from"] == 1502942400
+    assert "Set start to 1502942400 or later." in body["detail"]
 
 
 def test_second_call_comes_from_the_cache(http: httpx.Client) -> None:
