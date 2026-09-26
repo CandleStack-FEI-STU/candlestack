@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from importlib.resources import files
 from typing import Any
 
 from fastapi import FastAPI
@@ -39,8 +40,10 @@ OPENAPI_URL = "/api/v1/openapi.json"
 DOCS_URL = "/api/v1/docs"
 # A relative server makes the code examples use the host the docs are opened on.
 SERVERS = [{"url": "/", "description": "This environment"}]
-# Scalar has no option for its footer link, so CSS hides it.
-DOCS_CSS = 'a[href^="https://www.scalar.com"] { display: none !important; }'
+# Pinned: the theme styles Scalar's CSS variables, so upgrade it on purpose (not via Dependabot).
+SCALAR_JS_URL = "https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.72.1"
+# The CandleStack theme: the colours and fonts of the website and the ops page.
+DOCS_CSS = (files("candlestack") / "docs_theme.css").read_text(encoding="utf-8")
 
 
 class CandleStackAPI(FastAPI):
@@ -92,10 +95,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return get_scalar_api_reference(
             openapi_url=OPENAPI_URL,
             title=TITLE,
+            scalar_js_url=SCALAR_JS_URL,
             scalar_favicon_url=ICON_URL,
+            theme="none",
+            layout="modern",
+            custom_css=DOCS_CSS,
+            with_default_fonts=False,
             document_download_type="none",
             show_developer_tools="never",
-            custom_css=DOCS_CSS,
             telemetry=False,
             agent=AgentScalarConfig(disabled=True),
             overrides={"mcp": {"disabled": True}},
