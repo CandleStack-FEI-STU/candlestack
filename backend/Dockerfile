@@ -6,7 +6,7 @@
 # again only when uv.lock changes. Build context: backend/.
 #   docker build -t candlestack-backend --build-arg APP_COMMIT=$(git rev-parse HEAD) backend
 
-FROM ghcr.io/astral-sh/uv:0.11 AS uv
+FROM ghcr.io/astral-sh/uv:0.12 AS uv
 
 # The dependencies alone: this stage is reused until pyproject.toml or uv.lock change.
 FROM python:3.13-slim AS deps
