@@ -38,12 +38,23 @@ inputs:
 runs:
   using: composite
   steps:
+    # Pinned and checked against its SHA-256: this job holds the deploy key and the secrets.
+    # To update, take a release of github.com/cloudflare/cloudflared and the sha256 digest that
+    # GitHub lists for its cloudflared-linux-amd64.deb. Later deploy steps of a job reuse it.
     - name: Install cloudflared
       shell: bash
+      env:
+        VERSION: 2026.9.3
+        SHA256: bc073ef293d504cf5ac533bd0aa1c824ef6b4f358765ccaa6628a8a95cacb4b7
       run: |
-        curl -fsSL -o "$RUNNER_TEMP/cloudflared.deb" \
-          https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-        sudo dpkg -i "$RUNNER_TEMP/cloudflared.deb" >/dev/null
+        if [[ $(cloudflared --version 2>/dev/null) == *"version $VERSION "* ]]; then
+          exit 0
+        fi
+        deb=$RUNNER_TEMP/cloudflared.deb
+        curl -fsSL -o "$deb" \
+          "https://github.com/cloudflare/cloudflared/releases/download/$VERSION/cloudflared-linux-amd64.deb"
+        echo "$SHA256  $deb" | sha256sum --check --quiet
+        sudo dpkg -i "$deb" >/dev/null
 
     - name: Configure SSH
       shell: bash
@@ -55,6 +66,8 @@ runs:
         printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy
         chmod 600 ~/.ssh/deploy
         printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+        # A connection that cannot be made or goes silent fails within a minute or two,
+        # instead of holding the job and the deploy queue behind it.
         cat > ~/.ssh/config <<'EOF'
         Host candlestack
           HostName ssh.candlestack.tech
@@ -63,6 +76,9 @@ runs:
           IdentitiesOnly yes
           StrictHostKeyChecking yes
           ProxyCommand cloudflared access ssh --hostname %h
+          ConnectTimeout 30
+          ServerAliveInterval 15
+          ServerAliveCountMax 4
         EOF
 
     - name: Run ${{ inputs.command }}
@@ -96,13 +112,16 @@ runs:
         if [[ -n $ACCESS_ID ]]; then
           auth=(-H "CF-Access-Client-Id: $ACCESS_ID" -H "CF-Access-Client-Secret: $ACCESS_SECRET")
         fi
+        response=$RUNNER_TEMP/health
         for _ in $(seq 1 30); do
-          body=$(curl -fsS --max-time 5 "${auth[@]}" "$URL" || true)
-          if [[ $body == *"$EXPECT"* ]]; then
+          rm -f "$response"
+          status=$(curl -sS --max-time 5 "${auth[@]}" -o "$response" -w '%{http_code}' "$URL" || true)
+          body=$(cat "$response" 2>/dev/null || true)
+          if [[ $status == 2* && $body == *"$EXPECT"* ]]; then
             echo "$body"
             exit 0
           fi
           sleep 2
         done
-        echo "::error::$URL did not report '$EXPECT' (last response: ${body:-none})"
+        echo "::error::$URL did not report '$EXPECT' (last response: HTTP ${status:-none} ${body:0:300})"
         exit 1

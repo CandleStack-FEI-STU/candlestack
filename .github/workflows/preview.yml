@@ -9,8 +9,17 @@ on:
 
 permissions: {}
 
+# Runs that deploy or remove the preview share one group per pull request, and a newer one
+# cancels the one in progress. Every other run (a label other than "preview", a pull request
+# without it) does nothing and gets a group of its own, so it cancels no deployment.
 concurrency:
-  group: preview-${{ github.event.pull_request.number }}
+  group: >-
+    preview-${{ github.event.pull_request.number }}-${{
+    ((contains(github.event.pull_request.labels.*.name, 'preview') &&
+      github.event.action != 'unlabeled' &&
+      (github.event.action != 'labeled' || github.event.label.name == 'preview')) ||
+     (github.event.action == 'unlabeled' && github.event.label.name == 'preview'))
+    && 'env' || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -52,6 +61,7 @@ jobs:
   deploy:
     needs: [build-backend, build-frontend]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment:
       name: preview
       url: https://pr-${{ github.event.pull_request.number }}-preview.candlestack.tech
@@ -91,6 +101,7 @@ jobs:
       ((github.event.action == 'closed' && contains(github.event.pull_request.labels.*.name, 'preview')) ||
        (github.event.action == 'unlabeled' && github.event.label.name == 'preview'))
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment:
       name: preview
     permissions:
