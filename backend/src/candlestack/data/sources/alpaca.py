@@ -140,12 +140,11 @@ def relabel_daily(frame: pl.DataFrame, sessions: list[Session]) -> pl.DataFrame:
 
 
 def regular_candles(
-    bars: list[Any], timeframe: Timeframe, period: Period, sessions: list[Session]
+    frame: pl.DataFrame, timeframe: Timeframe, period: Period, sessions: list[Session]
 ) -> pl.DataFrame:
-    """Validated candles of the period from raw bars: ``timeframe`` is ``1m`` (bars outside the
-    regular sessions dropped) or ``1d`` (1Day bars relabelled); only candles closed by the end
-    of the period."""
-    frame = parse_bars(bars)
+    """Validated candles of the period from parsed bars (``parse_bars``): ``timeframe`` is
+    ``1m`` (bars outside the regular sessions dropped) or ``1d`` (1Day bars relabelled); only
+    candles closed by the end of the period."""
     if timeframe is Timeframe.D1:
         frame = relabel_daily(frame, sessions)
     frame = resample_sessions(normalise(frame), timeframe, sessions)
@@ -167,6 +166,9 @@ class AlpacaSource:
     name: Source = NAME
     feed: Feed = "iex"
     market = Market.STOCK
+    # A chunk of 1m bars is a month, about 8000 bars parsed from JSON while it is fetched, and
+    # years of them build one 1h request: few at once keep the memory of a request small.
+    chunk_concurrency = 4
 
     def __init__(
         self, settings: Settings, http: httpx.AsyncClient, limiter: RateLimiter, cache: Cache
@@ -231,9 +233,9 @@ class AlpacaSource:
         )
 
     async def fetch_period(self, symbol: str, timeframe: Timeframe, period: Period) -> pl.DataFrame:
-        bars = await self._bars(symbol, timeframe, period.start, period.end)
+        frame = await self._bars(symbol, timeframe, period.start, period.end)
         sessions = await self.sessions()
-        return await to_thread.run_sync(regular_candles, bars, timeframe, period, sessions)
+        return await to_thread.run_sync(regular_candles, frame, timeframe, period, sessions)
 
     async def health(self) -> SourceHealth:
         started = time.perf_counter()
@@ -264,22 +266,23 @@ class AlpacaSource:
         await to_thread.run_sync(_parse_calendar, blob)  # never cache a calendar that fails
         return blob, CALENDAR_TTL
 
-    async def _bars(self, symbol: str, timeframe: Timeframe, start: int, end: int) -> list[Any]:
-        """Every bar of ``[start, end)``, following ``next_page_token``."""
+    async def _bars(self, symbol: str, timeframe: Timeframe, start: int, end: int) -> pl.DataFrame:
+        """Every bar of ``[start, end)`` (``parse_bars``), following ``next_page_token``. Each
+        page is parsed as it arrives, so the JSON objects of only one page are held at a time."""
         params: dict[str, str | int] = {
             "start": _rfc3339(start),
             "end": _rfc3339(end - 1),  # Alpaca's end is inclusive
             "limit": BARS_LIMIT,
         }
-        bars: list[Any] = []
+        pages = []
         while True:
             body = await self._bars_page(
                 symbol, "1Day" if timeframe is Timeframe.D1 else "1Min", params
             )
-            bars.extend(_symbol_bars(body, symbol))
+            pages.append(await to_thread.run_sync(parse_bars, _symbol_bars(body, symbol)))
             token = body.get("next_page_token")
             if not token:
-                return bars
+                return pl.concat(pages)
             params["page_token"] = token
 
     async def _bars_page(
