@@ -8,10 +8,7 @@ Redis is a cache that can be lost at any time.
 
 ## Runtime
 
-stage and the `pr-<N>` previews run the same three containers on one VM. prod switches to this
-layout, and makes the API reference public, with its next release; until then it runs v0.1.0,
-the placeholder page (see
-[the transition](../infra/README.md#transition-to-the-backend--frontend-layout)). Deployment,
+prod, stage and the `pr-<N>` previews run the same three containers on one VM. Deployment,
 hosts and secrets are described in [infra/README.md](../infra/README.md).
 
 ```mermaid
@@ -44,7 +41,7 @@ flowchart LR
 | `GET /api/health` | liveness + Redis; used by deploys and the ops page; not versioned |
 | `GET /api/health/sources` | reachability of Binance and Alpaca (cached 60 s) |
 | `GET /api/v1/data/...` | instruments and candles, see [data.md](data.md) |
-| `GET /api/v1/docs` | API reference (Scalar); public on prod from its next release |
+| `GET /api/v1/docs` | API reference (Scalar); public on prod |
 | `GET /api/v1/openapi.json` | OpenAPI schema; snapshot committed as [openapi.json](openapi.json) |
 
 - Responses are JSON. Pydantic response models serialize themselves; the candles body, up to
@@ -166,6 +163,6 @@ Environment variables, read by pydantic-settings without a prefix. All are docum
 | Gaps are reported, never filled | filled candles would be invented prices |
 | Explicit limits instead of silent truncation (50000 candles, per-IP and per-source rate limits) | the client always gets exactly what it asked for or an error saying what to change |
 | A fingerprint over every candle set | later experiments can detect that a source changed its data |
-| Prod API and docs public (per-IP rate limit) from prod's next release; stage and previews behind Cloudflare Access | anyone can try the released API without an account; unreleased builds stay team-only |
+| Prod API and docs public (per-IP rate limit); stage and previews behind Cloudflare Access | anyone can try the released API without an account; unreleased builds stay team-only |
 | granian instead of uvicorn, ty instead of mypy, Polars instead of pandas | faster tools with the same role |
 | Coverage and TDD are team conventions, not CI gates | CI stays fast; test quality is checked in review |
