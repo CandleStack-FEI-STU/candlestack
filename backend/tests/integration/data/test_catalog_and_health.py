@@ -26,7 +26,7 @@ async def test_search_both_markets(service: DataService, upstream):
     assert ids(await service.search("apple")) == ["stock:AAPL"]
     assert ids(await service.search("brkb")) == ["stock:BRK.B"]
     assert ids(await service.search("币安")) == ["crypto:币安人生USDT"]
-    assert ids(await service.search("eth", Market.CRYPTO)) == ["crypto:ETHBTC", "crypto:ETHUSDT"]
+    assert ids(await service.search("eth", Market.CRYPTO)) == ["crypto:ETHUSDT", "crypto:ETHBTC"]
     assert ids(await service.search("eth", Market.STOCK)) == []
     assert await service.search("  ") == []
     assert (catalog.call_count, assets.call_count) == (1, 1)
