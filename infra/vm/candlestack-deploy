@@ -10,6 +10,9 @@
 # "up" and "agent" read a GHCR token from the first line of stdin and use it only for this
 # one pull. "up" then reads the backend's secrets as KEY=VALUE lines (only ALPACA_KEY_ID and
 # ALPACA_SECRET_KEY) and passes them to compose in its environment: no file, never printed.
+# "up prod" runs compose with infra/env/compose.yaml of the release tag named by <version>
+# instead of this checkout's copy (see release_compose_file); every other "up" uses this
+# checkout's file, same as before.
 # "edge" updates the checkout to origin/main and reloads the edge Caddy.
 # "agent" (re)starts the server agent from infra/agent/compose.yaml of that checkout.
 set -euo pipefail
@@ -19,6 +22,15 @@ scope=${1:?scope}
 read -r action env version backend frontend _ <<<"${SSH_ORIGINAL_COMMAND:-}"
 repo=/opt/candlestack
 image_re='^ghcr\.io/candlestack-fei-stu/candlestack/[a-z0-9._-]+@sha256:[0-9a-f]{64}$'
+compose_file=$repo/infra/env/compose.yaml
+
+# Temporary directories to remove on exit (DOCKER_CONFIG of pull(), the tag's compose file
+# of release_compose_file()).
+cleanup_paths=()
+cleanup() {
+  rm -rf "${cleanup_paths[@]}"
+}
+trap cleanup EXIT
 
 fail() {
   echo "candlestack-deploy: $*" >&2
@@ -45,7 +57,7 @@ redis_memory() {
 }
 
 compose() {
-  docker compose -p "$env" -f "$repo/infra/env/compose.yaml" "$@"
+  docker compose -p "$env" -f "$compose_file" "$@"
 }
 
 # Every backend build brings a new source layer of about 150 KB, and a dependency layer of
@@ -53,6 +65,34 @@ compose() {
 # removed previews) go, so the disk does not fill up; a deploy pulls what it needs again anyway.
 prune_images() {
   docker image prune --all --force >/dev/null
+}
+
+# prod must start with the deploy files of the tagged release, not whatever main's checkout
+# has today (edge resets it to origin/main on every stage deploy). Validates that <version> is
+# a release tag reachable from main, fetches it into this checkout (never the working tree,
+# so the running script is untouched) and points compose_file at that tag's infra/env/compose.yaml.
+release_compose_file() {
+  local tag=$1 commit dir
+  [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]] ||
+    fail "prod version must be a release tag (vX.Y.Z): '$tag'"
+  git -C "$repo" fetch --quiet --no-tags origin tag "$tag" ||
+    fail "release tag '$tag' not found on origin"
+  commit=$(git -C "$repo" rev-parse --verify --quiet "refs/tags/$tag^{commit}") ||
+    fail "release tag '$tag' does not point to a commit"
+  # The checkout is a shallow clone (see cloud-init.yaml): deepen it so main's real history,
+  # not just its latest commit, is available to check the tag against.
+  if [ "$(git -C "$repo" rev-parse --is-shallow-repository)" = true ]; then
+    git -C "$repo" fetch --quiet --unshallow origin main
+  else
+    git -C "$repo" fetch --quiet origin main
+  fi
+  git -C "$repo" merge-base --is-ancestor "$commit" origin/main ||
+    fail "release tag '$tag' is not on main's history"
+  dir=$(mktemp -d)
+  cleanup_paths+=("$dir")
+  git -C "$repo" show "$commit:infra/env/compose.yaml" >"$dir/compose.yaml" ||
+    fail "release tag '$tag' has no infra/env/compose.yaml"
+  compose_file=$dir/compose.yaml
 }
 
 check_image() {
@@ -84,7 +124,7 @@ pull() {
   local image
   DOCKER_CONFIG=$(mktemp -d)
   export DOCKER_CONFIG
-  trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+  cleanup_paths+=("$DOCKER_CONFIG")
   docker login ghcr.io --username deploy --password-stdin <<<"$token" >/dev/null
   for image in "$@"; do
     docker pull --quiet "$image"
@@ -97,6 +137,9 @@ case "${action:-}" in
     [[ $version =~ ^[A-Za-z0-9._-]{1,64}$ ]] || fail "bad version: '$version'"
     check_image "$backend"
     check_image "$frontend"
+    if [ "$env" = prod ]; then
+      release_compose_file "$version"
+    fi
     read_token
     read_secrets
     pull "$backend" "$frontend"
