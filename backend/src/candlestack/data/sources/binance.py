@@ -157,10 +157,20 @@ def parse_klines(rows: object, end: int | None = None) -> pl.DataFrame:
     return frame.with_columns(ts=to_seconds("ts")).select(_COLUMNS)
 
 
-def _clean(frame: pl.DataFrame, period: Period) -> pl.DataFrame:
+def off_grid_span(frame: pl.DataFrame, timeframe: Timeframe) -> tuple[int, int] | None:
+    """The bins ``[start, end)`` from the first to the last candle that does not open on the
+    timeframe's UTC grid, or ``None`` when every candle does."""
+    step = timeframe.seconds
+    off = frame.filter(pl.col("ts") % step != 0)["ts"].sort()
+    if off.is_empty():
+        return None
+    return off[0] // step * step, off[-1] // step * step + step
+
+
+def _clean(frame: pl.DataFrame, timeframe: Timeframe, period: Period) -> pl.DataFrame:
     frame = slice_range(normalise(frame), period.start, period.end)
     try:
-        validate(frame)
+        validate(frame, timeframe)
     except DataIntegrityError as exc:
         raise DataIntegrityError(exc.detail, source=NAME) from None
     return frame
@@ -220,7 +230,7 @@ class BinanceSource:
             frame = await self._day(symbol, timeframe, period.start)
         else:
             frame = await self._klines(symbol, timeframe, period.start, period.end)
-        return await to_thread.run_sync(_clean, frame, period)
+        return await to_thread.run_sync(_clean, frame, timeframe, period)
 
     async def health(self) -> SourceHealth:
         started = time.perf_counter()
@@ -272,7 +282,34 @@ class BinanceSource:
                 f"Binance archive {name} does not match its published SHA-256 checksum.",
                 source=NAME,
             )
-        return await to_thread.run_sync(parse_archive, archive.content, name)
+        frame = await to_thread.run_sync(parse_archive, archive.content, name)
+        return await self._onto_grid(symbol, timeframe, frame, name)
+
+    async def _onto_grid(
+        self, symbol: str, timeframe: Timeframe, frame: pl.DataFrame, name: str
+    ) -> pl.DataFrame:
+        """The archive's candles, with the span of those that open off the timeframe's UTC grid
+        taken from REST instead.
+
+        A few archives hold such candles: BTCUSDT 1m of 2017-12-04 to 12-18 opens at hh:mm:20,
+        and for two days after the maintenance of 2018-02-08 the 1m to 1h candles of BTCUSDT,
+        ETHUSDT and other pairs open off the grid (1h at hh:28:14). REST serves these periods on
+        the grid. The span costs a few REST calls, once per cached chunk.
+        """
+        span = off_grid_span(frame, timeframe)
+        if span is None:
+            return frame
+        start, end = span
+        logger.warning(
+            "Binance archive %s has candles off the %s grid from %s to %s: taking them from REST",
+            name,
+            timeframe,
+            f"{utc(start):%Y-%m-%dT%H:%M}Z",
+            f"{utc(end):%Y-%m-%dT%H:%M}Z",
+        )
+        rest = await self._klines(symbol, timeframe, start, end)
+        kept = frame.filter((pl.col("ts") < start) | (pl.col("ts") >= end))
+        return pl.concat([kept, rest])
 
     async def _klines(
         self, symbol: str, timeframe: Timeframe, start: int, end: int

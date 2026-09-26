@@ -61,12 +61,18 @@ _RULES = [
 ]
 
 
-def validate(df: pl.DataFrame) -> None:
+def validate(df: pl.DataFrame, timeframe: Timeframe | None = None) -> None:
     """Checks a normalised frame; raises ``DataIntegrityError`` naming every broken rule, how
-    many candles break it and the first one."""
-    flags = df.select("ts", *(rule.alias(f"rule{i}") for i, (_, rule) in enumerate(_RULES)))
+    many candles break it and the first one. With ``timeframe`` (fixed bins) every candle must
+    also open on that timeframe's UTC grid."""
+    rules = list(_RULES)
+    if timeframe is not None:
+        rules.append(
+            (f"an open time off the {timeframe} UTC grid", pl.col("ts") % timeframe.seconds != 0)
+        )
+    flags = df.select("ts", *(rule.alias(f"rule{i}") for i, (_, rule) in enumerate(rules)))
     problems = []
-    for i, (what, _) in enumerate(_RULES):
+    for i, (what, _) in enumerate(rules):
         bad = flags.filter(pl.col(f"rule{i}"))["ts"]
         if bad.len():
             has = "candle has" if bad.len() == 1 else "candles have"

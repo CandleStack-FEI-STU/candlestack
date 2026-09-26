@@ -19,6 +19,7 @@ from candlestack.data.sources import base
 from candlestack.data.sources.alpaca import parse_assets, parse_bars, regular_candles, relabel_daily
 from candlestack.data.sources.base import DAY, Period, plan_periods, spend
 from candlestack.data.sources.binance import (
+    off_grid_span,
     parse_archive,
     parse_exchange_info,
     parse_klines,
@@ -67,6 +68,26 @@ def test_archive_with_microsecond_open_times() -> None:
     assert frame.height == 744
     assert frame.row(0) == (utc("2025-01-01"), 93576.0, 94509.42, 93489.03, 94401.14, 755.9901)
     assert frame["ts"][-1] == utc("2025-01-31T23:00")
+
+
+def test_archive_with_candles_off_the_grid() -> None:
+    # After the maintenance of 2018-02-08 the 1h candles open at hh:28:14 for two days.
+    name = "BTCUSDT-1h-2018-02.zip"
+
+    frame = parse_archive(fixture_bytes(f"binance/archive/monthly/{name}"), name)
+
+    assert frame.height == 640
+    assert frame.filter(pl.col("ts") % HOUR != 0)["ts"][0] == utc("2018-02-09T09:28:14")
+    assert off_grid_span(frame, Timeframe.H1) == (utc("2018-02-09T09:00"), utc("2018-02-11T04:00"))
+
+
+def test_archive_on_the_grid_has_no_span_to_replace() -> None:
+    name = "BTCUSDT-1h-2024-01.zip"
+
+    frame = parse_archive(fixture_bytes(f"binance/archive/monthly/{name}"), name)
+
+    assert off_grid_span(frame, Timeframe.H1) is None
+    assert off_grid_span(frame.head(0), Timeframe.H1) is None
 
 
 def test_open_time_unit_is_decided_per_value() -> None:

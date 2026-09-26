@@ -180,6 +180,9 @@ and cached (see [Cache](#cache)); the chunks are joined, resampled for stocks an
   open.
 - REST `startTime` and `endTime` are both inclusive: a chunk `[start, end)` sends
   `endTime = end - 1 ms`.
+- A few archives hold candles that open off the timeframe's UTC grid (see
+  [Facts](#binance)). REST has these periods on the grid, so the span from the first to the
+  last such candle of an archive is taken from `GET /api/v3/klines` instead.
 - `available_from`: `GET /api/v3/klines?interval=1m&startTime=0&limit=1`.
 
 **Stocks** (`ALPACA_DATA_URL`, `ALPACA_API_URL`)
@@ -226,6 +229,7 @@ Source data is checked before it is cached:
 - `low <= min(open, close)` and `high >= max(open, close)`
 - volume is not negative
 - timestamps strictly increase
+- crypto candles open on the timeframe's UTC grid
 - Binance archives match their checksum
 
 Data that fails is not cached, the failure is logged, and the request gets 502
@@ -494,6 +498,13 @@ use are in `backend/tests/fixtures/` (see its README).
   `<sha256 hex>  <file name>` without a trailing newline; all downloaded archives matched.
   Monthly and daily files hold identical rows, and 1m summed into 1h and 1h into 1d reproduce
   the archives exactly (OHLCV, trades, taker volumes).
+- **Archives off the grid.** Scans of the monthly archives (BTCUSDT 1h and 15m and ETHUSDT 1h
+  from 2017-08 to 2026-08, BTCUSDT 1m of 2017-12 and 2018-02) found candles whose open time is
+  no multiple of the timeframe in two periods: BTCUSDT 1m from 2017-12-04 06:00 to 12-18 10:00
+  at `hh:mm:20` (20401 rows), and the two days after the maintenance of 2018-02-08 (from
+  2018-02-09T09:28:14Z, 1m to 1h of BTCUSDT, ETHUSDT and BNBUSDT; 1h at `hh:28:14`). 4h and 1d
+  are on the grid. REST returns both periods on the grid, with the maintenance as missing
+  candles (1h from 2018-02-09T10:00).
 - **Publication lag.** A daily archive appears 01:28-03:26 UTC the next day. A monthly archive
   appears 1-7 days after the month, on the following Monday. Until then the days of a closed
   month come from daily archives, and today (and yesterday before its archive) from REST.
