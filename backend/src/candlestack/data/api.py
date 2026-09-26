@@ -45,6 +45,8 @@ router = APIRouter()
 data = APIRouter(prefix="/api/v1/data", tags=["data"])
 health = APIRouter(tags=["health"])
 
+# Patched by tests to move the clock.
+_time = time.time
 # 9999-12-31T23:59:59Z: a larger number is not epoch seconds (most likely milliseconds).
 _MAX_EPOCH = 253402300799
 _DIGITS = re.compile(r"[0-9]+")
@@ -328,7 +330,7 @@ async def candles(
     """
     now = end is None
     if end is None:
-        end = int(time.time())
+        end = int(_time())
     if start >= end:
         raise RequestValidationError(
             [

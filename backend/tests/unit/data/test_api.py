@@ -376,7 +376,7 @@ def test_start_formats(
 def test_end_formats_and_default(
     client: TestClient, service: FakeDataService, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("candlestack.data.api.time.time", lambda: DAY_END + 0.7)
+    monkeypatch.setattr("candlestack.data.api._time", lambda: DAY_END + 0.7)
     base = "/api/v1/data/candles?instrument=stock:AAPL&timeframe=1h&start=2024-06-03"
 
     client.get(f"{base}&end=2024-06-03T20:00:00Z")
@@ -448,7 +448,7 @@ def test_candles_validation(
 def test_start_in_the_future(
     client: TestClient, service: FakeDataService, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("candlestack.data.api.time.time", lambda: DAY_START)
+    monkeypatch.setattr("candlestack.data.api._time", lambda: DAY_START)
 
     response = client.get(
         f"/api/v1/data/candles?instrument=stock:AAPL&timeframe=1h&start={DAY_START}"
