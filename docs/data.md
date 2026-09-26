@@ -415,7 +415,7 @@ Invalid parameters, all of them at once:
 }
 ```
 
-`start` before the first candle:
+`start` before the first candle (`available_to` is the request time):
 
 ```json
 {
