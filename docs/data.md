@@ -302,11 +302,11 @@ again. Keys:
 | --- | --- | --- |
 | `data:v1:catalog:<market>` | instrument list of the market with its fetch time (compact JSON) | 7 days; refreshed when older than 24 h, the old list is served while one background task refreshes it |
 | `data:v1:calendar` | NYSE sessions from 2016 to the end of next year | 7 days |
-| `data:v1:candles:<instrument>:<base timeframe>:<chunk>` | one chunk of validated candles, Arrow IPC + zstd | see below |
+| `data:v2:candles:<instrument>:<base timeframe>:<chunk>` | one chunk of validated candles, Arrow IPC + zstd | see below |
 | `data:v1:first:<instrument>` | `available_from` | 7 days; 1 hour while the instrument has no candle |
 | `data:v1:health:<source>` | reachability of the source | 60 s |
-| `data:lock:<key without data:v1:>` | single-flight lock for a key being fetched | 30 s |
-| `data:fail:<key without data:v1:>` | the error of a failed fetch of that key (source unavailable or invalid data) | 10 s, or the error's `Retry-After` when shorter |
+| `data:lock:<key without data:vN:>` | single-flight lock for a key being fetched | 30 s |
+| `data:fail:<key without data:vN:>` | the error of a failed fetch of that key (source unavailable or invalid data) | 10 s, or the error's `Retry-After` when shorter |
 | `data:rl:client:<ip>:<minute>`, `data:rl:alpaca:<minute>`, `data:rl:binance:<minute>` | fixed-window counters; `<ip>` is an IPv4 address or an IPv6 /64 network, `<minute>` is Unix time // 60 | 61 s |
 
 | Chunk | `<chunk>` | Crypto | Stock |
@@ -329,7 +329,11 @@ again. Keys:
   a few ms). A process whose copy is older than 24 h first adopts a newer list from Redis.
 - When Redis fails, values are fetched from the source and not cached for 5 s at a time; a
   Redis failure never fails a request by itself.
-- `v1` changes when a value format changes, because Redis keeps its contents across deploys.
+- The version (`v1`, `v2`) is per key family and changes when the meaning or format of its
+  values changes, because Redis keeps its contents across deploys: values under the old
+  version are never read again and expire. `candles` is `v2` since archive candles off the
+  grid are taken from REST (see [What is fetched](#what-is-fetched)); the chunks cached before
+  that hold them as delivered.
 - `GET /api/health/sources` reports `ok` or `error` per source (Binance `GET /api/v3/ping`,
   Alpaca `GET /v2/clock`) from the 60 s health keys.
 

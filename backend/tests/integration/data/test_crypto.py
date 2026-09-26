@@ -20,7 +20,10 @@ from candlestack.data import (
     Timeframe,
     TooManyCandles,
     build_data_service,
+    normalise,
 )
+from candlestack.data.cache import encode_chunk
+from candlestack.data.sources.binance import parse_archive
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]
 
@@ -177,6 +180,34 @@ async def test_archive_candles_off_the_grid_are_taken_from_rest(service: DataSer
     assert (archive.call_count, rest.call_count) == (1, 1)  # the repaired month is cached
 
 
+async def test_chunks_cached_before_the_off_grid_repair_are_not_read(
+    service: DataService, upstream, redis
+):
+    # Such chunks hold the archive's candles as delivered, off the grid; they are under
+    # data:v1:candles and expire there, the repaired ones are under data:v2:candles.
+    upstream.exchange_info()
+    upstream.first_kline(LISTED_MS)
+    name = "BTCUSDT-1h-2018-02.zip"
+    archive, _ = upstream.fixture_archive("monthly", name)
+    upstream.klines(
+        utc("2018-02-09T09:00") * 1000,
+        json.loads(
+            upstream.fixture_bytes("binance/rest/klines-BTCUSDT-1h-2018-02-09-maintenance.json")
+        ),
+    )
+    content = upstream.fixture_bytes(f"binance/archive/monthly/{name}")
+    stale = normalise(parse_archive(content, name))
+    await redis.set(
+        "data:v1:candles:crypto:BTCUSDT:1h:2018-02", encode_chunk(stale, utc("2018-03-01"))
+    )
+
+    candles = await service.candles(BTC, Timeframe.H1, utc("2018-02-09"), utc("2018-02-12"))
+
+    assert [t for t in candles.frame["ts"].to_list() if t % HOUR] == []
+    assert archive.call_count == 1
+    assert await redis.exists("data:v2:candles:crypto:BTCUSDT:1h:2018-02") == 1
+
+
 async def test_archive_with_a_wrong_checksum_is_never_cached(service: DataService, upstream, redis):
     upstream.exchange_info()
     upstream.first_kline(LISTED_MS)
@@ -198,7 +229,7 @@ async def test_archive_with_a_wrong_checksum_is_never_cached(service: DataServic
         assert 0 < await redis.ttl(failure) <= 10
 
     assert archive.call_count == 2  # the second attempt got the kept error
-    assert await redis.exists("data:v1:candles:crypto:BTCUSDT:1h:2024-01") == 0
+    assert await redis.exists("data:v2:candles:crypto:BTCUSDT:1h:2024-01") == 0
 
 
 async def test_a_failed_fetch_ends_every_request_waiting_for_it(
