@@ -8,8 +8,8 @@
 # message that says what was expected; what it prints on success is shown after "ok". All
 # checks run; the script fails if any failed. To add one, write the function and append its
 # name to CHECKS. The data checks go through the deployed API to the real sources: keep them
-# few, candle requests count against CLIENT_RATE_LIMIT and every Alpaca call against the
-# environment's Alpaca budget.
+# few, candle and instrument requests count against CLIENT_RATE_LIMIT and every Alpaca call
+# against the environment's Alpaca budget.
 # shellcheck disable=SC2329 # the checks are called by name from the loop at the end
 set -euo pipefail
 

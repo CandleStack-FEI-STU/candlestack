@@ -1,4 +1,4 @@
-"""The client rate limit of the candles endpoint, counted in a real Redis at REDIS_URL."""
+"""The client rate limit of the data endpoints, counted in a real Redis at REDIS_URL."""
 
 import os
 import uuid
@@ -46,11 +46,19 @@ def test_client_rate_limit(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     app = create_app(settings)
     app.dependency_overrides[get_data_service] = lambda: NoCandles()
-    # New addresses for every run: the counters of an earlier run are still in Redis.
-    one, other = ({"CF-Connecting-IP": f"2001:db8::{uuid.uuid4().hex[:4]}:{n}"} for n in range(2))
+    # New /64 networks for every run: the counters of an earlier run are still in Redis.
+    network = f"2001:db8:{uuid.uuid4().hex[:4]}"
+    one, same_network, other = (
+        {"CF-Connecting-IP": address}
+        for address in (f"{network}:1::1", f"{network}:1::2", f"{network}:2::1")
+    )
 
     with TestClient(app) as client:
-        responses = [client.get(f"{CANDLES}&end={NOW}", headers=one) for _ in range(3)]
+        responses = [
+            client.get(f"{CANDLES}&end={NOW}", headers=one),
+            client.get(f"{CANDLES}&end={NOW}", headers=same_network),
+            client.get(f"{CANDLES}&end={NOW}", headers=one),
+        ]
         elsewhere = client.get(f"{CANDLES}&end={NOW}", headers=other)
 
     assert [response.status_code for response in responses] == [200, 200, 429]
