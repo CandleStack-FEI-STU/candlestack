@@ -1,6 +1,5 @@
 """The client rate limit of the data endpoints, counted in a real Redis at REDIS_URL."""
 
-import os
 import uuid
 
 import polars as pl
@@ -37,11 +36,11 @@ class NoCandles:
         )
 
 
-def test_client_rate_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_client_rate_limit(monkeypatch: pytest.MonkeyPatch, redis_url: str) -> None:
     monkeypatch.setattr("candlestack.core.ratelimit._time", lambda: NOW + 0.5)
     settings = Settings(
         app_env="test",
-        redis_url=os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
+        redis_url=redis_url,
         client_rate_limit=2,
     )
     app = create_app(settings)

@@ -1,6 +1,8 @@
-# Infrastructure, CI and the dependency set are reviewed by the tech lead.
+# A pull request that changes infrastructure, CI, the toolchain or the dependency set requests
+# a review from the tech lead (a request, not a merge requirement: see CONTRIBUTING.md).
 /infra/                  @ArsenLabovich
 /.github/                @ArsenLabovich
 /backend/pyproject.toml  @ArsenLabovich
 /backend/uv.lock         @ArsenLabovich
+/backend/.python-version @ArsenLabovich
 Dockerfile               @ArsenLabovich

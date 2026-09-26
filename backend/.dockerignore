@@ -1,9 +1,9 @@
-# Only pyproject.toml, uv.lock, src/ and granian-logging.json go into the image.
+# Allowlist: the build context is pyproject.toml, uv.lock, src/ and granian-logging.json, all
+# that any stage (dev included) needs.
+*
+!pyproject.toml
+!uv.lock
+!src
+!granian-logging.json
 **/__pycache__
 **/*.pyc
-.venv
-.pytest_cache
-.ruff_cache
-tests
-Dockerfile
-.dockerignore

@@ -8,7 +8,6 @@ fixture (``Upstream``).
 import hashlib
 import io
 import json
-import os
 import zipfile
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
@@ -167,11 +166,6 @@ class Upstream:
             for path in paths
             for bar in json.loads(fixture_bytes(f"alpaca/{path}"))["bars"]["AAPL"]
         ]
-
-
-@pytest.fixture
-def redis_url() -> str:
-    return os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
 
 @pytest.fixture

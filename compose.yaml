@@ -1,6 +1,6 @@
 # Local development: the backend with auto-reload on http://localhost:8000 and its Redis.
 #   cp .env.example .env    # optional; add Alpaca paper keys there
-#   docker compose -f compose.dev.yaml up --build
+#   docker compose up --build
 # API reference: http://localhost:8000/api/v1/docs
 name: candlestack-dev
 
@@ -26,6 +26,6 @@ services:
   redis:
     image: redis:8-alpine
     command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru"]
-    # Published for the integration tests: REDIS_URL defaults to redis://localhost:6379/0.
+    # Published for the integration tests, which use redis://127.0.0.1:6379/15 by default.
     ports:
       - 127.0.0.1:6379:6379

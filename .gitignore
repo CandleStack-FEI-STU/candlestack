@@ -5,6 +5,19 @@ __pycache__/
 .venv/
 .pytest_cache/
 .ruff_cache/
+.coverage
+htmlcov/
+dist/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+# Crash dumps of Git Bash and other MSYS programs
+*.stackdump
+
+# Local git worktrees
+.claude/worktrees/
 
 # Local settings, never committed
 .env
