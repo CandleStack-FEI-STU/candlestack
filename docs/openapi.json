@@ -741,7 +741,7 @@
     }
   },
   "info": {
-    "description": "HTTP API of CandleStack, a lab for experiments on financial time series. Market data covers crypto from Binance and US stocks from Alpaca. Times in responses are UTC epoch seconds; requests also accept ISO 8601. Errors are RFC 9457 problem details (`application/problem+json`).",
+    "description": "<img src=\"/favicon.svg\" alt=\"CandleStack\" width=\"40\" height=\"40\">\n\nHTTP API of CandleStack, a lab for experiments on financial time series. Market data covers crypto from Binance and US stocks from Alpaca. Times in responses are UTC epoch seconds; requests also accept ISO 8601. Errors are RFC 9457 problem details (`application/problem+json`).\n\n[Website](https://candlestack.tech) \u00b7 [Source code](https://github.com/CandleStack-FEI-STU/candlestack) \u00b7 [Status](https://ops.candlestack.tech)",
     "title": "CandleStack API",
     "version": "snapshot"
   },
@@ -1159,5 +1159,11 @@
         ]
       }
     }
-  }
+  },
+  "servers": [
+    {
+      "description": "This environment",
+      "url": "/"
+    }
+  ]
 }
