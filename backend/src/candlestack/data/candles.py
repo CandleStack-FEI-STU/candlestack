@@ -174,7 +174,7 @@ def find_gaps(
     missing = (
         pl.DataFrame({"t": expected}, schema={"t": pl.Int64})
         .with_row_index("i")
-        .filter(pl.col("t").is_in(present).not_())
+        .filter(pl.col("t").is_in(present.implode()).not_())
     )
     runs = (
         missing.group_by(

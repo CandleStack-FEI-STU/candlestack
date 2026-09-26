@@ -373,6 +373,13 @@ def test_find_gaps_merges_neighbours() -> None:
     assert gaps == Gaps(ranges=[(2 * HOUR, 5 * HOUR), (7 * HOUR, 8 * HOUR)], total=4)
 
 
+def test_find_gaps_prints_no_polars_deprecation(capfd: pytest.CaptureFixture[str]) -> None:
+    # Polars reports some deprecations from its engine straight to stderr, past filterwarnings.
+    find_gaps([0], [k * HOUR for k in range(3)], Timeframe.H1)
+
+    assert "DeprecationWarning" not in capfd.readouterr().err
+
+
 def test_find_gaps_none() -> None:
     expected = [k * HOUR for k in range(3)]
 
