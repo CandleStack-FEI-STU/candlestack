@@ -3,16 +3,20 @@
 # Every key has a scope and can only run these commands for its own environments:
 #
 #   scope    command
-#   prod     up prod <version> <backend@digest> <frontend@digest>
+#   prod     up prod <version>
 #   stage    up stage <version> <backend@digest> <frontend@digest>   |   edge   |   agent <image@digest>
 #   preview  up pr-<N> <version> <backend@digest> <frontend@digest>  |   down pr-<N>
 #
 # "up" and "agent" read a GHCR token from the first line of stdin and use it only for this
 # one pull. "up" then reads the backend's secrets as KEY=VALUE lines (only ALPACA_KEY_ID and
 # ALPACA_SECRET_KEY) and passes them to compose in its environment: no file, never printed.
-# "up prod" runs compose with infra/env/compose.yaml of the release tag named by <version>
-# instead of this checkout's copy (see release_compose_file); every other "up" uses this
-# checkout's file, same as before.
+# Once the containers run, "up" prints "images <backend@digest> <frontend@digest>".
+# "up stage" also records its images in the stage record (see stage_images). "up prod" takes
+# no images: it runs the ones stage last ran for the commit of the release tag named by
+# <version>, as that record has them. Any workflow that may write packages can move a registry
+# tag, but only the stage key writes this record, and only main's workflow holds the stage key.
+# "up prod" runs compose with infra/env/compose.yaml of the release tag instead of this
+# checkout's copy (see release_compose_file); every other "up" uses this checkout's file.
 # "edge" updates the checkout to origin/main and reloads the edge Caddy.
 # "agent" (re)starts the server agent from infra/agent/compose.yaml of that checkout.
 set -euo pipefail
@@ -23,6 +27,9 @@ read -r action env version backend frontend _ <<<"${SSH_ORIGINAL_COMMAND:-}"
 repo=/opt/candlestack
 image_re='^ghcr\.io/candlestack-fei-stu/candlestack/[a-z0-9._-]+@sha256:[0-9a-f]{64}$'
 compose_file=$repo/infra/env/compose.yaml
+# One line "<version> <backend@digest> <frontend@digest>" per "up stage", in the deploy user's
+# home: outside the checkout, which "edge" resets.
+stage_images=${HOME:?}/stage-images
 
 # Temporary directories to remove on exit (DOCKER_CONFIG of pull(), the tag's compose file
 # of release_compose_file()).
@@ -70,7 +77,8 @@ prune_images() {
 # prod must start with the deploy files of the tagged release, not whatever main's checkout
 # has today (edge resets it to origin/main on every stage deploy). Validates that <version> is
 # a release tag reachable from main, fetches it into this checkout (never the working tree,
-# so the running script is untouched) and points compose_file at that tag's infra/env/compose.yaml.
+# so the running script is untouched), points compose_file at that tag's infra/env/compose.yaml
+# and sets release_commit to the tag's commit.
 release_compose_file() {
   local tag=$1 commit dir
   [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]] ||
@@ -96,6 +104,16 @@ release_compose_file() {
   git -C "$repo" show "$commit:infra/env/compose.yaml" >"$dir/compose.yaml" ||
     fail "release tag '$tag' has no infra/env/compose.yaml"
   compose_file=$dir/compose.yaml
+  release_commit=$commit
+}
+
+# stage_images_of <commit>: sets backend and frontend to the images of the last "up stage
+# main-<commit>" in the stage record.
+stage_images_of() {
+  local line
+  line=$(grep "^main-$1 " "$stage_images" 2>/dev/null | tail -n 1) || true
+  [ -n "$line" ] || fail "stage has not run $1: release a commit of main that stage deployed"
+  read -r _ backend frontend _ <<<"$line"
 }
 
 check_image() {
@@ -138,17 +156,24 @@ case "${action:-}" in
   up)
     may_touch "$env" || fail "the $scope key may not deploy '$env'"
     [[ $version =~ ^[A-Za-z0-9._-]{1,64}$ ]] || fail "bad version: '$version'"
+    if [ "$env" = prod ]; then
+      [ -z "$backend$frontend" ] ||
+        fail "up prod takes no images: it runs the ones stage ran for the release's commit"
+      release_compose_file "$version"
+      stage_images_of "$release_commit"
+    fi
     check_image "$backend"
     check_image "$frontend"
-    if [ "$env" = prod ]; then
-      release_compose_file "$version"
-    fi
     read_token
     read_secrets
     pull "$backend" "$frontend"
     redis_memory "$env"
     ENV_NAME=$env APP_VERSION=$version BACKEND_IMAGE=$backend FRONTEND_IMAGE=$frontend \
       compose up --detach --remove-orphans
+    if [ "$env" = stage ]; then
+      echo "$version $backend $frontend" >>"$stage_images"
+    fi
+    echo "images $backend $frontend"
     prune_images
     ;;
   down)

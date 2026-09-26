@@ -14,6 +14,7 @@ trap 'rm -rf "$work"' EXIT
 # Fake docker and git: every call is a line "<tool> <args>". docker also records the token
 # of the login (its stdin) and where the login is kept, and for compose the first line of a
 # compose file outside the checkout and the variables the deploy script gives it.
+# FAKE_DOCKER=fail-up: "compose up" fails.
 mkdir "$work/bin"
 cat >"$work/bin/docker" <<'EOF'
 #!/usr/bin/env bash
@@ -30,6 +31,7 @@ case $1 in
     fi
     env | grep -E '^(ENV_NAME|APP_VERSION|BACKEND_IMAGE|FRONTEND_IMAGE|IMAGE|REDIS_[A-Z_]+|ALPACA_[A-Z_]+)=' |
       sort | sed 's/^/  env /' >>"$CALLS"
+    [[ $FAKE_DOCKER != fail-up || $* != *" up "* ]]
     ;;
 esac
 EOF
@@ -56,6 +58,8 @@ EOF
 chmod +x "$work/bin/docker" "$work/bin/git"
 CALLS=$work/calls
 COMMIT=5eed5eed5eed5eed5eed5eed5eed5eed5eed5eed
+# The stage record of candlestack-deploy, in the deploy user's home ($work in these tests).
+RECORD=$work/stage-images
 
 # image <name>: a GHCR digest reference, as the workflows pass them.
 image() {
@@ -66,6 +70,7 @@ BACKEND=$(image backend)
 FRONTEND=$(image frontend)
 AGENT=$(image agent)
 IMAGES="$BACKEND $FRONTEND"
+OLD_IMAGES="$(image old-backend) $(image old-frontend)"
 TOKEN=ghs_TestToken0123456789
 KEY_ID=PKTEST0123456789
 SECRET='t3st/Secret+0123=~!'
@@ -76,16 +81,17 @@ tests=0
 failures=0
 
 # run <scope> <command> [stdin]: runs the script with only the variables sshd sets (and
-# FAKE_GIT); sets $status, $output, $temporary (the temporary directories the calls name: the
-# Docker config of a login, the directory of a release's compose file) and $calls, with those
-# directories as TMP. An empty stdin sends nothing at all.
+# FAKE_GIT, FAKE_DOCKER); sets $status, $output, $temporary (the temporary directories the
+# calls name: the Docker config of a login, the directory of a release's compose file) and
+# $calls, with those directories as TMP. An empty stdin sends nothing at all.
 run() {
   local dir
   : >"$CALLS"
   status=0
   output=$(if [[ -n ${3-} ]]; then printf '%s\n' "$3"; fi |
     env -i HOME="$work" PATH="$work/bin:$PATH" CALLS="$CALLS" FAKE_GIT="${FAKE_GIT-}" \
-      SSH_ORIGINAL_COMMAND="$2" "$here/candlestack-deploy" "$1" 2>&1) || status=$?
+      FAKE_DOCKER="${FAKE_DOCKER-}" SSH_ORIGINAL_COMMAND="$2" "$here/candlestack-deploy" "$1" 2>&1) ||
+    status=$?
   temporary=$(sed -n -e 's/^  config //p' -e 's|^docker compose .* -f \(/[^ ]*\)/compose\.yaml .*|\1|p' \
     "$CALLS" | grep -v '^/opt/candlestack' || true)
   calls=$(<"$CALLS")
@@ -207,12 +213,13 @@ else
 fi
 
 echo "# What each key may run"
-allowed "prod: up prod, with the compose file of the release" prod "up prod v0.2.0 $IMAGES" \
+echo "main-$COMMIT $IMAGES" >"$RECORD"
+allowed "prod: up prod, with the compose file of the release" prod "up prod v0.2.0" \
   "$TOKEN
 $SECRETS" "$(release_git v0.2.0 6)
 $(up_calls prod v0.2.0 256mb 288m with-secrets)"
 FAKE_GIT=not-shallow allowed "prod: up prod, a release candidate in a full clone" prod \
-  "up prod v0.3.0-rc.1 $IMAGES" "$TOKEN
+  "up prod v0.3.0-rc.1" "$TOKEN
 $SECRETS" "$(release_git v0.3.0-rc.1 6 | sed 's/ --unshallow//')
 $(up_calls prod v0.3.0-rc.1 256mb 288m with-secrets)"
 allowed "stage: up stage" stage "up stage main-0123abc $IMAGES" "$TOKEN
@@ -244,7 +251,7 @@ docker compose -p agent -f /opt/candlestack/infra/agent/compose.yaml up --detach
   env IMAGE=$AGENT"
 
 echo "# What each key may not run"
-refused "preview: up prod" preview "up prod v0.2.0 $IMAGES" "$TOKEN" \
+refused "preview: up prod" preview "up prod v0.2.0" "$TOKEN" \
   "the preview key may not deploy 'prod'"
 refused "preview: up stage" preview "up stage main-0123abc $IMAGES" "$TOKEN" \
   "the preview key may not deploy 'stage'"
@@ -253,7 +260,7 @@ refused "preview: agent" preview "agent $AGENT" "$TOKEN" \
   "only the stage key deploys the server agent"
 refused "preview: down stage" preview "down stage" "" "the preview key may not remove 'stage'"
 refused "preview: down prod" preview "down prod" "" "the preview key may not remove 'prod'"
-refused "stage: up prod" stage "up prod v0.2.0 $IMAGES" "$TOKEN" \
+refused "stage: up prod" stage "up prod v0.2.0" "$TOKEN" \
   "the stage key may not deploy 'prod'"
 refused "stage: up pr-42" stage "up pr-42 pr-42-0123abc $IMAGES" "$TOKEN" \
   "the stage key may not deploy 'pr-42'"
@@ -265,24 +272,80 @@ refused "prod: up pr-42" prod "up pr-42 pr-42-0123abc $IMAGES" "$TOKEN" \
 refused "prod: edge" prod "edge" "" "only the stage key updates the edge"
 refused "prod: agent" prod "agent $AGENT" "$TOKEN" "only the stage key deploys the server agent"
 refused "prod: down prod" prod "down prod" "" "only the preview key removes environments"
-refused "unknown scope" admin "up prod v0.2.0 $IMAGES" "$TOKEN" \
+refused "unknown scope" admin "up prod v0.2.0" "$TOKEN" \
   "the admin key may not deploy 'prod'"
 refused "unknown command" stage "sh -c id" "" "unknown command: 'sh -c id'"
 refused "no command (a shell)" stage "" "" "unknown command: ''"
 
 echo "# prod: only a release tag on main's history, with the tag's own compose file"
 for version in main-0123abc v0.2 0.2.0 v0.2.0.1 v0.2.0-; do
-  refused "prod: version $version" prod "up prod $version $IMAGES" "$TOKEN" \
+  refused "prod: version $version" prod "up prod $version" "$TOKEN" \
     "prod version must be a release tag (vX.Y.Z): '$version'"
 done
 FAKE_GIT=no-tag after_git=$(release_git v0.2.0 1) refused "prod: a tag not on origin" prod \
-  "up prod v0.2.0 $IMAGES" "$TOKEN" "release tag 'v0.2.0' not found on origin"
+  "up prod v0.2.0" "$TOKEN" "release tag 'v0.2.0' not found on origin"
 FAKE_GIT=no-commit after_git=$(release_git v0.2.0 2) refused "prod: a tag of no commit" prod \
-  "up prod v0.2.0 $IMAGES" "$TOKEN" "release tag 'v0.2.0' does not point to a commit"
+  "up prod v0.2.0" "$TOKEN" "release tag 'v0.2.0' does not point to a commit"
 FAKE_GIT=not-on-main after_git=$(release_git v0.2.0 5) refused "prod: a tag off main" prod \
-  "up prod v0.2.0 $IMAGES" "$TOKEN" "release tag 'v0.2.0' is not on main's history"
+  "up prod v0.2.0" "$TOKEN" "release tag 'v0.2.0' is not on main's history"
 FAKE_GIT=no-compose after_git=$(release_git v0.2.0 6) refused "prod: a tag without the file" \
-  prod "up prod v0.2.0 $IMAGES" "$TOKEN" "release tag 'v0.2.0' has no infra/env/compose.yaml"
+  prod "up prod v0.2.0" "$TOKEN" "release tag 'v0.2.0' has no infra/env/compose.yaml"
+
+# recorded <name> <expected record> <scope> <command> [stdin]: runs the command (whether it
+# succeeds or not is up to the test) and checks that the stage record is <expected record>.
+recorded() {
+  tests=$((tests + 1))
+  run "$3" "$4" "${5-}"
+  local record
+  record=$(cat "$RECORD" 2>/dev/null || true)
+  if [[ $record != "$2" ]]; then
+    failed "$1" "record differs (< expected, > actual):" "$(diff <(echo "$2") <(echo "$record"))"
+  else
+    echo "ok    $1"
+  fi
+}
+
+echo "# The stage record: up stage adds its images, up prod runs the last ones of its commit"
+rm -f "$RECORD"
+recorded "stage: up stage starts the record" "main-$COMMIT $OLD_IMAGES" \
+  stage "up stage main-$COMMIT $OLD_IMAGES" "$TOKEN"
+recorded "stage: every up stage adds a line" "main-$COMMIT $OLD_IMAGES
+main-0123abc $OLD_IMAGES" stage "up stage main-0123abc $OLD_IMAGES" "$TOKEN"
+recorded "stage: the same commit again" "main-$COMMIT $OLD_IMAGES
+main-0123abc $OLD_IMAGES
+main-$COMMIT $IMAGES" stage "up stage main-$COMMIT $IMAGES" "$TOKEN"
+record=$(<"$RECORD")
+FAKE_DOCKER=fail-up recorded "stage: a failed up stage adds nothing" "$record" \
+  stage "up stage main-$COMMIT $OLD_IMAGES" "$TOKEN"
+recorded "preview: up pr-42 adds nothing" "$record" \
+  preview "up pr-42 pr-42-0123abc $IMAGES" "$TOKEN"
+# A version that only starts with the commit is another stage deploy, never the release's.
+echo "main-$COMMIT-x $OLD_IMAGES" >>"$RECORD"
+record=$(<"$RECORD")
+allowed "prod: the images of the last up stage of the tag's commit" prod "up prod v0.2.0" \
+  "$TOKEN" "$(release_git v0.2.0 6)
+$(up_calls prod v0.2.0 256mb 288m)"
+recorded "prod: up prod adds nothing" "$record" prod "up prod v0.2.0" "$TOKEN"
+
+tests=$((tests + 1))
+if [[ $output == "images $IMAGES" ]]; then
+  echo "ok    up prints the images it runs"
+else
+  failed "up prints the images it runs" "expected 'images $IMAGES', got: $output"
+fi
+
+refused "prod: images in the command" prod "up prod v0.2.0 $IMAGES" "$TOKEN" \
+  "up prod takes no images: it runs the ones stage ran for the release's commit"
+printf '%s\n' "main-0123abc $IMAGES" "main-$COMMIT-x $IMAGES" >"$RECORD"
+not_run="stage has not run $COMMIT: release a commit of main that stage deployed"
+after_git=$(release_git v0.2.0 6) refused "prod: a commit stage has not run" prod \
+  "up prod v0.2.0" "$TOKEN" "$not_run"
+rm "$RECORD"
+after_git=$(release_git v0.2.0 6) refused "prod: no stage record yet" prod "up prod v0.2.0" \
+  "$TOKEN" "$not_run"
+echo "main-$COMMIT ${BACKEND%@*}:latest $FRONTEND" >"$RECORD"
+after_git=$(release_git v0.2.0 6) refused "prod: a bad line in the record" prod "up prod v0.2.0" \
+  "$TOKEN" "image must be a GHCR digest reference: '${BACKEND%@*}:latest'"
 
 echo "# Malformed arguments"
 for env in pr- pr-1234567 pr-4x2 PR-42 pr-42/ ../prod; do
