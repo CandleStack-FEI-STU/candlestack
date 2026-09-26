@@ -50,6 +50,10 @@ updates:
     directory: /infra/agent
     schedule:
       interval: weekly
+    ignore:
+      # One Python line in the repo: the agent follows the backend's 3.13.
+      - dependency-name: python
+        versions: [">=3.14"]
 
   # The long-running images on the VM (Redis, the edge Caddy, the Docker socket proxy) are
   # pinned in these compose files and change only through these pull requests.
