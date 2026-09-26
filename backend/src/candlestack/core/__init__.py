@@ -1,4 +1,5 @@
-"""Shared foundations of every module: settings, logging, errors, Redis, outgoing HTTP, health.
+"""Shared foundations of every module: settings, logging, errors, Redis, outgoing HTTP, rate
+limits, health.
 
 Other modules import only from here (``from candlestack.core import ProblemError``), never
 from the submodules.
@@ -21,12 +22,14 @@ from candlestack.core.http import (
 )
 from candlestack.core.logging import setup_logging
 from candlestack.core.middleware import RequestContextMiddleware
+from candlestack.core.ratelimit import RateLimiter
 from candlestack.core.redis import RedisDep, create_redis
 
 __all__ = [
     "HttpClientDep",
     "Problem",
     "ProblemError",
+    "RateLimiter",
     "RedisDep",
     "RequestContextMiddleware",
     "Settings",
