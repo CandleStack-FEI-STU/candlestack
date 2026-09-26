@@ -52,12 +52,21 @@ jobs:
           env-secrets: |
             ALPACA_KEY_ID=${{ secrets.ALPACA_KEY_ID }}
             ALPACA_SECRET_KEY=${{ secrets.ALPACA_SECRET_KEY }}
+            SENTRY_DSN=${{ secrets.SENTRY_DSN }}
           health-url: https://app.candlestack.tech/api/health
           health-expect: '"version":"${{ github.ref_name }}"'
 
       # prod is public: no Access token, so this also checks that anyone can reach it.
       - name: Smoke test
         run: .github/scripts/smoke.sh https://app.candlestack.tech
+
+      # Links the release to its commits in Sentry. Informational: a Sentry outage must not fail
+      # a deploy that is already live and checked.
+      - name: Record the release in Sentry
+        continue-on-error: true
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        run: .github/scripts/sentry-release.sh "$GITHUB_REF_NAME" prod
 
   # The only job that writes packages: it has no environment secrets and talks to no server.
   tag:

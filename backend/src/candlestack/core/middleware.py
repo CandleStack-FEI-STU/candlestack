@@ -9,6 +9,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from candlestack.core.errors import internal_error_response
 from candlestack.core.logging import request_id_var
+from candlestack.core.observability import tag_request
 
 access_logger = logging.getLogger("candlestack.access")
 logger = logging.getLogger(__name__)
@@ -18,9 +19,9 @@ class RequestContextMiddleware:
     """Tags each request with an id, logs one access line and turns a crash into a 500 problem.
 
     The id is Cloudflare's ``CF-Ray`` when present (so our logs match Cloudflare's), else random.
-    It is sent back as ``X-Request-ID`` and added to every log record of the request. Every
-    response also carries ``Server-Timing: app;dur=<ms>``, the time the app took until the
-    response started, so it can be measured from outside.
+    It is sent back as ``X-Request-ID`` and added to every log record and Sentry event of the
+    request. Every response also carries ``Server-Timing: app;dur=<ms>``, the time the app took
+    until the response started, so it can be measured from outside.
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -33,6 +34,7 @@ class RequestContextMiddleware:
 
         request_id = Headers(scope=scope).get("cf-ray") or secrets.token_hex(8)
         token = request_id_var.set(request_id)
+        tag_request(request_id)
         start = time.perf_counter()
         status = 500
         started = False

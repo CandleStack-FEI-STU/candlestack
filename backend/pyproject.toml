@@ -14,6 +14,7 @@ dependencies = [
     "pydantic-settings>=2.15.0",
     "redis[hiredis]>=8.1.0",
     "scalar-fastapi>=1.9.1",
+    "sentry-sdk>=2.70.0",
     "tzdata>=2026.4",
 ]
 
@@ -58,6 +59,8 @@ xfail_strict = true
 
 [tool.importlinter]
 root_package = "candlestack"
+# Lets the contracts below name third-party packages (sentry_sdk).
+include_external_packages = true
 
 [[tool.importlinter.contracts]]
 name = "Modules depend downwards only: data -> core"
@@ -75,3 +78,11 @@ name = "Other modules import data only through its package root"
 type = "protected"
 protected_modules = ["candlestack.data.*"]
 allowed_importers = ["candlestack.data"]
+
+[[tool.importlinter.contracts]]
+name = "Only core uses the Sentry SDK"
+type = "forbidden"
+source_modules = ["candlestack.data", "candlestack.main", "candlestack.openapi"]
+forbidden_modules = ["sentry_sdk"]
+# They reach Sentry through core (logging, setup_sentry), never by importing it themselves.
+allow_indirect_imports = true

@@ -26,7 +26,8 @@ inputs:
   env-secrets:
     description: >-
       Secrets of the environment as KEY=VALUE lines, sent on stdin after the GHCR token and
-      never printed (candlestack-deploy accepts only ALPACA_KEY_ID and ALPACA_SECRET_KEY)
+      never printed (candlestack-deploy accepts only ALPACA_KEY_ID, ALPACA_SECRET_KEY and
+      SENTRY_DSN)
     required: false
   health-url:
     description: URL to poll after the command

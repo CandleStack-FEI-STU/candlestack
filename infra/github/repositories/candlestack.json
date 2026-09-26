@@ -58,7 +58,9 @@
       "secret_names": [
         "ALPACA_KEY_ID",
         "ALPACA_SECRET_KEY",
-        "DEPLOY_SSH_KEY"
+        "DEPLOY_SSH_KEY",
+        "SENTRY_AUTH_TOKEN",
+        "SENTRY_DSN"
       ]
     },
     {
@@ -82,7 +84,9 @@
       "secret_names": [
         "ALPACA_KEY_ID",
         "ALPACA_SECRET_KEY",
-        "DEPLOY_SSH_KEY"
+        "DEPLOY_SSH_KEY",
+        "SENTRY_AUTH_TOKEN",
+        "SENTRY_DSN"
       ]
     }
   ],
