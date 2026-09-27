@@ -1,4 +1,4 @@
-"""Sentry: the backend's errors, traces and logs, sent only when ``SENTRY_DSN`` is set.
+"""Sentry: the backend's errors, traces, profiles and logs, sent only when ``SENTRY_DSN`` is set.
 
 An error in Sentry is an unhandled exception (answered with a 500 by RequestContextMiddleware)
 or a record logged at ERROR or above (``logger.error``, ``logger.exception``). Everything else a
@@ -144,6 +144,10 @@ def setup_sentry(settings: Settings) -> bool:
         ),
         max_request_body_size="never",
         traces_sampler=_traces_sampler(settings.sentry_traces_sample_rate),
+        # Where the CPU time of the traced requests goes, by function: the profiler samples the
+        # stacks only while a traced request runs. The plan includes 750 profile hours a month.
+        profile_session_sample_rate=1.0,
+        profile_lifecycle="trace",
         enable_logs=True,
         before_send=_before_send(ErrorBudget(ERRORS_PER_HOUR, 3600)),
         before_send_log=_before_send_log,

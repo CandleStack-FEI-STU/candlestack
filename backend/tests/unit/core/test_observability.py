@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from collections.abc import Iterator
 from typing import Any, cast
 
@@ -171,6 +172,19 @@ def test_health_checks_are_neither_traced_nor_logged(
     assert traced == ["/api/test/warning"]
     assert "/api/health" not in logged
     assert "/api/test/warning" in logged
+
+
+def test_a_traced_request_is_profiled(sentry: CapturingTransport, client: TestClient) -> None:
+    client.get("/api/test/warning")
+
+    [transaction] = sentry.items("transaction")
+    profiler_id = transaction["contexts"]["profile"]["profiler_id"]
+    # The profiler stops once no traced request runs, and then sends what it sampled.
+    deadline = time.monotonic() + 5
+    while not (chunks := sentry.items("profile_chunk")) and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert chunks
+    assert {chunk["profiler_id"] for chunk in chunks} == {profiler_id}
 
 
 def test_the_error_budget_drops_errors_over_it() -> None:

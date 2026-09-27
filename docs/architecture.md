@@ -26,7 +26,7 @@ flowchart LR
     end
     backend -->|HTTPS| binance["Binance<br/>REST + data.binance.vision"]
     backend -->|HTTPS| alpaca["Alpaca<br/>trading API + market data"]
-    backend -.->|"HTTPS, prod and stage"| sentry["Sentry (EU)<br/>errors, traces, logs"]
+    backend -.->|"HTTPS, prod and stage"| sentry["Sentry (EU)<br/>errors, traces, profiles, logs"]
 ```
 
 | Container | Image | Notes |
@@ -115,7 +115,7 @@ Folders for later modules are created when their work starts, not before.
 | Types | ty, exact version pinned | fast type checker; pinned so a new release cannot turn CI red by itself |
 | Boundaries | import-linter | keeps the module rules above enforced, not just written down |
 | Tests | pytest, pytest-xdist, anyio plugin, respx | parallel runs, async tests, no real network in unit and integration tests |
-| Errors, traces, logs | Sentry (`sentry-sdk`), EU region | the team sees what fails or is slow with the code, commit and request behind it; free for a year with the GitHub Student Developer Pack |
+| Errors, traces, profiles, logs | Sentry (`sentry-sdk`), EU region | the team sees what fails or is slow with the code, commit and request behind it; free for a year with the GitHub Student Developer Pack |
 
 ## Configuration
 
@@ -138,7 +138,7 @@ Environment variables, read by pydantic-settings without a prefix. All are docum
 | `CLIENT_RATE_LIMIT` | `60` | candle and instrument-detail requests per minute per client IP (IPv6: per /64); `0` disables |
 | `ALPACA_RATE_LIMIT` | prod `150`, stage `60`, `pr-*` `30`, else `60` | our Alpaca request budget per minute |
 | `BINANCE_WEIGHT_LIMIT` | `1000` | our Binance REST weight budget per minute per environment |
-| `SENTRY_DSN` | empty | Sentry project for errors, traces and logs; empty sends nothing (set for prod and stage only) |
+| `SENTRY_DSN` | empty | Sentry project for errors, traces, profiles and logs; empty sends nothing (set for prod and stage only) |
 | `SENTRY_TRACES_SAMPLE_RATE` | prod `0.2`, else `1.0` | share of requests traced in Sentry |
 
 ## Observability
@@ -157,6 +157,9 @@ What the backend sends to Sentry (only prod and stage have a DSN), set up in
   a warning are not errors: they are the service working as designed.
 - **Traces**: 20% of prod requests and every stage request, never `/api/health`. Calls to
   Binance, Alpaca and Redis are spans of them.
+- **Profiles**: while a traced request runs, the profiler samples the stacks about 100 times a
+  second, so Sentry shows which functions take the CPU time (a trace's profile, or Explore >
+  Profiles). The plan includes 750 profile hours a month, no pay-as-you-go.
 - **Logs**: records from INFO up, the access line of each request included (except health
   checks), each with its `request_id`.
 - Every event carries `environment` (`prod`, `stage`), `release` (`APP_VERSION`) and
@@ -206,4 +209,4 @@ to check that an error reaches Sentry. The Sentry settings are recorded in
 | granian instead of uvicorn, ty instead of mypy, Polars instead of pandas | faster tools with the same role |
 | Coverage and TDD are team conventions, not CI gates | CI stays fast; test quality is checked in review |
 | Security headers at the edge, the Content-Security-Policy in report-only mode first; Trivy on every image in CI and weekly on what runs | the headers protect every page without app code; the policy's reports show what it would break before it blocks anything; the scans catch known vulnerabilities before a merge and after a release |
-| Sentry for errors, traces and logs of prod and stage; ops for uptime and the server | ops keeps working when the VM is down; Sentry shows failures with their code, commit and request, and previews and local runs stay out of its quota |
+| Sentry for errors, traces, profiles and logs of prod and stage; ops for uptime and the server | ops keeps working when the VM is down; Sentry shows failures with their code, commit and request, and previews and local runs stay out of its quota |
