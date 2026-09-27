@@ -205,4 +205,5 @@ to check that an error reaches Sentry. The Sentry settings are recorded in
 | Prod API and docs public (per-IP rate limit); stage and previews behind Cloudflare Access | anyone can try the released API without an account; unreleased builds stay team-only |
 | granian instead of uvicorn, ty instead of mypy, Polars instead of pandas | faster tools with the same role |
 | Coverage and TDD are team conventions, not CI gates | CI stays fast; test quality is checked in review |
+| Security headers at the edge, the Content-Security-Policy in report-only mode first; Trivy on every image in CI and weekly on what runs | the headers protect every page without app code; the policy's reports show what it would break before it blocks anything; the scans catch known vulnerabilities before a merge and after a release |
 | Sentry for errors, traces and logs of prod and stage; ops for uptime and the server | ops keeps working when the VM is down; Sentry shows failures with their code, commit and request, and previews and local runs stay out of its quota |

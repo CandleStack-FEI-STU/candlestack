@@ -11,6 +11,8 @@ and set up again. What the backend sends and why: [docs/architecture.md](../../d
 | `teams.json` | The one team, `candlestack` |
 | `projects/backend.json` | Project `backend` (Python, FastAPI): privacy, inbound filters, Seer settings |
 | `projects/backend--keys.json` | Its client key: name and state. The DSN is not recorded; it is the GitHub environment secret `SENTRY_DSN` of `production` and `staging` |
+| `projects/frontend.json` | Project `frontend` (JavaScript): today the browsers' Content-Security-Policy reports of every environment (see `../edge/caddy/Caddyfile`), later the frontend's own errors. No alert sends its issues anywhere |
+| `projects/frontend--keys.json` | Its client key. Its public key is part of the CSP report URL in the edge Caddyfile, which every browser sees anyway |
 | `alerts.json` | Alerts: e-mail to the tech lead for a new, regressed or reappearing issue on prod (at most every 30 minutes) and for 50 events of one issue in an hour on prod; Sentry's default notice when Seer has a pull request ready |
 | `monitors.json` | Monitors: the uptime check of `https://app.candlestack.tech/api/health` every minute (down after 3 failures, up after 1 success) and the default error and issue monitors the alerts hang on |
 | `integrations.json` | GitHub: installed on the `candlestack` repository only, every sync and pull request comment off, and the code mapping that turns stack trace paths into links to the code |
@@ -43,8 +45,8 @@ addresses left out, so a new export only differs where a setting changed:
 | --- | --- |
 | `organization.json` | `https://de.sentry.io/api/0/organizations/candlestack/` |
 | `teams.json` | `.../organizations/candlestack/teams/` |
-| `projects/backend.json` | `.../projects/candlestack/backend/` and `.../projects/candlestack/backend/filters/` |
-| `projects/backend--keys.json` | `.../projects/candlestack/backend/keys/` |
+| `projects/<project>.json` | `.../projects/candlestack/<project>/` and `.../projects/candlestack/<project>/filters/` |
+| `projects/<project>--keys.json` | `.../projects/candlestack/<project>/keys/` |
 | `alerts.json` | `.../organizations/candlestack/workflows/` |
 | `monitors.json` | `.../organizations/candlestack/detectors/` |
 | `integrations.json` | `https://sentry.io/api/0/organizations/candlestack/integrations/?provider_key=github`, `.../repos/`, `.../code-mappings/` |

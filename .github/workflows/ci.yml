@@ -177,6 +177,16 @@ jobs:
           cache-from: type=gha,scope=backend-e2e
           cache-to: type=gha,mode=max,scope=backend-e2e
 
+      - uses: ./.github/actions/trivy
+
+      # Fails on a HIGH or CRITICAL vulnerability that has a fix, except the ones
+      # .trivyignore.yaml accepts until a date.
+      - name: Scan the image
+        working-directory: .
+        run: >-
+          trivy image --quiet --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed
+          --ignorefile .trivyignore.yaml --exit-code 1 candlestack-backend:e2e-${{ env.E2E_PORT }}
+
       - name: Start the stack
         run: docker compose -f tests/e2e/compose.yaml up -d --wait
 
@@ -262,6 +272,16 @@ jobs:
 
       - name: Server agent image
         run: docker build --tag agent-check infra/agent
+
+      - uses: ./.github/actions/trivy
+
+      # As the backend image in the e2e job: fails on a fixable HIGH or CRITICAL vulnerability.
+      - name: Scan the frontend and agent images
+        run: |
+          for image in frontend-check agent-check; do
+            trivy image --quiet --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
+              --ignorefile .trivyignore.yaml --exit-code 1 "$image"
+          done
 
   # The one required check besides no-ai-signs: green when every job passed or was skipped.
   ci:

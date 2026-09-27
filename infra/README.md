@@ -105,6 +105,24 @@ The stage deployment also reloads the edge Caddy, which serves prod too, so righ
 checks that https://app.candlestack.tech/api/health reports `ok` and the page at `/` answers
 200 (without the Access token: prod is public).
 
+## Security headers and image scans
+
+The edge Caddy adds to every response HSTS (a year; no subdomains or preload, since
+`candlestack.tech` itself is GitHub Pages), `X-Frame-Options: DENY`, `nosniff`,
+`Referrer-Policy: strict-origin-when-cross-origin` and a `Permissions-Policy` without camera,
+microphone and location, and drops the `Via` header. A Content-Security-Policy runs in
+report-only mode: browsers report what it would block to the Sentry project `frontend`
+(environments `prod`, `stage`, `preview`), and once the reports show nothing the pages need, it
+becomes enforcing. The smoke test checks these headers after every deploy.
+
+Trivy scans the images for vulnerabilities. In CI the backend image (job `e2e`) and the frontend
+and agent images (job `infra`) fail on a HIGH or CRITICAL one that has a fix, except those
+`.trivyignore.yaml` accepts until a date. Every Monday `security-scan.yml` scans the images prod
+and stage run and the third-party ones the compose files pin, and every finding, accepted ones
+included, shows up in the repository's Security tab. Trivy comes from its release archive,
+checked against a pinned SHA-256 (`.github/actions/trivy`), not from an action or an image tag:
+its release channels were compromised in March 2026.
+
 ## How a deployment reaches the VM
 
 GitHub Actions connects over SSH to `ssh.candlestack.tech` through the tunnel. That hostname
