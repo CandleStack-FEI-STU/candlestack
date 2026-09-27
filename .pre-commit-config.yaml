@@ -1,0 +1,38 @@
+# Quick checks on every commit, so the common mistakes never reach CI. Install once per clone:
+#   uvx pre-commit install
+# CI stays the gate (a commit with --no-verify skips these); types, module boundaries and tests
+# run there only. ruff comes from backend/uv.lock, the same release CI uses.
+default_install_hook_types: [pre-commit, commit-msg]
+# Recorded responses of Binance and Alpaca: kept byte for byte as the sources sent them.
+exclude: ^backend/tests/fixtures/
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # frozen: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: detect-private-key
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check --fix
+        entry: uv run --project backend ruff check --fix --force-exclude
+        language: system
+        types_or: [python, pyi]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --project backend ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+      # The rules of the no-ai-signs check that CI runs on every pull request.
+      - id: no-ai-signs
+        name: no AI attribution in the commit message
+        language: pygrep
+        entry: '(?i)co-authored-by:.*(claude|anthropic|copilot|chatgpt|openai|gemini|cursor|codex|devin|aider)|generated (with|by) .*(claude|anthropic|copilot|chatgpt|openai|gemini|cursor|codex|devin|aider|\bai\b)|claude\.ai/code|claude-session|🤖'
+        stages: [commit-msg]

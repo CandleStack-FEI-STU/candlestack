@@ -13,6 +13,12 @@
 - Using Claude Code is fine: `CLAUDE.md` gives it the project's rules and
   `.claude/settings.json` turns its commit and pull request attribution off. Keep personal
   settings in `.claude/settings.local.json` (ignored).
+- Once per clone, install the git hooks: `uvx pre-commit install`. On every commit they fix
+  ruff findings and formatting, trailing whitespace and missing final newlines, and stop
+  merge conflict markers, files over 1 MB, private keys and AI attribution in the commit
+  message (`.pre-commit-config.yaml`). A hook that fixed files stops the commit: review the
+  changes, `git add` them and commit again. They take a second or two; CI still runs every
+  check.
 
 ## Merging
 

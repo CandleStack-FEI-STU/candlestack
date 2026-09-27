@@ -38,7 +38,8 @@ contract.
 
 ## Verify
 
-From `backend/`, before every push:
+The git hooks (`uvx pre-commit install`, once per clone) fix formatting and stop AI attribution
+on every commit. From `backend/`, before every push:
 
 ```sh
 uv run ruff check . && uv run ruff format --check .
