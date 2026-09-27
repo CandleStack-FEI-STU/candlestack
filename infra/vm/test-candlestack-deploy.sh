@@ -14,7 +14,8 @@ trap 'rm -rf "$work"' EXIT
 # Fake docker and git: every call is a line "<tool> <args>". docker also records the token
 # of the login (its stdin) and where the login is kept, and for compose the first line of a
 # compose file outside the checkout and the variables the deploy script gives it.
-# FAKE_DOCKER=fail-up: "compose up" fails.
+# FAKE_DOCKER=fail-up: "compose up" fails. FAKE_PREVIEWS: the compose projects whose backend
+# runs, as "<project>:<created, epoch seconds>" words; "ps" and "inspect" answer from it.
 mkdir "$work/bin"
 cat >"$work/bin/docker" <<'EOF'
 #!/usr/bin/env bash
@@ -32,6 +33,19 @@ case $1 in
     env | grep -E '^(ENV_NAME|APP_VERSION|BACKEND_IMAGE|FRONTEND_IMAGE|IMAGE|REDIS_[A-Z_]+|ALPACA_[A-Z_]+|SENTRY_DSN)=' |
       sort | sed 's/^/  env /' >>"$CALLS"
     [[ $FAKE_DOCKER != fail-up || $* != *" up "* ]]
+    ;;
+  ps)
+    for running in ${FAKE_PREVIEWS-}; do
+      echo "${running%%:*} id-${running%%:*}"
+    done
+    ;;
+  inspect)
+    id=${*: -1}
+    for running in ${FAKE_PREVIEWS-}; do
+      if [[ id-${running%%:*} == "$id" ]]; then
+        date -u -d "@${running#*:}" +%Y-%m-%dT%H:%M:%S.123456789Z
+      fi
+    done
     ;;
 esac
 EOF
@@ -91,7 +105,7 @@ run() {
   status=0
   output=$(if [[ -n ${3-} ]]; then printf '%s\n' "$3"; fi |
     env -i HOME="$work" PATH="$work/bin:$PATH" CALLS="$CALLS" FAKE_GIT="${FAKE_GIT-}" \
-      FAKE_DOCKER="${FAKE_DOCKER-}" SSH_ORIGINAL_COMMAND="$2" "$here/candlestack-deploy" "$1" 2>&1) ||
+      FAKE_DOCKER="${FAKE_DOCKER-}" FAKE_PREVIEWS="${FAKE_PREVIEWS-}" SSH_ORIGINAL_COMMAND="$2" "$here/candlestack-deploy" "$1" 2>&1) ||
     status=$?
   temporary=$(sed -n -e 's/^  config //p' -e 's|^docker compose .* -f \(/[^ ]*\)/compose\.yaml .*|\1|p' \
     "$CALLS" | grep -v '^/opt/candlestack' || true)
@@ -175,6 +189,16 @@ release_git() {
     "git -C /opt/candlestack show $COMMIT:infra/env/compose.yaml" | head -n "$2"
 }
 
+# slot_calls: how "up pr-<N>" and "previews" look for the running previews ($FAKE_PREVIEWS).
+slot_calls() {
+  echo 'docker ps --filter label=com.docker.compose.service=backend --format {{.Label "com.docker.compose.project"}} {{.ID}}'
+  for running in ${FAKE_PREVIEWS-}; do
+    if [[ ${running%%:*} == pr-* ]]; then
+      echo "docker inspect --format {{.Created}} id-${running%%:*}"
+    fi
+  done
+}
+
 # up_calls <env> <version> <maxmemory> <container limit> [with-secrets [with-dsn]]: what "up"
 # asks of Docker; prod with the compose file of its release tag.
 up_calls() {
@@ -234,7 +258,8 @@ SENTRY_DSN=$DSN" "$(up_calls stage main-0123abc 128mb 160m with-secrets with-dsn
 allowed "stage: up stage without secrets" stage "up stage main-0123abc $IMAGES" "$TOKEN" \
   "$(up_calls stage main-0123abc 128mb 160m)"
 allowed "preview: up pr-42" preview "up pr-42 pr-42-0123abc $IMAGES" "$TOKEN
-$SECRETS" "$(up_calls pr-42 pr-42-0123abc 64mb 96m with-secrets)"
+$SECRETS" "$(slot_calls)
+$(up_calls pr-42 pr-42-0123abc 64mb 96m with-secrets)"
 allowed "preview: down pr-42" preview "down pr-42" "" \
   "docker compose -p pr-42 -f /opt/candlestack/infra/env/compose.yaml down --remove-orphans
   env APP_VERSION=none
@@ -353,6 +378,25 @@ after_git=$(release_git v0.2.0 6) refused "prod: no stage record yet" prod "up p
 echo "main-$COMMIT ${BACKEND%@*}:latest $FRONTEND" >"$RECORD"
 after_git=$(release_git v0.2.0 6) refused "prod: a bad line in the record" prod "up prod v0.2.0" \
   "$TOKEN" "image must be a GHCR digest reference: '${BACKEND%@*}:latest'"
+
+echo "# Previews: one at a time, listed with the time each was deployed"
+FAKE_PREVIEWS="stage:1790000000 pr-9:1790003600 pr-57:1790001800 prod:1790000000"
+allowed "preview: previews" preview "previews" "" "$(slot_calls)"
+tests=$((tests + 1))
+if [[ $output == $'pr-57 1790001800
+pr-9 1790003600' ]]; then
+  echo "ok    previews: pr-<N> and when it was deployed, oldest first, nothing else"
+else
+  failed "previews output" "expected pr-57 then pr-9 with their times, got: $output"
+fi
+FAKE_PREVIEWS="stage:1790000000 pr-57:1790001800"
+after_git=$(slot_calls) refused "preview: up pr-42 while pr-57 runs" preview   "up pr-42 pr-42-0123abc $IMAGES" "$TOKEN" "no free preview slot: pr-57 running, at most 1 at a time"
+FAKE_PREVIEWS="stage:1790000000 pr-42:1790001800"
+allowed "preview: up pr-42 again while it runs" preview "up pr-42 pr-42-0123abc $IMAGES" "$TOKEN"   "$(slot_calls)
+$(up_calls pr-42 pr-42-0123abc 64mb 96m)"
+FAKE_PREVIEWS=
+refused "stage: previews" stage "previews" "" "only the preview key lists previews"
+refused "prod: previews" prod "previews" "" "only the preview key lists previews"
 
 echo "# Malformed arguments"
 for env in pr- pr-1234567 pr-4x2 PR-42 pr-42/ ../prod; do

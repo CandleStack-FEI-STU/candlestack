@@ -5,7 +5,7 @@
 #   scope    command
 #   prod     up prod <version>
 #   stage    up stage <version> <backend@digest> <frontend@digest>   |   edge   |   agent <image@digest>
-#   preview  up pr-<N> <version> <backend@digest> <frontend@digest>  |   down pr-<N>
+#   preview  up pr-<N> <version> <backend@digest> <frontend@digest>  |   down pr-<N>   |   previews
 #
 # "up" and "agent" read a GHCR token from the first line of stdin and use it only for this
 # one pull. "up" then reads the backend's secrets as KEY=VALUE lines (only ALPACA_KEY_ID,
@@ -18,6 +18,8 @@
 # tag, but only the stage key writes this record, and only main's workflow holds the stage key.
 # "up prod" runs compose with infra/env/compose.yaml of the release tag instead of this
 # checkout's copy (see release_compose_file); every other "up" uses this checkout's file.
+# "up pr-<N>" fails while max_previews other previews run (see there).
+# "previews" prints "pr-<N> <created, epoch seconds>" for each running preview, oldest first.
 # "edge" updates the checkout to origin/main and reloads the edge Caddy.
 # "agent" (re)starts the server agent from infra/agent/compose.yaml of that checkout.
 set -euo pipefail
@@ -31,6 +33,9 @@ compose_file=$repo/infra/env/compose.yaml
 # One line "<version> <backend@digest> <frontend@digest>" per "up stage", in the deploy user's
 # home: outside the checkout, which "edge" resets.
 stage_images=${HOME:?}/stage-images
+# Previews that may run at once. The VM has 2 GB: prod and stage take about 1.15 GB with their
+# container limits and a preview up to 450 MB more, so a second preview could starve prod.
+max_previews=1
 
 # Temporary directories to remove on exit (DOCKER_CONFIG of pull(), the tag's compose file
 # of release_compose_file()).
@@ -108,6 +113,17 @@ release_compose_file() {
   release_commit=$commit
 }
 
+# list_previews: "pr-<N> <created, epoch seconds>" per running preview, oldest first. A preview
+# runs since its backend container was created, which every "up" of it does anew.
+list_previews() {
+  local project id
+  docker ps --filter label=com.docker.compose.service=backend     --format '{{.Label "com.docker.compose.project"}} {{.ID}}' |
+    while read -r project id; do
+      [[ $project =~ ^pr-[0-9]{1,6}$ ]] || continue
+      echo "$project $(date -d "$(docker inspect --format '{{.Created}}' "$id")" +%s)"
+    done | sort -k 2 -n
+}
+
 # stage_images_of <commit>: sets backend and frontend to the images of the last "up stage
 # main-<commit>" in the stage record.
 stage_images_of() {
@@ -165,6 +181,11 @@ case "${action:-}" in
     fi
     check_image "$backend"
     check_image "$frontend"
+    if [[ $env == pr-* ]]; then
+      taken=$(list_previews | awk -v env="$env" '$1 != env { print $1 }' | paste -sd ' ' -)
+      [ "$(wc -w <<<"$taken")" -lt "$max_previews" ] ||
+        fail "no free preview slot: $taken running, at most $max_previews at a time"
+    fi
     read_token
     read_secrets
     pull "$backend" "$frontend"
@@ -185,6 +206,10 @@ case "${action:-}" in
     ENV_NAME=$env APP_VERSION=none BACKEND_IMAGE=none FRONTEND_IMAGE=none \
       compose down --remove-orphans
     prune_images
+    ;;
+  previews)
+    [ "$scope" = preview ] || fail "only the preview key lists previews"
+    list_previews
     ;;
   edge)
     [ "$scope" = stage ] || fail "only the stage key updates the edge"

@@ -17,7 +17,7 @@ are proxied CNAMEs to the tunnel, so moving to another server does not touch DNS
 | --- | --- | --- | --- |
 | prod | https://app.candlestack.tech | a `v*` tag is pushed on a commit of `main` | tech lead (GitHub environment `production`) |
 | stage | https://stage.candlestack.tech | every push to `main` | none |
-| preview | `https://pr-<N>-preview.candlestack.tech` | a pull request has the `preview` label | none |
+| preview | `https://pr-<N>-preview.candlestack.tech` | the `preview` label is added to a pull request; one at a time, for 6 hours at most | none |
 
 Every environment is one compose project (`env/compose.yaml`) with three containers. The edge
 Caddy sends `/api/*` of the environment's hostname to its backend and everything else to its
@@ -70,8 +70,17 @@ Each commit of `main` is built once. A release does not rebuild: it deploys the 
 `infra/env/compose.yaml` rather than whatever main's checkout has by then (`edge` keeps
 resetting it to origin/main on every stage deploy). The VM takes those images from its stage
 record (below), not from the registry: any workflow run allowed to write packages, including
-one from a pull request's branch, could move a registry tag. Removing the `preview` label or
-closing the pull request removes its environment. Pull requests from forks never deploy.
+one from a pull request's branch, could move a registry tag.
+
+A preview is deployed on demand and runs for a few hours (`preview.yml`, `preview-cleanup.yml`):
+the VM has room for one (`max_previews` in `vm/candlestack-deploy`; prod and stage take about
+1.15 GB of its 2 GB with their container limits, a preview up to 450 MB). Adding the `preview`
+label deploys the pull request's current commit, unless another pull request holds the slot:
+then the label comes off and a comment says until when. A new commit, removing the label or
+closing the pull request removes the preview, a new commit the label too. Every hour
+`preview-cleanup.yml` removes the previews that have run for 6 hours (label off, with a
+comment) and any whose pull request is closed or unlabeled, and deletes preview images (tags
+`pr-*`) older than a week from the registry. Pull requests from forks never deploy.
 
 To release: `git tag v0.2.0 <commit on main> && git push origin v0.2.0`, then approve the
 deployment in the Actions tab. Only a commit that stage has deployed can be released; any other
@@ -123,8 +132,9 @@ itself keeps them in the container's configuration, as with any container enviro
 The workflows send them with the `env-secrets` input of `.github/actions/deploy`. After `up` and
 `down` the script removes the images no container uses any more (every backend build adds a
 source layer of about 150 KB, and a dependency layer of about 250 MB when `uv.lock` changes).
-The other commands are `down pr-<N>` (preview key), `edge` and `agent <image@digest>` (stage
-key); the header of `vm/candlestack-deploy` lists which key may run what.
+The other commands are `down pr-<N>` and `previews` (preview key; `previews` lists the running
+previews and when each was deployed), `edge` and `agent <image@digest>` (stage key); the header
+of `vm/candlestack-deploy` lists which key may run what.
 
 | Secret or variable | Where | What |
 | --- | --- | --- |
@@ -170,11 +180,11 @@ cd backend && uv run ruff check ../infra/agent && uv run ruff format --check ../
   key (the scope from `vm/deploy_authorized_keys`, the command in `SSH_ORIGINAL_COMMAND`, the
   token and secrets on stdin) with fake `docker` and `git` that record their calls. It checks
   which key may run what, that malformed images, versions, preview numbers and secrets are
-  refused before anything runs, that prod takes only a release tag on main's history and
-  starts with that tag's compose file and the images stage last ran for its commit, that only
-  a successful `up stage` adds to the stage record, that no token or secret is printed, and
-  the Docker commands of every allowed command. It touches nothing outside a temporary
-  directory.
+  refused before anything runs, that prod takes only a release tag on main's history and starts
+  with that tag's compose file and the images stage last ran for its commit, that only a
+  successful `up stage` adds to the stage record, that a second preview is refused, that no
+  token or secret is printed, and the Docker commands of every allowed command. It touches
+  nothing outside a temporary directory.
 - `agent/test_agent.py` (standard library `unittest`, like the agent) pins the schema-1
   snapshot that ops reads, the order of its containers and the HTTP answers (`starting`, the
   snapshot, `stale`), with a stub Docker API and fixture files for `/proc`. The agent is linted
@@ -215,7 +225,7 @@ needs a fresh deploy afterwards.
    - stage: `stage.yml` has no manual trigger, so re-run its latest workflow run, or push to
      `main`; this also deploys the server agent.
    - prod: re-run the latest release workflow run and approve the deployment again.
-   - previews: push to the pull request, or remove and re-add the `preview` label.
+   - previews: add the `preview` label again.
 6. Two things no deploy repeats, on this VM or the next one, because cloud-init only did them
    once at boot: after a change to `infra/cloudflared/config.yml`, restart cloudflared on the
    VM (SSM: `sudo systemctl restart cloudflared`); after a change to

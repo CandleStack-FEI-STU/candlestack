@@ -50,9 +50,12 @@ ruff) changed; `ci` passes when they are skipped.
 
 ## Preview environment
 
-Add the `preview` label to a pull request to deploy it to
-`https://pr-<N>-preview.candlestack.tech` (team only). Every push redeploys it; removing the
-label or closing the pull request removes it.
+Add the `preview` label to a pull request to deploy its current commit to
+`https://pr-<N>-preview.candlestack.tech` (team only). The server has room for one preview at a
+time: when another pull request holds it, the label comes off again and a comment says until
+when. A preview lives at most 6 hours (then the label comes off with a comment); a new commit,
+removing the label or closing the pull request removes it sooner. A new commit removes the
+label too: add it again to deploy that commit.
 
 ## Backend
 
