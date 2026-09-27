@@ -1,0 +1,139 @@
+name: Preview cleanup
+
+# Every hour, so the server's one preview slot (see preview.yml) does not stay taken:
+# - a preview that has run for PREVIEW_HOURS goes; its pull request loses the "preview" label
+#   and gets a comment;
+# - a preview whose pull request is closed or no longer has the label goes too, without a
+#   comment (a removal that failed earlier);
+# - preview images (tags pr-*) older than a week leave the registry: they never reach stage or
+#   prod, and a preview lives hours, not days.
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: Remove previews that have run for this many hours
+        default: '6'
+
+permissions: {}
+
+concurrency:
+  group: preview-cleanup
+  cancel-in-progress: false
+
+env:
+  # How long a preview lives; the same in preview.yml.
+  PREVIEW_HOURS: ${{ inputs.hours || '6' }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: preview
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      remove: ${{ steps.plan.outputs.remove }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: List the running previews
+        id: previews
+        uses: ./.github/actions/deploy
+        with:
+          command: previews
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      # remove: a JSON list of {"pr": <N>, "expired": true|false}.
+      - name: Pick the previews to remove
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PREVIEWS: ${{ steps.previews.outputs.output }}
+        run: |
+          now=$(date +%s)
+          remove='[]'
+          while read -r env deployed; do
+            [[ $env =~ ^pr-([0-9]+)$ ]] || continue
+            pr=${BASH_REMATCH[1]}
+            read -r state labeled < <(gh pr view "$pr" --json state,labels \
+              --jq '[.state, ([.labels[].name] | index("preview") != null)] | @tsv')
+            if [[ $state != OPEN || $labeled != true ]]; then
+              echo "pr-$pr: the pull request is ${state,,} or has no preview label"
+              expired=false
+            elif ((now - deployed >= PREVIEW_HOURS * 3600)); then
+              echo "pr-$pr: running for $(((now - deployed) / 3600)) h"
+              expired=true
+            else
+              echo "pr-$pr: keeps running"
+              continue
+            fi
+            remove=$(jq -c --argjson pr "$pr" --argjson expired "$expired" \
+              '. + [{pr: $pr, expired: $expired}]' <<<"$remove")
+          done <<<"$PREVIEWS"
+          echo "remove=$remove" >>"$GITHUB_OUTPUT"
+
+  remove:
+    needs: plan
+    if: needs.plan.outputs.remove != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: preview
+    permissions:
+      contents: read
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        preview: ${{ fromJSON(needs.plan.outputs.remove) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/deploy
+        with:
+          command: down pr-${{ matrix.preview.pr }}
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Tell the pull request
+        if: matrix.preview.expired
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ matrix.preview.pr }}
+        run: |
+          gh pr edit "$PR" --remove-label preview
+          gh pr comment "$PR" --body "Preview removed after $PREVIEW_HOURS hours. Add the \`preview\` label again to deploy the current commit."
+
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      packages: write
+    steps:
+      - name: Delete preview images older than a week
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cutoff=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          for name in backend frontend; do
+            path="orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/candlestack%2F$name/versions"
+            # Versions tagged pr-* only: an image that also carries another tag is kept.
+            ids=$(gh api --paginate "$path" --jq ".[] | select(
+              (.metadata.container.tags | length > 0 and all(startswith(\"pr-\")))
+              and .created_at < \"$cutoff\") | .id")
+            for id in $ids; do
+              gh api -X DELETE "$path/$id" --silent
+            done
+            echo "$name: $(wc -w <<<"$ids") preview images deleted"
+          done

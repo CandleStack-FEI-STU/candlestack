@@ -1,24 +1,33 @@
 name: Preview
 
-# A pull request with the "preview" label gets its own environment at
-# pr-<N>-preview.candlestack.tech, redeployed on every push. Removing the label or
-# closing the pull request removes the environment. Pull requests from forks never deploy.
+# Adding the "preview" label to a pull request deploys its current commit to
+# pr-<N>-preview.candlestack.tech. The server runs one preview at a time: when another pull
+# request holds it, the label comes off again and a comment says until when. A preview lives
+# until a new commit arrives (it goes, with the label; add the label again to deploy that
+# commit), the label is removed, the pull request is closed or it has run for PREVIEW_HOURS
+# (preview-cleanup.yml). Pull requests from forks never deploy.
 on:
   pull_request:
     types: [opened, reopened, synchronize, labeled, unlabeled, closed]
 
 permissions: {}
 
+env:
+  # How long a preview lives; the same in preview-cleanup.yml.
+  PREVIEW_HOURS: 6
+
 # Runs that deploy or remove the preview share one group per pull request, and a newer one
-# cancels the one in progress. Every other run (a label other than "preview", a pull request
-# without it) does nothing and gets a group of its own, so it cancels no deployment.
+# cancels the one in progress (a new commit stops a deploy). Every other run (a label other
+# than "preview", a pull request without it) does nothing and gets a group of its own.
 concurrency:
   group: >-
     preview-${{ github.event.pull_request.number }}-${{
-    ((contains(github.event.pull_request.labels.*.name, 'preview') &&
-      github.event.action != 'unlabeled' &&
-      (github.event.action != 'labeled' || github.event.label.name == 'preview')) ||
-     (github.event.action == 'unlabeled' && github.event.label.name == 'preview'))
+    (github.event.pull_request.head.repo.full_name == github.repository &&
+     ((contains(github.event.pull_request.labels.*.name, 'preview') &&
+       (github.event.action == 'opened' || github.event.action == 'reopened' ||
+        github.event.action == 'synchronize' || github.event.action == 'closed' ||
+        (github.event.action == 'labeled' && github.event.label.name == 'preview'))) ||
+      (github.event.action == 'unlabeled' && github.event.label.name == 'preview')))
     && 'env' || github.run_id }}
   cancel-in-progress: true
 
@@ -27,9 +36,8 @@ jobs:
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
       contains(github.event.pull_request.labels.*.name, 'preview') &&
-      github.event.action != 'closed' &&
-      github.event.action != 'unlabeled' &&
-      (github.event.action != 'labeled' || github.event.label.name == 'preview')
+      (github.event.action == 'opened' || github.event.action == 'reopened' ||
+       (github.event.action == 'labeled' && github.event.label.name == 'preview'))
     uses: CandleStack-FEI-STU/.github/.github/workflows/no-ai-signs.yml@main
     permissions:
       contents: read
@@ -65,11 +73,53 @@ jobs:
     environment:
       name: preview
       url: https://pr-${{ github.event.pull_request.number }}-preview.candlestack.tech
+    # Deploys of different pull requests take turns, so each finds the slot as the one before
+    # left it.
+    concurrency:
+      group: preview-slot
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v7
+
+      - name: List the running previews
+        id: previews
+        uses: ./.github/actions/deploy
+        with:
+          command: previews
+          ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      # Free, or held by this pull request already. When another one holds it, the label comes
+      # off, a comment says until when (about PREVIEW_HOURS after that preview was deployed) and
+      # the job fails, so GitHub shows no deployment that does not exist.
+      - name: Check the preview slot
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          PREVIEWS: ${{ steps.previews.outputs.output }}
+        run: |
+          taken=$(awk -v own="pr-$PR" '$1 ~ /^pr-[0-9]+$/ && $1 != own' <<<"$PREVIEWS" | head -n 1)
+          if [[ -z $taken ]]; then
+            exit 0
+          fi
+          read -r holder deployed <<<"$taken"
+          until=$((deployed + PREVIEW_HOURS * 3600))
+          now=$(date +%s)
+          if ((until <= now)); then
+            until=$((now + 3600)) # past its time: the hourly cleanup removes it
+          fi
+          at=$(TZ=Europe/Bratislava date -d "@$until" '+%-d %b %H:%M')
+          gh pr edit "$PR" --remove-label preview
+          gh pr comment "$PR" --body "Preview not deployed: the only preview slot is taken by #${holder#pr-} until about $at (Bratislava time). Add the \`preview\` label again once it is free."
+          echo "::error::The preview slot is taken by $holder until about $at; the label is removed."
+          exit 1
 
       - name: Deploy the preview
         uses: ./.github/actions/deploy
@@ -98,7 +148,8 @@ jobs:
   remove:
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
-      ((github.event.action == 'closed' && contains(github.event.pull_request.labels.*.name, 'preview')) ||
+      ((contains(github.event.pull_request.labels.*.name, 'preview') &&
+        (github.event.action == 'synchronize' || github.event.action == 'closed')) ||
        (github.event.action == 'unlabeled' && github.event.label.name == 'preview'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -106,6 +157,7 @@ jobs:
       name: preview
     permissions:
       contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v7
 
@@ -116,3 +168,13 @@ jobs:
           known-hosts: ${{ vars.DEPLOY_KNOWN_HOSTS }}
           access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      # A new commit takes the label with the preview: adding it again deploys that commit.
+      # (A label removed with this token starts no workflow run.)
+      - name: Remove the label
+        if: github.event.action == 'synchronize'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: gh pr edit "$PR" --remove-label preview

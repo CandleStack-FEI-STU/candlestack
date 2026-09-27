@@ -42,6 +42,9 @@ outputs:
       The images an "up" command started, "<backend@digest> <frontend@digest>" (for "up prod",
       the ones the VM chose from its stage record); empty for other commands
     value: ${{ steps.run.outputs.images }}
+  output:
+    description: What the command printed, e.g. the running previews of "previews"
+    value: ${{ steps.run.outputs.output }}
 
 runs:
   using: composite
@@ -108,6 +111,11 @@ runs:
         } | ssh candlestack "$COMMAND" | tee "$RUNNER_TEMP/deploy-output"
         # "up" ends with "images <backend@digest> <frontend@digest>".
         sed -n 's/^images /images=/p' "$RUNNER_TEMP/deploy-output" >>"$GITHUB_OUTPUT"
+        {
+          echo 'output<<CANDLESTACK_DEPLOY_OUTPUT'
+          cat "$RUNNER_TEMP/deploy-output"
+          echo 'CANDLESTACK_DEPLOY_OUTPUT'
+        } >>"$GITHUB_OUTPUT"
 
     - name: Wait until healthy
       if: inputs.health-url != ''
