@@ -61,8 +61,8 @@ CPU, memory and disk, containers and the health of every preview. The agent keep
 and holds no secrets; its JSON is a contract with the ops repository (schema 1).
 
 The backend of prod and stage also reports to Sentry (organization `candlestack`, EU): errors,
-traces and logs. An uptime monitor there e-mails the tech lead when prod's `/api/health` fails 3
-times in a row. What is sent and when it alerts:
+traces, profiles and logs. An uptime monitor there e-mails the tech lead when prod's
+`/api/health` fails 3 times in a row. What is sent and when it alerts:
 [docs/architecture.md](../docs/architecture.md#observability).
 
 Each commit of `main` is built once. A release does not rebuild: it deploys the exact images
@@ -158,7 +158,7 @@ of `vm/candlestack-deploy` lists which key may run what.
 | --- | --- | --- |
 | `DEPLOY_SSH_KEY` | environments `production`, `staging`, `preview` | private deploy key of that scope |
 | `ALPACA_KEY_ID`, `ALPACA_SECRET_KEY` | environments `production`, `staging`, `preview` | Alpaca paper account keys for the backend (US stocks); `staging` and `preview` share the stage account, `production` has its own |
-| `SENTRY_DSN` | environments `production`, `staging` | where the backend sends errors, traces and logs (Sentry project `backend`) |
+| `SENTRY_DSN` | environments `production`, `staging` | where the backend sends errors, traces, profiles and logs (Sentry project `backend`) |
 | `SENTRY_AUTH_TOKEN` | environments `production`, `staging` | Sentry organization token (scope `org:ci`) that records each release |
 | `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | repository secrets | Access service token |
 | `DEPLOY_KNOWN_HOSTS` | repository variable | SSH host key of the VM |

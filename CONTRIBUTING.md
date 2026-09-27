@@ -110,7 +110,7 @@ uv run pytest -m e2e                                  # builds and runs the imag
 
 ## Errors and logs
 
-The errors, traces and logs of prod and stage go to Sentry (https://candlestack.sentry.io;
+The errors, traces, profiles and logs of prod and stage go to Sentry (https://candlestack.sentry.io;
 the tech lead grants access). What it records is in
 [docs/architecture.md](docs/architecture.md#observability). In code:
 
