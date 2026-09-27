@@ -41,12 +41,13 @@ Both are required to merge:
 | Check | What it runs |
 | --- | --- |
 | `no-ai-signs / No AI signs` | commit messages, authors and the pull request text |
-| `ci` | the backend jobs `lint` (ruff, ty, import-linter, the root `compose.yaml` validated and its dev image built), `unit`, `integration` (Redis) and `e2e` (the built image, then scanned by Trivy); `infra` (actionlint with shellcheck on the workflows, shellcheck on the deploy and smoke scripts, the deploy script's tests, the compose files of `infra/` validated, the server agent's ruff and tests, the edge Caddyfile and the tunnel ingress rules validated, the frontend and server agent images built and scanned by Trivy; see [infra/README.md](infra/README.md#tests)) |
+| `ci` | the backend jobs `lint` (ruff, ty, import-linter, the root `compose.yaml` validated and its dev image built), `unit`, `integration` (Redis) and `e2e` (the built image, then scanned by Trivy); `api` (breaking changes to the API, see below); `infra` (actionlint with shellcheck on the workflows, shellcheck on the deploy and smoke scripts, the deploy script's tests, the compose files of `infra/` validated, the server agent's ruff and tests, the edge Caddyfile and the tunnel ingress rules validated, the frontend and server agent images built and scanned by Trivy; see [infra/README.md](infra/README.md#tests)) |
 
 The backend jobs run only when `backend/`, `docs/openapi.json`, a `compose*.yaml` file in the
 repository root (`compose.yaml`) or `.github/workflows/ci.yml` changed, and `infra` only when
 `infra/`, `frontend/`, `.github/` or `backend/uv.lock` (the agent is linted with the backend's
-ruff) changed; `ci` passes when they are skipped.
+ruff) changed; `api` runs on pull requests that change `docs/openapi.json`. `ci` passes when
+they are skipped.
 
 The Trivy scans fail on a HIGH or CRITICAL vulnerability in an image that has a fix: usually
 a newer base image or dependency fixes it. One that cannot be fixed yet goes to
@@ -102,6 +103,12 @@ uv run pytest -m e2e                                  # builds and runs the imag
 - The API contract is committed in `docs/openapi.json` and a unit test fails when it is stale.
   After changing the API, regenerate it (in a POSIX shell such as Git Bash) and commit it with
   the change: `uv run python -m candlestack.openapi > ../docs/openapi.json`.
+- The CI job `api` compares that file with the one on `main` (oasdiff) and lists every change
+  in its summary. It fails on a change that breaks existing clients: a removed or renamed
+  field, parameter or endpoint, a new required parameter, a narrower type, a new value in a
+  response enum. Prefer a change that keeps them working (a new optional field or parameter, a
+  new endpoint). A break meant on purpose is agreed on in the pull request: the job prints one
+  line per change, and those lines go to `docs/api-breaking-changes.txt`.
 - Modules import each other only through their package root
   (`from candlestack.core import ProblemError`), and `candlestack.core` imports no other module.
   `lint-imports` checks both.

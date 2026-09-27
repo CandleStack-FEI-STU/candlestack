@@ -1,0 +1,24 @@
+name: Install oasdiff
+description: >-
+  Puts oasdiff (the changes between two OpenAPI documents) on PATH: the release archive from
+  GitHub, checked against its SHA-256.
+
+# Installed like Trivy (see ../trivy/action.yml): a release checked once by hand, not an action or
+# an image tag. To update: take a newer release of github.com/oasdiff/oasdiff and put its version
+# and the sha256 of oasdiff_<version>_linux_amd64.tar.gz (its checksums.txt lists it) below.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        VERSION: 1.32.1
+        SHA256: 7c8939fc49b75ee11fec66a5b83b37a2fca6aee109fed85013b1ba2ac2a1ee7f
+      run: |
+        dir=$RUNNER_TEMP/oasdiff
+        mkdir -p "$dir"
+        archive=$dir/oasdiff.tar.gz
+        curl -fsSL -o "$archive" \
+          "https://github.com/oasdiff/oasdiff/releases/download/v$VERSION/oasdiff_${VERSION}_linux_amd64.tar.gz"
+        echo "$SHA256  $archive" | sha256sum --check --quiet
+        tar -xzf "$archive" -C "$dir" oasdiff
+        echo "$dir" >>"$GITHUB_PATH"
