@@ -20,7 +20,9 @@ contract.
   A new module gets its entry in the import-linter contracts in `backend/pyproject.toml`.
 - The API is a contract: a change to it updates `docs/openapi.json`
   (`uv run python -m candlestack.openapi > ../docs/openapi.json`) and `docs/data.md` or
-  `docs/architecture.md` in the same pull request.
+  `docs/architecture.md` in the same pull request. Keep existing clients working; the CI job
+  `api` fails on a breaking change, and only the user decides to accept one in
+  `docs/api-breaking-changes.txt`.
 - Every change comes with tests at the lowest level that proves it: unit by default,
   integration for Redis or the sources (mocked with respx), e2e only for behaviour over HTTP.
   Tests never use the network or real keys; warnings fail the run.

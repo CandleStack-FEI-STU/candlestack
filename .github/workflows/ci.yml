@@ -29,6 +29,7 @@ jobs:
     outputs:
       backend: ${{ steps.diff.outputs.backend }}
       infra: ${{ steps.diff.outputs.infra }}
+      api: ${{ steps.diff.outputs.api }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -53,6 +54,7 @@ jobs:
           fi
           backend=false
           infra=false
+          api=false
           if grep -qE '^(backend/|docs/openapi\.json$|compose[^/]*\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
             backend=true
           fi
@@ -60,8 +62,12 @@ jobs:
           if grep -qE '^(infra/|frontend/|\.github/|backend/uv\.lock$)' <<<"$changed"; then
             infra=true
           fi
+          if grep -qE '^(docs/(openapi\.json|api-breaking-changes\.txt)|\.github/(scripts/api-changes\.sh|actions/oasdiff/.*))$' <<<"$changed"; then
+            api=true
+          fi
           echo "backend=$backend" | tee -a "$GITHUB_OUTPUT"
           echo "infra=$infra" | tee -a "$GITHUB_OUTPUT"
+          echo "api=$api" | tee -a "$GITHUB_OUTPUT"
 
   lint:
     needs: changes
@@ -206,6 +212,29 @@ jobs:
         if: always()
         run: docker compose -f tests/e2e/compose.yaml down --volumes
 
+  # Breaking changes to the API: the pull request's docs/openapi.json against the base branch's
+  # (the unit tests keep the snapshot equal to the code). Every change goes to the job summary;
+  # a breaking one fails unless docs/api-breaking-changes.txt accepts it.
+  api:
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      # The merge commit and its first parent, the base branch.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - uses: ./.github/actions/oasdiff
+
+      - name: Breaking changes
+        run: |
+          git show HEAD^1:docs/openapi.json >"$RUNNER_TEMP/base.json"
+          .github/scripts/api-changes.sh "$RUNNER_TEMP/base.json" docs/openapi.json
+
   # What only the post-merge deploy would otherwise exercise: the workflows and their scripts,
   # the deploy script the VM runs as a forced command, the compose files, the edge and tunnel
   # configuration, the server agent and the images other than the backend's. A broken one on
@@ -287,7 +316,7 @@ jobs:
   ci:
     name: ci
     if: always()
-    needs: [no-ai-signs, changes, lint, unit, integration, e2e, infra]
+    needs: [no-ai-signs, changes, lint, unit, integration, e2e, api, infra]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}

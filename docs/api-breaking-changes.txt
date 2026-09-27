@@ -1,0 +1,3 @@
+# Breaking changes to the API accepted on purpose, one per line as the CI job `api` prints them:
+# "<METHOD> <path> <change>". A pull request that breaks the API without listing the change here
+# fails CI (see the `api` job in CONTRIBUTING.md).
