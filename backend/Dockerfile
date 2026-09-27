@@ -41,6 +41,9 @@ CMD ["granian", "--interface", "asgi", "--host", "0.0.0.0", "--port", "8000", \
 # glibc gives each thread that allocates (the workers that parse and resample candles) arenas of
 # its own that keep freed memory; two arenas keep the process within its memory limit.
 FROM python:3.13-slim AS api
+# The app runs from the venv and never installs anything: pip goes, with the libraries it
+# bundles, which the image scan would report.
+RUN python -m pip uninstall --yes --quiet --root-user-action=ignore pip
 WORKDIR /app
 COPY --from=deps /app/.venv /app/.venv
 COPY granian-logging.json ./

@@ -1,0 +1,42 @@
+{
+  "allowedDomains": [
+    "*"
+  ],
+  "autofixAutomationTuning": "medium",
+  "dataScrubber": true,
+  "dataScrubberDefaults": true,
+  "digestsMaxDelay": 1800,
+  "digestsMinDelay": 300,
+  "groupingConfig": "newstyle:2026-01-20",
+  "inboundFilters": {
+    "browser-extensions": true,
+    "filtered-transaction": true,
+    "legacy-browsers": [
+      "android",
+      "chrome",
+      "edge",
+      "firefox",
+      "ie",
+      "opera",
+      "opera_mini",
+      "safari"
+    ],
+    "localhost": false,
+    "web-crawlers": true
+  },
+  "name": "frontend",
+  "platform": "javascript",
+  "resolveAge": 0,
+  "safeFields": [],
+  "scrapeJavaScript": true,
+  "scrubIPAddresses": false,
+  "seerScannerAutomation": true,
+  "sensitiveFields": [],
+  "slug": "frontend",
+  "storeCrashReports": null,
+  "subjectPrefix": "",
+  "subjectTemplate": "$shortID - $title",
+  "teams": [
+    "candlestack"
+  ]
+}

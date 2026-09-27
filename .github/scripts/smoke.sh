@@ -13,7 +13,7 @@
 # shellcheck disable=SC2329 # the checks are called by name from the loop at the end
 set -euo pipefail
 
-CHECKS=(health openapi docs frontend access sources search instruments crypto_candles stock_candles timings)
+CHECKS=(health openapi docs frontend headers access sources search instruments crypto_candles stock_candles timings)
 
 base=${1:?usage: smoke.sh <base-url>}
 base=${base%/}
@@ -82,6 +82,22 @@ check_docs() {
 check_frontend() {
   get /
   expect 200 text/html
+}
+
+# The security headers the edge Caddy adds (infra/edge/caddy/Caddyfile), on a page and on the API.
+check_headers() {
+  local path header
+  for path in / /api/health; do
+    get "$path"
+    for header in 'strict-transport-security: max-age=' 'x-frame-options: deny' \
+      'x-content-type-options: nosniff' 'referrer-policy: strict-origin-when-cross-origin' \
+      'permissions-policy: camera=()' 'content-security-policy-report-only: default-src'; do
+      grep -qi "^$header" "$work/headers" || fail "$path: no '$header' header"
+    done
+    if grep -qi '^via: .*caddy' "$work/headers"; then
+      fail "$path: the Via header names the server"
+    fi
+  done
 }
 
 # stage and previews are team-only: without the service token, Cloudflare Access answers

@@ -1,0 +1,8 @@
+[
+  {
+    "dsn": "not recorded: the public key is in the CSP report URL of infra/edge/caddy/Caddyfile",
+    "isActive": true,
+    "label": "Default",
+    "rateLimit": null
+  }
+]

@@ -10,10 +10,22 @@
 	encode zstd gzip
 }
 
+# What a page may load, in report-only mode: the browser loads everything as before and reports
+# what the policy would block to Sentry (project frontend, environment <args[0]>). Once the
+# reports show nothing the site needs, the header becomes Content-Security-Policy. The pages:
+# the frontend (Google Fonts) and the API reference (Scalar from jsDelivr, its fonts from Google;
+# the hash is its inline setup script, which changes with the Scalar options or docs_theme.css).
+# Usage: import csp <Sentry environment>
+(csp) {
+	header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-TMpzvBCzUJwxk3v67mtpZ2Nd9gAnGXie/5t1jgBCQcU='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; report-uri https://o4512154553942016.ingest.de.sentry.io/api/4512157493362768/security/?sentry_key=889214b3abf0734910f9a3103dda8242&sentry_environment={args[0]}; report-to csp"
+	header Reporting-Endpoints `csp="https://o4512154553942016.ingest.de.sentry.io/api/4512157493362768/security/?sentry_key=889214b3abf0734910f9a3103dda8242&sentry_environment={args[0]}"`
+}
+
 # One environment: /api/* to its backend, everything else to its frontend.
-# Usage: import env <env name>
+# Usage: import env <env name> <Sentry environment of its CSP reports>
 (env) {
 	import compress
+	import csp {args[1]}
 	handle /api/* {
 		reverse_proxy {args[0]}-backend:8000
 	}
@@ -24,15 +36,27 @@
 
 :80 {
 	header X-Robots-Tag "noindex, nofollow"
+	# For every response: HTTPS only from now on (a year), not in a frame of another site, no
+	# guessing of content types, no full URLs sent to other sites, no camera, microphone or
+	# location for our pages, and no Via header that names the server.
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Via
+		-Server
+	}
 
 	@prod host app.candlestack.tech
 	handle @prod {
-		import env prod
+		import env prod prod
 	}
 
 	@stage host stage.candlestack.tech
 	handle @stage {
-		import env stage
+		import env stage stage
 	}
 
 	# The server agent; ops.candlestack.tech itself is a Cloudflare Worker.
@@ -44,7 +68,7 @@
 	# pr-<N>-preview.candlestack.tech -> the pr-<N> environment
 	@preview vars_regexp preview {host} ^(pr-[0-9]+)-preview\.candlestack\.tech$
 	handle @preview {
-		import env {re.preview.1}
+		import env {re.preview.1} preview
 	}
 
 	handle {

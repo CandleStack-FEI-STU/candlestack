@@ -16,3 +16,4 @@ Dockerfile               @ArsenLabovich
 /.gitignore              @ArsenLabovich
 /.editorconfig           @ArsenLabovich
 /.pre-commit-config.yaml @ArsenLabovich
+/.trivyignore.yaml       @ArsenLabovich

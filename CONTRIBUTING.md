@@ -41,12 +41,16 @@ Both are required to merge:
 | Check | What it runs |
 | --- | --- |
 | `no-ai-signs / No AI signs` | commit messages, authors and the pull request text |
-| `ci` | the backend jobs `lint` (ruff, ty, import-linter, the root `compose.yaml` validated and its dev image built), `unit`, `integration` (Redis) and `e2e` (the built image); `infra` (actionlint with shellcheck on the workflows, shellcheck on the deploy and smoke scripts, the deploy script's tests, the compose files of `infra/` validated, the server agent's ruff and tests, the edge Caddyfile and the tunnel ingress rules validated, the frontend and server agent images built; see [infra/README.md](infra/README.md#tests)) |
+| `ci` | the backend jobs `lint` (ruff, ty, import-linter, the root `compose.yaml` validated and its dev image built), `unit`, `integration` (Redis) and `e2e` (the built image, then scanned by Trivy); `infra` (actionlint with shellcheck on the workflows, shellcheck on the deploy and smoke scripts, the deploy script's tests, the compose files of `infra/` validated, the server agent's ruff and tests, the edge Caddyfile and the tunnel ingress rules validated, the frontend and server agent images built and scanned by Trivy; see [infra/README.md](infra/README.md#tests)) |
 
 The backend jobs run only when `backend/`, `docs/openapi.json`, a `compose*.yaml` file in the
 repository root (`compose.yaml`) or `.github/workflows/ci.yml` changed, and `infra` only when
 `infra/`, `frontend/`, `.github/` or `backend/uv.lock` (the agent is linted with the backend's
 ruff) changed; `ci` passes when they are skipped.
+
+The Trivy scans fail on a HIGH or CRITICAL vulnerability in an image that has a fix: usually
+a newer base image or dependency fixes it. One that cannot be fixed yet goes to
+`.trivyignore.yaml` with a date to look again, and only with the tech lead's approval.
 
 ## Preview environment
 
