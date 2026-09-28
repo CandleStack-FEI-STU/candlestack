@@ -121,7 +121,7 @@ def _problems() -> Iterator[None]:
         raise problem from error
 
 
-def _problem(error: DataError) -> ProblemError | None:
+def _problem(error: DataError) -> ProblemError | None:  # noqa: PLR0911 (a case per error)
     detail = error.detail
     match error:
         case InstrumentNotFound():

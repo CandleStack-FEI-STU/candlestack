@@ -11,6 +11,7 @@ import json
 import zipfile
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -34,7 +35,7 @@ def fixture_bytes(path: str) -> bytes:
     return (FIXTURES / path).read_bytes()
 
 
-def kline(open_ms: int, interval_ms: int = HOUR_MS, price: float = 100.0) -> list:
+def kline(open_ms: int, interval_ms: int = HOUR_MS, price: float = 100.0) -> list[Any]:
     """A REST kline row; times in milliseconds."""
     return [
         open_ms,
@@ -97,7 +98,7 @@ class Upstream:
             params={"interval": "1m", "startTime": "0", "limit": "1"},
         ).respond(200, json=[kline(open_ms, 60_000)])
 
-    def klines(self, start_ms: int, rows: list[list]) -> respx.Route:
+    def klines(self, start_ms: int, rows: list[list[Any]]) -> respx.Route:
         return self.router.get(
             f"{BINANCE_API}/api/v3/klines", params={"startTime": str(start_ms)}
         ).respond(200, json=rows)
@@ -154,13 +155,13 @@ class Upstream:
             ]
         )
 
-    def bars_json(self, timeframe: str, start: str, bars: list[dict]) -> respx.Route:
+    def bars_json(self, timeframe: str, start: str, bars: list[dict[str, Any]]) -> respx.Route:
         return self.router.get(
             f"{ALPACA_DATA}/v2/stocks/bars", params={"timeframe": timeframe, "start": start}
         ).respond(200, json={"bars": {"AAPL": bars}, "next_page_token": None})
 
     @staticmethod
-    def aapl_bars(*paths: str) -> list[dict]:
+    def aapl_bars(*paths: str) -> list[dict[str, Any]]:
         return [
             bar
             for path in paths

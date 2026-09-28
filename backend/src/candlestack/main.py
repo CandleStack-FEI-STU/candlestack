@@ -3,7 +3,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from importlib.resources import files
-from typing import Any
+from typing import Any, override
 
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
@@ -52,6 +52,7 @@ SENTRY_CHECK_ENV = "stage"
 
 
 class CandleStackAPI(FastAPI):
+    @override
     def openapi(self) -> dict[str, Any]:
         if self.openapi_schema is None:
             self.openapi_schema = document_problems(super().openapi())

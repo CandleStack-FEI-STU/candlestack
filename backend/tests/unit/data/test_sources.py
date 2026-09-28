@@ -5,6 +5,7 @@ import logging
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, override
 
 import httpx
 import polars as pl
@@ -49,11 +50,11 @@ def fixture_bytes(path: str) -> bytes:
     return (FIXTURES / path).read_bytes()
 
 
-def fixture_json(path: str) -> dict:
+def fixture_json(path: str) -> dict[str, Any]:
     return json.loads((FIXTURES / path).read_text(encoding="utf-8"))
 
 
-def aapl_bars(*paths: str) -> list[dict]:
+def aapl_bars(*paths: str) -> list[dict[str, Any]]:
     return [bar for path in paths for bar in fixture_json(f"alpaca/{path}")["bars"]["AAPL"]]
 
 
@@ -391,6 +392,7 @@ class ScriptedLimiter(RateLimiter):
     def __init__(self, *waits: float) -> None:
         self.waits = list(waits)
 
+    @override
     async def hit(self, key: str, limit: int, cost: int = 1, window: int = 60) -> float:
         return self.waits.pop(0)
 
@@ -420,7 +422,9 @@ async def test_spend_refuses_when_the_next_window_is_far(sleeps: list[float]) ->
     limiter = ScriptedLimiter(42.3)
 
     with pytest.raises(SourceUnavailable) as info:
-        await spend(limiter, "binance", "Binance weight budget (1000 per minute)", "k", 1000, 2)
+        await spend(
+            limiter, "binance", "Binance weight budget (1000 per minute)", "k", 1000, cost=2
+        )
 
     assert info.value.detail == (
         "Our Binance weight budget (1000 per minute) is spent. Try again in 43 seconds."
@@ -442,6 +446,7 @@ class Unlimited(RateLimiter):
     def __init__(self) -> None:
         pass
 
+    @override
     async def hit(self, key: str, limit: int, cost: int = 1, window: int = 60) -> float:
         return 0.0
 
@@ -452,6 +457,7 @@ class NoCache(Cache):
     def __init__(self) -> None:
         pass
 
+    @override
     async def get_or_fetch(self, name: str, fetch: Fetch) -> bytes:
         return (await fetch())[0]
 

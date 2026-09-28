@@ -103,11 +103,11 @@ def _milliseconds(value: str) -> int:
 def kline_rows(symbol: str, interval: str) -> list[list[Any]]:
     """REST rows (times in ms) of every fixture archive of the symbol and interval."""
     rows = {}
-    for name in FILES:
+    for name, path in FILES.items():
         parts = ARCHIVE_NAME.fullmatch(name)
         if not parts or parts["symbol"] != symbol or parts["tf"] != interval:
             continue
-        with zipfile.ZipFile(FILES[name]) as zipped:
+        with zipfile.ZipFile(path) as zipped:
             text = zipped.read(zipped.namelist()[0]).decode()
         for row in csv.reader(io.StringIO(text)):
             opens = _milliseconds(row[0])

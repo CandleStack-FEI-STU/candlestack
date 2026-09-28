@@ -11,7 +11,7 @@ import bisect
 import logging
 import time
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from functools import partial
 from itertools import batched
 
@@ -71,6 +71,16 @@ HEALTH_TTL = 60
 
 # Patched by tests to move the clock.
 _time = time.time
+
+
+@dataclass(frozen=True, slots=True)
+class CandleRequest:
+    """A checked candles request: ``[start, end)`` of one instrument in one timeframe."""
+
+    instrument: InstrumentId
+    timeframe: Timeframe
+    start: int
+    end: int
 
 
 class DataService:
@@ -147,15 +157,11 @@ class DataService:
             partial(
                 assemble,
                 source,
-                instrument_id,
-                timeframe,
-                base,
-                start,
-                end,
-                now,
-                sessions,
-                periods,
-                blobs,
+                CandleRequest(instrument_id, timeframe, start, end),
+                list(zip(periods, blobs, strict=True)),
+                base=base,
+                now=now,
+                sessions=sessions,
             )
         )
 
@@ -252,15 +258,12 @@ def bin_open(ts: int, timeframe: Timeframe, sessions: Sequence[Session] | None) 
 
 def assemble(
     source: DataSource,
-    instrument_id: InstrumentId,
-    timeframe: Timeframe,
+    request: CandleRequest,
+    chunks: Sequence[tuple[Period, bytes]],
+    *,
     base: Timeframe,
-    start: int,
-    end: int,
     now: int,
     sessions: list[Session] | None,
-    periods: Sequence[Period],
-    blobs: Sequence[bytes],
 ) -> CandleSet:
     """The candle set from cached chunks of the base timeframe (CPU work, run in a thread).
 
@@ -270,8 +273,9 @@ def assemble(
     live chunk was fetched: a candle that closed after that is neither returned nor a gap (it
     comes with the next fetch).
     """
+    timeframe, start, end = request.timeframe, request.start, request.end
     frames, as_of = [], now
-    for group in batched(zip(periods, blobs, strict=True), RESAMPLE_CHUNKS, strict=False):
+    for group in batched(chunks, RESAMPLE_CHUNKS, strict=False):
         parts = []
         for period, blob in group:
             frame, complete_until = decode_chunk(blob)
@@ -291,7 +295,7 @@ def assemble(
         expected = expected_bins_sessions(start, end, timeframe, sessions, now=as_of)
     gaps = find_gaps(frame["ts"], expected, timeframe, sessions)
     return CandleSet(
-        instrument=instrument_id,
+        instrument=request.instrument,
         timeframe=timeframe,
         start=start,
         end=end,
@@ -301,6 +305,6 @@ def assemble(
         gaps=gaps.ranges,
         gaps_total=gaps.total,
         fingerprint=fingerprint(
-            source.name, source.feed, instrument_id, timeframe, start, end, frame
+            source.name, source.feed, request.instrument, timeframe, start, end, frame
         ),
     )

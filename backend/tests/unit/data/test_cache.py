@@ -4,16 +4,18 @@ leaves Redis alone for the back-off window."""
 import logging
 import time
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
-from redis.asyncio import Redis
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
 import candlestack.data.cache as cache_module
 from candlestack.data import SourceUnavailable
 from candlestack.data.cache import DOWN_SECONDS, Cache
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
 
 pytestmark = pytest.mark.anyio
 
@@ -40,7 +42,7 @@ class FailingRedis:
         return send
 
     def cache(self) -> Cache:
-        return Cache(cast(Redis, self))
+        return Cache(cast("Redis", self))
 
 
 @pytest.fixture(

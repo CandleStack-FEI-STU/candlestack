@@ -105,7 +105,7 @@ def _drop_request_variables(event: Event) -> None:
 
 
 def _before_send(budget: ErrorBudget) -> Callable[[Event, Hint], Event | None]:
-    def before_send(event: Event, hint: Hint) -> Event | None:
+    def before_send(event: Event, _hint: Hint) -> Event | None:
         if not budget.take():
             return None
         _drop_request_variables(event)
@@ -114,7 +114,7 @@ def _before_send(budget: ErrorBudget) -> Callable[[Event, Hint], Event | None]:
     return before_send
 
 
-def _before_send_log(log: Log, hint: Hint) -> Log | None:
+def _before_send_log(log: Log, _hint: Hint) -> Log | None:
     """Drops the access lines of health checks and adds the request id to the other logs."""
     attributes = log["attributes"]
     if attributes.get("logger.name") == _ACCESS_LOGGER and str(

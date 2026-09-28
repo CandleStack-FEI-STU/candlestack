@@ -5,6 +5,7 @@ from redis.asyncio import Redis
 
 from candlestack.core import RateLimiter
 from candlestack.data import DataService
+from candlestack.main import app as module_app
 
 
 def test_lifespan_opens_and_closes_the_shared_clients(app: FastAPI) -> None:
@@ -19,7 +20,5 @@ def test_lifespan_opens_and_closes_the_shared_clients(app: FastAPI) -> None:
 
 
 def test_module_level_app_for_granian() -> None:
-    from candlestack.main import app
-
-    assert isinstance(app, FastAPI)
-    assert app.openapi_url == "/api/v1/openapi.json"
+    assert isinstance(module_app, FastAPI)
+    assert module_app.openapi_url == "/api/v1/openapi.json"

@@ -88,19 +88,20 @@ def epoch(moment: datetime) -> int:
     return int(moment.timestamp())
 
 
-def _span_start(ts: int, yearly: bool) -> int:
+def _span_start(ts: int, *, yearly: bool) -> int:
     moment = utc(ts)
     return epoch(datetime(moment.year, 1 if yearly else moment.month, 1, tzinfo=UTC))
 
 
-def _next_span(start: int, yearly: bool) -> int:
+def _next_span(start: int, *, yearly: bool) -> int:
     moment = utc(start)
     if yearly or moment.month == 12:
         return epoch(datetime(moment.year + 1, 1, 1, tzinfo=UTC))
     return epoch(datetime(moment.year, moment.month + 1, 1, tzinfo=UTC))
 
 
-def plan_periods(
+# The request, then the caller's chunking policy (keyword-only).
+def plan_periods(  # noqa: PLR0913
     start: int,
     end: int,
     now: int,
@@ -119,12 +120,12 @@ def plan_periods(
     - today up to ``now``, the live tail (``2026-09-26-live``), cached ``LIVE_TTL``.
     """
     today = now // DAY * DAY
-    current = _span_start(today, yearly)
+    current = _span_start(today, yearly=yearly)
     span_format = "%Y" if yearly else "%Y-%m"
     periods = []
-    span = _span_start(start, yearly)
+    span = _span_start(start, yearly=yearly)
     while span < min(end, current):
-        following = _next_span(span, yearly)
+        following = _next_span(span, yearly=yearly)
         label = utc(span).strftime(span_format)
         periods.append(Period("closed", span, following, label, closed_ttl))
         span = following
@@ -144,7 +145,7 @@ def plan_periods(
 
 
 async def spend(
-    limiter: RateLimiter, source: Source, what: str, key: str, limit: int, cost: int = 1
+    limiter: RateLimiter, source: Source, what: str, key: str, limit: int, *, cost: int = 1
 ) -> None:
     """Takes ``cost`` from our budget at a source; waits for the next window when that is at
     most ``MAX_BUDGET_WAIT`` away, else raises ``SourceUnavailable`` with ``retry_after``.
