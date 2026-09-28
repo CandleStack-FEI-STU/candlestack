@@ -46,7 +46,34 @@ line-length = 100
 target-version = "py313"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF", "ASYNC", "PT"]
+select = [
+    "E", "F", "W", "I", "UP", "B", "SIM", "RUF", "ASYNC", "PT",
+    "A", "BLE", "C4", "C90", "DTZ", "ERA", "FLY", "FURB", "G", "ICN", "INT", "LOG", "N", "PGH",
+    "PIE", "PTH", "Q", "RET", "RSE", "SLF", "SLOT", "TID",
+    "PLR0912", "PLR0915",
+    "D",
+]
+ignore = [
+    "N818",       # exception names describe the problem (InstrumentNotFound)
+    # Docstrings are optional (Google style when written): only their format is checked.
+    "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",
+    # A summary may wrap onto a second line and the closing quotes may end the last line:
+    # the style of the existing docstrings, which these two would rewrite for no reader's gain.
+    "D205", "D209",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8
+
+[tool.ruff.lint.pylint]
+max-branches = 8
+max-statements = 30
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -88,3 +115,25 @@ source_modules = ["candlestack.data", "candlestack.main", "candlestack.openapi"]
 forbidden_modules = ["sentry_sdk"]
 # They reach Sentry through core (logging, setup_sentry), never by importing it themselves.
 allow_indirect_imports = true
+
+# Inside data, each layer imports only the ones below it. Modules of one layer joined by "|"
+# do not import each other; the ones joined by ":" may.
+[[tool.importlinter.contracts]]
+name = "Inside data: HTTP -> service -> stores and sources -> pure logic -> models"
+type = "layers"
+containers = ["candlestack.data"]
+layers = [
+    "api",
+    "service",
+    "catalog_store",
+    "sources",
+    "cache | candles | catalog | schemas",
+    "sessions",
+    "models : errors",
+]
+
+# What the sources share lives in sources.base.
+[[tool.importlinter.contracts]]
+name = "Sources do not know each other"
+type = "independence"
+modules = ["candlestack.data.sources.alpaca", "candlestack.data.sources.binance"]
