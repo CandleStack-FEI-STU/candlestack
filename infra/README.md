@@ -3,7 +3,7 @@
 Everything needed to run CandleStack on a single VM: one edge proxy in front of the
 prod, stage and pull-request preview environments.
 
-```
+```text
 Internet -> Cloudflare (TLS) -> Tunnel -> cloudflared on the VM -> edge Caddy -> environment
 ```
 
@@ -167,7 +167,7 @@ Previews run the code of pull requests, so their token opens only `ssh` and the 
 Behind it, the `deploy` user has one key per environment, and each key is forced to run
 `vm/candlestack-deploy` for its own scope only (for example, the preview key cannot touch prod).
 
-```
+```text
 up <env> <version> <backend image@digest> <frontend image@digest>     (stage and pr-<N>)
 up prod <release tag>
 ```
@@ -221,8 +221,9 @@ The images of an environment are built from `backend/` and `frontend/` at the re
 
 ## Tests
 
-The CI `infra` job runs these, besides actionlint, shellcheck and validating the compose files,
-the Caddyfiles and the tunnel ingress rules. Locally, from the repository root:
+The CI `infra` job runs these, besides validating the compose files, the Caddyfiles and the
+tunnel ingress rules; the `Pre-commit` job runs shfmt and shellcheck on every shell script,
+hadolint on the Dockerfiles and actionlint on the workflows. Locally, from the repository root:
 
 ```sh
 infra/vm/test-candlestack-deploy.sh    # bash with GNU tools (Linux, WSL), or in a container:

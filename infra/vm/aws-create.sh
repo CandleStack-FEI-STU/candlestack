@@ -59,6 +59,7 @@ user_data=$(sed \
   -e "s|__GIT_REF__|$GIT_REF|" \
   "$(dirname "$0")/cloud-init.yaml")
 
+tags="Tags=[{Key=Name,Value=$NAME},{Key=Project,Value=candlestack}]"
 instance=$(aws ec2 run-instances \
   --image-id "$ami" \
   --instance-type "$INSTANCE_TYPE" \
@@ -68,9 +69,7 @@ instance=$(aws ec2 run-instances \
   --metadata-options HttpTokens=required,HttpEndpoint=enabled \
   --block-device-mappings "DeviceName=/dev/sda1,Ebs={VolumeSize=$DISK_GB,VolumeType=gp3,Encrypted=true,DeleteOnTermination=true}" \
   --user-data "$user_data" \
-  --tag-specifications \
-    "ResourceType=instance,Tags=[{Key=Name,Value=$NAME},{Key=Project,Value=candlestack}]" \
-    "ResourceType=volume,Tags=[{Key=Name,Value=$NAME},{Key=Project,Value=candlestack}]" \
+  --tag-specifications "ResourceType=instance,$tags" "ResourceType=volume,$tags" \
   --query 'Instances[0].InstanceId' --output text)
 
 echo "Launched $instance ($INSTANCE_TYPE, $ami). Waiting until it is running..."

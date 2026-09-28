@@ -1,0 +1,4 @@
+# ShellCheck options for every shell script (pre-commit runs it on all of them).
+# Follow `source` to files given relative to the script's own directory.
+external-sources=true
+source-path=SCRIPTDIR

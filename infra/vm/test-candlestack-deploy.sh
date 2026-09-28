@@ -397,9 +397,9 @@ else
   failed "previews output" "expected pr-57 then pr-9 with their times, got: $output"
 fi
 FAKE_PREVIEWS="stage:1790000000 pr-57:1790001800"
-after_git=$(slot_calls) refused "preview: up pr-42 while pr-57 runs" preview   "up pr-42 pr-42-0123abc $IMAGES" "$TOKEN" "no free preview slot: pr-57 running, at most 1 at a time"
+after_git=$(slot_calls) refused "preview: up pr-42 while pr-57 runs" preview "up pr-42 pr-42-0123abc $IMAGES" "$TOKEN" "no free preview slot: pr-57 running, at most 1 at a time"
 FAKE_PREVIEWS="stage:1790000000 pr-42:1790001800"
-allowed "preview: up pr-42 again while it runs" preview "up pr-42 pr-42-0123abc $IMAGES" "$TOKEN"   "$(slot_calls)
+allowed "preview: up pr-42 again while it runs" preview "up pr-42 pr-42-0123abc $IMAGES" "$TOKEN" "$(slot_calls)
 $(up_calls pr-42 pr-42-0123abc 64mb 96m)"
 FAKE_PREVIEWS=
 refused "stage: previews" stage "previews" "" "only the preview key lists previews"

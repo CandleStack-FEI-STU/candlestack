@@ -36,6 +36,29 @@ jobs:
     permissions:
       pull-requests: read
 
+  # The pre-commit hooks (.pre-commit-config.yaml) on every file: formatting, secrets, typos,
+  # comments, Markdown, shfmt and shellcheck on every shell script, hadolint on the Dockerfiles,
+  # and actionlint and zizmor on the workflows. On every run, whatever changed: they take about
+  # a minute. ruff is left to `lint` and `infra`, which run it with the locked release.
+  pre-commit:
+    name: Pre-commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+      - run: uvx pre-commit run --all-files --show-diff-on-failure
+        env:
+          SKIP: ruff-check,ruff-format
+
   # Decides which suites run: each only when something it checks changed.
   changes:
     runs-on: ubuntu-latest
@@ -270,10 +293,10 @@ jobs:
           git show HEAD^1:docs/openapi.json >"$RUNNER_TEMP/base.json"
           .github/scripts/api-changes.sh "$RUNNER_TEMP/base.json" docs/openapi.json
 
-  # What only the post-merge deploy would otherwise exercise: the workflows and their scripts,
-  # the deploy script the VM runs as a forced command, the compose files, the edge and tunnel
-  # configuration, the server agent and the images other than the backend's. A broken one on
-  # main breaks the next deploy.
+  # What only the post-merge deploy would otherwise exercise: the deploy script the VM runs as a
+  # forced command, the compose files, the edge and tunnel configuration, the server agent and
+  # the images other than the backend's. A broken one on main breaks the next deploy. The
+  # workflows (actionlint) and the shell scripts (shellcheck) are checked in the Pre-commit job.
   infra:
     needs: changes
     if: needs.changes.outputs.infra == 'true'
@@ -285,15 +308,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - name: Workflows (actionlint, with shellcheck on their run scripts)
-        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
-
-      # The ShellCheck release the actionlint image brings, not the runner's older one.
-      - name: Shell scripts
-        run: |
-          docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.11.0 \
-            infra/vm/candlestack-deploy infra/vm/*.sh .github/scripts/*.sh
 
       # The real script as sshd runs it for each key, with fake docker and git.
       - name: Deploy script tests
@@ -355,7 +369,7 @@ jobs:
   ci:
     name: ci
     if: always()
-    needs: [changes, lint, unit, integration, e2e, api, infra]
+    needs: [pre-commit, changes, lint, unit, integration, e2e, api, infra]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}

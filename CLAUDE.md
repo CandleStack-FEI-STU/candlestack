@@ -40,8 +40,10 @@ contract.
 
 ## Verify
 
-The git hooks (`uvx pre-commit install`, once per clone) fix formatting and stop AI attribution
-on every commit. From `backend/`, before every push:
+The git hooks (`uvx pre-commit install`, once per clone) fix formatting and stop secrets, typos,
+shell, Dockerfile, workflow and Markdown findings and AI attribution on every commit; CI's
+`Pre-commit` job runs them on every file, as `uvx pre-commit run --all-files` does locally. From
+`backend/`, before every push:
 
 ```sh
 uv run ruff check . && uv run ruff format --check .
