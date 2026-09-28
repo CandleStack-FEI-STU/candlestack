@@ -30,9 +30,12 @@ What the ruleset of `main` enforces:
   editor and Claude Code settings);
 - every review thread resolved;
 - the required checks `no-ai-signs / No AI signs` and `ci` (below) green;
+- squash merging only (merge commits and rebase merging are off in the repository settings
+  too);
 - no force pushes to `main` and no deleting it.
 
-Squash merging is the team's convention, not a rule of the repository.
+The squash commit takes the pull request title and number, e.g. "Add the candles endpoint
+(#12)", and an empty message (repository settings).
 
 ## Checks
 
