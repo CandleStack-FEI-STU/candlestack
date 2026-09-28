@@ -1,0 +1,10 @@
+# gitleaks (pre-commit, `gitleaks dir`): the default rules, minus two known false positives.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Recorded source responses (their page tokens) and the Access snapshot's public token ids"
+paths = [
+  '''^backend/tests/fixtures/''',
+  '''^infra/cloudflare/access\.json$''',
+]

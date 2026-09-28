@@ -128,7 +128,7 @@ release_compose_file() {
 # runs since its backend container was created, which every "up" of it does anew.
 list_previews() {
   local project id
-  docker ps --filter label=com.docker.compose.service=backend     --format '{{.Label "com.docker.compose.project"}} {{.ID}}' |
+  docker ps --filter label=com.docker.compose.service=backend --format '{{.Label "com.docker.compose.project"}} {{.ID}}' |
     while read -r project id; do
       [[ $project =~ ^pr-[0-9]{1,6}$ ]] || continue
       echo "$project $(date -d "$(docker inspect --format '{{.Created}}' "$id")" +%s)"

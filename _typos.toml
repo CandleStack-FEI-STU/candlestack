@@ -1,0 +1,4 @@
+# typos (pre-commit): words it would "fix" that are right here.
+[default.extend-words]
+# "caf\xc3\xa9", café in UTF-8 bytes, in the deploy script's tests.
+caf = "caf"

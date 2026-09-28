@@ -21,11 +21,13 @@ file adds what is specific to this one.
   `.claude/settings.json` turns its commit and pull request attribution off. Keep personal
   settings in `.claude/settings.local.json` (ignored).
 - Once per clone, install the git hooks: `uvx pre-commit install`. On every commit they fix
-  ruff findings and formatting, trailing whitespace and missing final newlines, and stop
-  merge conflict markers, files over 1 MB, private keys and AI attribution in the commit
-  message (`.pre-commit-config.yaml`). A hook that fixed files stops the commit: review the
-  changes, `git add` them and commit again. They take a second or two; CI still runs every
-  check.
+  ruff findings and formatting, trailing whitespace, missing final newlines and shell script
+  formatting (shfmt), and stop merge conflict markers, files over 1 MB, secrets (gitleaks),
+  typos, `.editorconfig` violations, Markdown lint, shellcheck and hadolint findings, workflow
+  errors (actionlint, zizmor), TODOs without an issue and commented-out code, and AI
+  attribution in the commit message (`.pre-commit-config.yaml`). A hook that fixed files stops
+  the commit: review the changes, `git add` them and commit again. Run them on every file
+  with `uvx pre-commit run --all-files`; the `Pre-commit` job in CI does the same.
 
 ## Merging
 
@@ -54,13 +56,13 @@ All four are required to merge:
 | `no-ai-signs / No AI signs` | commit messages, authors and the pull request text |
 | `linked-issue / Linked issue` | the pull request description closes an issue ("Closes #N"); the tech lead and Dependabot are exempt |
 | `pr-hygiene / Title and branch` | the title (starts with a capital letter and an imperative verb, no `type:` prefix, no trailing period, at most 72 characters) and the branch name (`<area>/<topic>`); Dependabot's titles are exempt. `pr-hygiene / Size` only warns, above 1000 changed lines (lockfiles, fixtures and generated snapshots not counted) |
-| `ci` | the backend jobs `lint` (ruff, ty, import-linter, the root `compose.yaml` validated and its dev image built), `unit` (no network: pytest-socket), `integration` (the unit and integration tests with Redis, at least 95% branch coverage, and on a pull request at least 90% of the changed lines covered, diff-cover) and `e2e` (the built image, then scanned by Trivy); `api` (breaking changes to the API, see below); `infra` (actionlint with shellcheck on the workflows, shellcheck on the deploy and smoke scripts, the deploy script's tests, the compose files of `infra/` validated, the server agent's ruff and tests, the edge Caddyfile and the tunnel ingress rules validated, the frontend and server agent images built and scanned by Trivy; see [infra/README.md](infra/README.md#tests)) |
+| `ci` | `Pre-commit` (the git hooks on every file, ruff aside), the backend jobs `lint` (ruff, ty, import-linter, the root `compose.yaml` validated and its dev image built), `unit` (no network: pytest-socket), `integration` (the unit and integration tests with Redis, at least 95% branch coverage, and on a pull request at least 90% of the changed lines covered, diff-cover) and `e2e` (the built image, then scanned by Trivy); `api` (breaking changes to the API, see below); `infra` (the deploy script's tests, the compose files of `infra/` validated, the server agent's ruff and tests, the edge Caddyfile and the tunnel ingress rules validated, the frontend and server agent images built and scanned by Trivy; see [infra/README.md](infra/README.md#tests)) |
 
 The backend jobs run only when `backend/`, `docs/openapi.json`, a `compose*.yaml` file in the
 repository root (`compose.yaml`) or `.github/workflows/ci.yml` changed, and `infra` only when
 `infra/`, `frontend/`, `.github/` or `backend/uv.lock` (the agent is linted with the backend's
 ruff) changed; `api` runs on pull requests that change `docs/openapi.json`. `ci` passes when
-they are skipped.
+they are skipped. `Pre-commit` always runs.
 
 The Trivy scans fail on a HIGH or CRITICAL vulnerability in an image that has a fix: usually
 a newer base image or dependency fixes it. One that cannot be fixed yet goes to

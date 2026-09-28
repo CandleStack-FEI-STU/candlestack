@@ -16,4 +16,9 @@ Dockerfile               @ArsenLabovich
 /.gitignore              @ArsenLabovich
 /.editorconfig           @ArsenLabovich
 /.pre-commit-config.yaml @ArsenLabovich
+/.gitleaks.toml          @ArsenLabovich
+/_typos.toml             @ArsenLabovich
+/.shellcheckrc           @ArsenLabovich
+/.editorconfig-checker.json @ArsenLabovich
+/.markdownlint-cli2.jsonc   @ArsenLabovich
 /.trivyignore.yaml       @ArsenLabovich
