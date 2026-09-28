@@ -24,6 +24,8 @@
       "secret_names": [
         "ALPACA_KEY_ID",
         "ALPACA_SECRET_KEY",
+        "CF_ACCESS_CLIENT_ID",
+        "CF_ACCESS_CLIENT_SECRET",
         "DEPLOY_SSH_KEY"
       ]
     },
@@ -58,6 +60,8 @@
       "secret_names": [
         "ALPACA_KEY_ID",
         "ALPACA_SECRET_KEY",
+        "CF_ACCESS_CLIENT_ID",
+        "CF_ACCESS_CLIENT_SECRET",
         "DEPLOY_SSH_KEY",
         "SENTRY_AUTH_TOKEN",
         "SENTRY_DSN"
@@ -84,6 +88,8 @@
       "secret_names": [
         "ALPACA_KEY_ID",
         "ALPACA_SECRET_KEY",
+        "CF_ACCESS_CLIENT_ID",
+        "CF_ACCESS_CLIENT_SECRET",
         "DEPLOY_SSH_KEY",
         "SENTRY_AUTH_TOKEN",
         "SENTRY_DSN"
@@ -163,10 +169,7 @@
     }
   ],
   "pages": null,
-  "secret_names": [
-    "CF_ACCESS_CLIENT_ID",
-    "CF_ACCESS_CLIENT_SECRET"
-  ],
+  "secret_names": [],
   "security": {
     "code_scanning_default_setup": {
       "languages": [
