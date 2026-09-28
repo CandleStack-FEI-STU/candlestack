@@ -13,7 +13,8 @@ runs:
       env:
         VERSION: 1.32.1
         SHA256: 7c8939fc49b75ee11fec66a5b83b37a2fca6aee109fed85013b1ba2ac2a1ee7f
-      run: |
+      # GITHUB_PATH gets a directory holding only the binary of the archive checked against SHA256.
+      run: | # zizmor: ignore[github-env]
         dir=$RUNNER_TEMP/oasdiff
         mkdir -p "$dir"
         archive=$dir/oasdiff.tar.gz

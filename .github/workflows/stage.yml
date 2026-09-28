@@ -67,6 +67,8 @@ jobs:
       packages: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # First: it also updates the VM's checkout, so the steps below run the new deploy script.
       - name: Update the edge proxy
