@@ -163,6 +163,16 @@
       "name": "question"
     },
     {
+      "color": "d4c5f9",
+      "description": "Timeboxed research that answers a question",
+      "name": "spike"
+    },
+    {
+      "color": "1d76db",
+      "description": "Work item with acceptance criteria",
+      "name": "task"
+    },
+    {
       "color": "ffffff",
       "description": "This will not be worked on",
       "name": "wontfix"
