@@ -14,11 +14,24 @@ services:
       - ./caddy:/etc/caddy:ro
       - caddy_data:/data
     networks:
-      - edge
+      edge:
+        # The server agent checks the previews' health through this proxy (see agent.py).
+        aliases:
+          - edge-caddy
+      edge-preview: {}
 
 networks:
+  # prod, stage and the server agent.
   edge:
     name: edge
+  # The previews only: they run the code of pull requests, and Docker does not route between
+  # two networks, so from here they reach none of the other containers. Its subnet is fixed
+  # because the Caddyfile refuses requests from it.
+  edge-preview:
+    name: edge-preview
+    ipam:
+      config:
+        - subnet: 10.99.0.0/24
 
 volumes:
   caddy_data:

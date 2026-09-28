@@ -22,6 +22,7 @@ from unittest import mock
 
 import agent
 
+HTTP_JSON = agent.http_json  # setUp stubs it
 NOW = 1_790_400_000  # 2026-09-26T05:20:00Z
 
 
@@ -104,11 +105,25 @@ class Server(ThreadingHTTPServer):
     request_queue_size = 32
 
 
-def previews_health(url, timeout=10):
-    """The previews' /api/health: pr-7 answers, pr-12 cannot be reached."""
-    if url == "http://pr-7-backend:8000/api/health":
+def previews_health(url, timeout=10, host=None):
+    """The previews' /api/health through the edge Caddy: pr-7 answers, pr-12 does not."""
+    if (url, host) == ("http://edge-caddy/api/health", "pr-7-preview.candlestack.tech"):
         return {"status": "ok", "version": "pr-7-cafe0"}, 12
-    raise OSError("pr-12-backend: Name does not resolve")
+    raise urllib.error.HTTPError(url, 502, "Bad Gateway", {}, None)
+
+
+class FakeEdge(BaseHTTPRequestHandler):
+    """The edge Caddy: /api/health of the preview that the Host header names."""
+
+    def do_GET(self):
+        data = json.dumps({"status": "ok", "version": self.headers["Host"]}).encode()
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def log_message(self, *args):
+        pass
 
 
 class AgentTest(unittest.TestCase):
@@ -294,6 +309,14 @@ class AgentTest(unittest.TestCase):
                 ("pr-12", "backend"),  # by number: 7 before 12
             ],
         )
+
+    def test_preview_health_is_asked_of_the_edge_by_the_preview_hostname(self):
+        self.enterContext(mock.patch.object(agent, "EDGE_URL", self.serve(FakeEdge)))
+        self.enterContext(mock.patch.object(agent, "http_json", HTTP_JSON))
+
+        check = agent.check_preview("pr-7")
+
+        self.assertEqual((check["ok"], check["version"]), (True, "pr-7-preview.candlestack.tech"))
 
     def test_http_answers_starting_then_the_snapshot_then_stale(self):
         base = self.serve(agent.Handler)

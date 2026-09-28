@@ -35,6 +35,10 @@ flowchart LR
 | `frontend` | `ghcr.io/candlestack-fei-stu/candlestack/frontend` | placeholder page until the real frontend exists |
 | `redis` | `redis:8-alpine` | private network of the environment, no persistence, `allkeys-lru` |
 
+The edge Caddy reaches prod and stage on one Docker network and the previews, which run the
+code of pull requests, on another, so a preview reaches neither prod, stage nor the server agent
+([infra/README.md](../infra/README.md#environments)).
+
 ## HTTP surface
 
 | Path | What |

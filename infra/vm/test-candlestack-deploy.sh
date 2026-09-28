@@ -30,7 +30,7 @@ case $1 in
     if [[ $file != /opt/candlestack/* ]]; then
       echo "  file $(head -n 1 "$file")" >>"$CALLS"
     fi
-    env | grep -E '^(ENV_NAME|APP_VERSION|BACKEND_IMAGE|FRONTEND_IMAGE|IMAGE|REDIS_[A-Z_]+|ALPACA_[A-Z_]+|SENTRY_DSN)=' |
+    env | grep -E '^(ENV_NAME|APP_VERSION|BACKEND_IMAGE|FRONTEND_IMAGE|IMAGE|EDGE_NETWORK|REDIS_[A-Z_]+|ALPACA_[A-Z_]+|SENTRY_DSN)=' |
       sort | sed 's/^/  env /' >>"$CALLS"
     [[ $FAKE_DOCKER != fail-up || $* != *" up "* ]]
     ;;
@@ -200,7 +200,8 @@ slot_calls() {
 }
 
 # up_calls <env> <version> <maxmemory> <container limit> [with-secrets [with-dsn]]: what "up"
-# asks of Docker; prod with the compose file of its release tag.
+# asks of Docker; prod with the compose file of its release tag, a preview on the network
+# edge-preview instead of edge.
 up_calls() {
   echo "docker login ghcr.io --username deploy --password-stdin"
   echo "  stdin $TOKEN"
@@ -219,6 +220,11 @@ up_calls() {
   fi
   echo "  env APP_VERSION=$2"
   echo "  env BACKEND_IMAGE=$BACKEND"
+  if [[ $1 == pr-* ]]; then
+    echo "  env EDGE_NETWORK=edge-preview"
+  else
+    echo "  env EDGE_NETWORK=edge"
+  fi
   echo "  env ENV_NAME=$1"
   echo "  env FRONTEND_IMAGE=$FRONTEND"
   echo "  env REDIS_MAXMEMORY=$3"
@@ -264,6 +270,7 @@ allowed "preview: down pr-42" preview "down pr-42" "" \
   "docker compose -p pr-42 -f /opt/candlestack/infra/env/compose.yaml down --remove-orphans
   env APP_VERSION=none
   env BACKEND_IMAGE=none
+  env EDGE_NETWORK=edge-preview
   env ENV_NAME=pr-42
   env FRONTEND_IMAGE=none
   env REDIS_MAXMEMORY=64mb

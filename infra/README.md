@@ -25,8 +25,8 @@ frontend, and compresses the responses (zstd or gzip) on the way to Cloudflare.
 
 | Container | Image | Reached as | Memory limit |
 | --- | --- | --- | --- |
-| `backend` | `ghcr.io/candlestack-fei-stu/candlestack/backend` (built from `backend/`) | `<env>-backend:8000` on the `edge` network | `320m` |
-| `frontend` | `ghcr.io/candlestack-fei-stu/candlestack/frontend` (built from `frontend/`, the placeholder page) | `<env>-frontend:8080` on the `edge` network | `32m` |
+| `backend` | `ghcr.io/candlestack-fei-stu/candlestack/backend` (built from `backend/`) | `<env>-backend:8000` on the edge network (below) | `320m` |
+| `frontend` | `ghcr.io/candlestack-fei-stu/candlestack/frontend` (built from `frontend/`, the placeholder page) | `<env>-frontend:8080` on the edge network (below) | `32m` |
 | `redis` | `redis:8-alpine`, pinned by digest | `redis:6379` on the environment's own network only | see below |
 
 Redis is a cache for the backend: no persistence, least recently used keys are evicted at
@@ -40,6 +40,25 @@ Redis is a cache for the backend: no persistence, least recently used keys are e
 
 All containers of an environment run with a read-only root filesystem, no Linux capabilities
 and `no-new-privileges`.
+
+The Docker networks keep the previews, which run the code of pull requests, away from the rest
+of the VM. Docker does not route between two networks, and only the edge Caddy is on both edge
+networks:
+
+| Network | Who is on it |
+| --- | --- |
+| `edge` | the edge Caddy (also as `edge-caddy`), the backend and frontend of prod and stage, the server agent (`vm-agent`) |
+| `edge-preview` (`10.99.0.0/24`) | the edge Caddy and the backend and frontend of the previews |
+| `<env>_default` | the backend and Redis of that environment |
+| `agent_docker` (internal) | the server agent and its Docker socket proxy |
+
+`vm/candlestack-deploy` puts an environment on `edge` or `edge-preview` by its name, so a pull
+request cannot choose. The edge Caddy answers 403 to every request from `edge-preview`, so a
+preview cannot reach prod, stage or the agent through it either, and the agent checks the
+previews' health through the edge Caddy, by their hostname. A preview's backend still reaches
+the internet (Binance, Alpaca) through its `pr-<N>_default` network. `edge` creates
+`edge-preview` with the edge Caddy (`edge/compose.yaml`) on the running VM, as cloud-init does
+on a new one.
 
 Every push to `main` builds the backend, frontend and agent images once, a preview deployment
 builds the backend and frontend images, and a release builds nothing. The images that keep
@@ -204,7 +223,8 @@ cd backend && uv run ruff check ../infra/agent && uv run ruff format --check ../
   refused before anything runs, that prod takes only a release tag on main's history and starts
   with that tag's compose file and the images stage last ran for its commit, that only a
   successful `up stage` adds to the stage record, that a second preview is refused, that no
-  token or secret is printed, and the Docker commands of every allowed command. It touches
+  token or secret is printed, and the Docker commands of every allowed command (with the edge
+  network: `edge-preview` for previews). It touches
   nothing outside a temporary directory.
 - `agent/test_agent.py` (standard library `unittest`, like the agent) pins the schema-1
   snapshot that ops reads, the order of its containers and the HTTP answers (`starting`, the

@@ -49,6 +49,14 @@
 		-Server
 	}
 
+	# Requests from the previews' containers (network edge-preview in ../compose.yaml, which this
+	# proxy shares with them) are refused, so a preview cannot reach prod, stage or the agent
+	# through the proxy either. First, since only the first matching handle runs.
+	@from_preview remote_ip 10.99.0.0/24
+	handle @from_preview {
+		respond 403
+	}
+
 	@prod host app.candlestack.tech
 	handle @prod {
 		import env prod prod
