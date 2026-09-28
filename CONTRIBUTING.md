@@ -11,7 +11,9 @@ file adds what is specific to this one.
 - Branch from `main` and name the branch `<area>/<topic>`, e.g. `backend/candles`.
   Keep pull requests small and about one thing.
 - The pull request title becomes the commit on `main`: imperative, sentence case, no trailing
-  period, e.g. "Add the candles endpoint".
+  period, at most 72 characters, e.g. "Add the candles endpoint". The `pr-hygiene` check fails
+  on a title or branch name that breaks these rules (edit the title and it runs again) and
+  warns when a pull request changes more than 1000 lines.
 - The description closes its issue: "Closes #N" (the `linked-issue` check fails without it).
 - No AI attribution in commits or pull requests: no co-author trailers of AI tools,
   "Generated with ..." lines or session links. The `no-ai-signs` check fails on them.
@@ -34,8 +36,8 @@ What the ruleset of `main` enforces:
   `.github/CODEOWNERS` (infrastructure, CI, the toolchain, the dependency set, the shared
   editor and Claude Code settings);
 - every review thread resolved;
-- the required checks `no-ai-signs / No AI signs`, `linked-issue / Linked issue` and `ci`
-  (below) green;
+- the required checks `no-ai-signs / No AI signs`, `linked-issue / Linked issue`,
+  `pr-hygiene / Title and branch` and `ci` (below) green;
 - squash merging only (merge commits and rebase merging are off in the repository settings
   too);
 - no force pushes to `main` and no deleting it.
@@ -45,12 +47,13 @@ The squash commit takes the pull request title and number, e.g. "Add the candles
 
 ## Checks
 
-All three are required to merge:
+All four are required to merge:
 
 | Check | What it runs |
 | --- | --- |
 | `no-ai-signs / No AI signs` | commit messages, authors and the pull request text |
 | `linked-issue / Linked issue` | the pull request description closes an issue ("Closes #N"); the tech lead and Dependabot are exempt |
+| `pr-hygiene / Title and branch` | the title (starts with a capital letter and an imperative verb, no `type:` prefix, no trailing period, at most 72 characters) and the branch name (`<area>/<topic>`); Dependabot's titles are exempt. `pr-hygiene / Size` only warns, above 1000 changed lines (lockfiles, fixtures and generated snapshots not counted) |
 | `ci` | the backend jobs `lint` (ruff, ty, import-linter, the root `compose.yaml` validated and its dev image built), `unit` (no network: pytest-socket), `integration` (the unit and integration tests with Redis, at least 95% branch coverage, and on a pull request at least 90% of the changed lines covered, diff-cover) and `e2e` (the built image, then scanned by Trivy); `api` (breaking changes to the API, see below); `infra` (actionlint with shellcheck on the workflows, shellcheck on the deploy and smoke scripts, the deploy script's tests, the compose files of `infra/` validated, the server agent's ruff and tests, the edge Caddyfile and the tunnel ingress rules validated, the frontend and server agent images built and scanned by Trivy; see [infra/README.md](infra/README.md#tests)) |
 
 The backend jobs run only when `backend/`, `docs/openapi.json`, a `compose*.yaml` file in the

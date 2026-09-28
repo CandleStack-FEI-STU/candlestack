@@ -27,6 +27,15 @@ jobs:
     if: github.event_name == 'pull_request'
     uses: CandleStack-FEI-STU/.github/.github/workflows/linked-issue.yml@main
 
+  # The title and branch follow the conventions; a warning when the pull request is large.
+  # Required and independent like no-ai-signs: editing the title re-runs only this check
+  # (pr-hygiene-edited.yml), so `ci` does not wait for it.
+  pr-hygiene:
+    if: github.event_name == 'pull_request'
+    uses: CandleStack-FEI-STU/.github/.github/workflows/pr-hygiene.yml@main
+    permissions:
+      pull-requests: read
+
   # Decides which suites run: each only when something it checks changed.
   changes:
     runs-on: ubuntu-latest
@@ -329,8 +338,9 @@ jobs:
               --ignorefile .trivyignore.yaml --exit-code 1 "$image"
           done
 
-  # The one required check besides no-ai-signs: green when every job passed or was skipped.
-  # Without no-ai-signs, so that an edit fixing the pull request's text leaves it green.
+  # The one required check besides no-ai-signs, linked-issue and pr-hygiene: green when every
+  # job passed or was skipped. Without those three, so that an edit fixing the pull request's
+  # text leaves it green.
   ci:
     name: ci
     if: always()
