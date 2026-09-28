@@ -126,7 +126,10 @@ its release channels were compromised in March 2026.
 ## How a deployment reaches the VM
 
 GitHub Actions connects over SSH to `ssh.candlestack.tech` through the tunnel. That hostname
-is a Cloudflare Access application that only lets in the `github-actions-deploy` service token.
+is a Cloudflare Access application that only lets in two service tokens: `github-actions-deploy`
+(environments `production` and `staging`) and `github-actions-preview` (environment `preview`).
+Previews run the code of pull requests, so their token opens only `ssh` and the previews
+(Access application `*-preview.candlestack.tech`), not stage, `vm` or `ops`.
 Behind it, the `deploy` user has one key per environment, and each key is forced to run
 `vm/candlestack-deploy` for its own scope only (for example, the preview key cannot touch prod).
 
@@ -160,7 +163,7 @@ of `vm/candlestack-deploy` lists which key may run what.
 | `ALPACA_KEY_ID`, `ALPACA_SECRET_KEY` | environments `production`, `staging`, `preview` | Alpaca paper account keys for the backend (US stocks); `staging` and `preview` share the stage account, `production` has its own |
 | `SENTRY_DSN` | environments `production`, `staging` | where the backend sends errors, traces, profiles and logs (Sentry project `backend`) |
 | `SENTRY_AUTH_TOKEN` | environments `production`, `staging` | Sentry organization token (scope `org:ci`) that records each release |
-| `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | repository secrets | Access service token |
+| `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | environments `production`, `staging`, `preview` | Access service token: `github-actions-deploy` for `production` and `staging`, `github-actions-preview` for `preview` |
 | `DEPLOY_KNOWN_HOSTS` | repository variable | SSH host key of the VM |
 
 ## Files

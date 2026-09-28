@@ -15,9 +15,11 @@ dashboard, so it can be reviewed, compared after a change and set up again.
 
 How the pieces fit: the tunnel CNAMEs send `app`, `stage`, `ssh` and every other name (`*`) to the
 VM. Access decides who gets through: `app` is public (application `prod-public`), `ssh` accepts
-only the deploy service token (`ssh-deploy`), and everything else (stage, previews, `vm`, `ops`)
-needs a GitHub login from the organization or a service token (`team-only`). `ops` is served by
-the Worker, not the tunnel.
+only the deploy and preview service tokens (`ssh-deploy`), the previews (`*-preview`) need a
+GitHub login from the organization or the preview service token (`previews`), and everything
+else (stage, `vm`, `ops`) needs a GitHub login from the organization or the deploy or ops
+service token (`team-only`). The preview token, used by workflows that deploy pull requests'
+code, opens only `ssh` and the previews. `ops` is served by the Worker, not the tunnel.
 
 ## Not in the snapshot
 
