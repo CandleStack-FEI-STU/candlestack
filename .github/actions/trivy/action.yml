@@ -18,7 +18,8 @@ runs:
       env:
         VERSION: 0.74.0
         SHA256: 2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a
-      run: |
+      # GITHUB_PATH gets a directory holding only the binary of the archive checked against SHA256.
+      run: | # zizmor: ignore[github-env]
         dir=$RUNNER_TEMP/trivy
         mkdir -p "$dir"
         archive=$dir/trivy.tar.gz
