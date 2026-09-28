@@ -53,6 +53,10 @@
           {
             "context": "check",
             "integration_id": 15368
+          },
+          {
+            "context": "linked-issue / Linked issue",
+            "integration_id": 15368
           }
         ],
         "strict_required_status_checks_policy": false

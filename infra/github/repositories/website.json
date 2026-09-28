@@ -53,6 +53,11 @@
       "name": "content"
     },
     {
+      "color": "0366d6",
+      "description": "Pull requests that update a dependency file",
+      "name": "dependencies"
+    },
+    {
       "color": "0075ca",
       "description": "Improvements or additions to documentation",
       "name": "documentation"
@@ -83,9 +88,24 @@
       "name": "invalid"
     },
     {
+      "color": "168700",
+      "description": "Pull requests that update javascript code",
+      "name": "javascript"
+    },
+    {
       "color": "d876e3",
       "description": "Further information is requested",
       "name": "question"
+    },
+    {
+      "color": "d4c5f9",
+      "description": "Timeboxed research that answers a question",
+      "name": "spike"
+    },
+    {
+      "color": "1d76db",
+      "description": "Work item with acceptance criteria",
+      "name": "task"
     },
     {
       "color": "ffffff",
