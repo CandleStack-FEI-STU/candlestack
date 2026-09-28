@@ -91,7 +91,8 @@ resetting it to origin/main on every stage deploy). The VM takes those images fr
 record (below), not from the registry: any workflow run allowed to write packages, including
 one from a pull request's branch, could move a registry tag.
 
-A preview is deployed on demand and runs for a few hours (`preview.yml`, `preview-cleanup.yml`):
+A preview is deployed on demand and runs for a few hours (`preview-build.yml`, `preview.yml`,
+`preview-cleanup.yml`):
 the VM has room for one (`max_previews` in `vm/candlestack-deploy`; prod and stage take about
 1.15 GB of its 2 GB with their container limits, a preview up to 450 MB). Adding the `preview`
 label deploys the pull request's current commit, unless another pull request holds the slot:
@@ -99,7 +100,21 @@ then the label comes off and a comment says until when. A new commit, removing t
 closing the pull request removes the preview, a new commit the label too. Every hour
 `preview-cleanup.yml` removes the previews that have run for 6 hours (label off, with a
 comment) and any whose pull request is closed or unlabeled, and deletes preview images (tags
-`pr-*`) older than a week from the registry. Pull requests from forks never deploy.
+`pr-*`) older than a week from the registry. Pull requests from forks and pull requests into
+another branch than `main` never deploy.
+
+A pull request's code never runs next to the preview's secrets (the deploy key, the Access
+service token, the Alpaca keys). `preview-build.yml` runs the workflow of the pull request's
+branch, so it holds no secret: it only builds the images (`pr-<N>-<commit>`) with a token that
+may push packages. `preview.yml` holds the secrets, and GitHub always runs it as it is on `main`
+(`workflow_run` after a successful build, `pull_request_target` for a new commit, the label
+removed or the pull request closed; it never checks out the pull request). Before deploying it
+reads the pull request's current state from GitHub (open, from this repository, into `main`,
+labeled, still at the built commit) and looks the images' digests up in the registry by their
+tag; `candlestack-deploy` checks their form again. The GitHub environment `preview` accepts
+deployments from `main` only, so a changed copy of the workflow on another branch cannot use its
+secrets. The smoke test and `.github/actions/deploy` are `main`'s too: a change to them takes
+effect on previews once merged.
 
 To release: `git tag v0.2.0 <commit on main> && git push origin v0.2.0`, then approve the
 deployment in the Actions tab. Only a commit that stage has deployed can be released; any other

@@ -1,14 +1,29 @@
 name: Preview
 
-# Adding the "preview" label to a pull request deploys its current commit to
+# Adding the "preview" label to a pull request into main deploys its current commit to
 # pr-<N>-preview.candlestack.tech. The server runs one preview at a time: when another pull
 # request holds it, the label comes off again and a comment says until when. A preview lives
 # until a new commit arrives (it goes, with the label; add the label again to deploy that
 # commit), the label is removed, the pull request is closed or it has run for PREVIEW_HOURS
 # (preview-cleanup.yml). Pull requests from forks never deploy.
+#
+# The deploy key, the Access service token and the Alpaca keys never meet a pull request's
+# code. preview-build.yml runs from the pull request's branch and only builds its images.
+# This workflow holds the secrets, and GitHub always runs it as it is on main (workflow_run and
+# pull_request_target take the default or base branch's definition, and it never checks out
+# the pull request): the preview environment accepts deployments from main only.
+# - A successful Preview build deploys, once the pull request's current state on GitHub still
+#   asks for that commit (open, from this repository, labeled, the same head). The images are
+#   looked up in the registry by their tag, never taken from the build run.
+# - A new commit, removing the label or closing the pull request removes the preview; these
+#   come from pull_request_target, whose event GitHub writes, not the pull request's code.
 on:
-  pull_request:
-    types: [opened, reopened, synchronize, labeled, unlabeled, closed]
+  workflow_run: # zizmor: ignore[dangerous-triggers] never runs the pull request's code
+    workflows: [Preview build]
+    types: [completed]
+  pull_request_target: # zizmor: ignore[dangerous-triggers] never checks out the pull request
+    types: [synchronize, unlabeled, closed]
+    branches: [main]
 
 permissions: {}
 
@@ -16,63 +31,105 @@ env:
   # How long a preview lives; the same in preview-cleanup.yml.
   PREVIEW_HOURS: 6
 
-# Runs that deploy or remove the preview share one group per pull request, and a newer one
-# cancels the one in progress (a new commit stops a deploy). Every other run (a label other
-# than "preview", a pull request without it) does nothing and gets a group of its own.
+# Runs that deploy or remove the preview share one group per pull request with its Preview
+# build, and a newer one cancels the one in progress (a new commit stops a build or a deploy).
+# Every other run (a build that did not succeed, a label other than "preview", a pull request
+# without it) does nothing and gets a group of its own.
 concurrency:
   group: >-
-    preview-${{ github.event.pull_request.number }}-${{
-    (github.event.pull_request.head.repo.full_name == github.repository &&
-     ((contains(github.event.pull_request.labels.*.name, 'preview') &&
-       (github.event.action == 'opened' || github.event.action == 'reopened' ||
-        github.event.action == 'synchronize' || github.event.action == 'closed' ||
-        (github.event.action == 'labeled' && github.event.label.name == 'preview'))) ||
-      (github.event.action == 'unlabeled' && github.event.label.name == 'preview')))
+    preview-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number }}-${{
+    ((github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.pull_requests[0].number) ||
+     (github.event_name == 'pull_request_target' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      ((contains(github.event.pull_request.labels.*.name, 'preview') &&
+        (github.event.action == 'synchronize' || github.event.action == 'closed')) ||
+       (github.event.action == 'unlabeled' && github.event.label.name == 'preview'))))
     && 'env' || github.run_id }}
   cancel-in-progress: true
 
 jobs:
-  no-ai-signs:
+  # What to deploy, from GitHub's own records only: the pull request's current state and the
+  # registry. No secrets here.
+  plan:
     if: >-
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      contains(github.event.pull_request.labels.*.name, 'preview') &&
-      (github.event.action == 'opened' || github.event.action == 'reopened' ||
-       (github.event.action == 'labeled' && github.event.label.name == 'preview'))
-    uses: CandleStack-FEI-STU/.github/.github/workflows/no-ai-signs.yml@main
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
+      pull-requests: read
+      packages: read
+    outputs:
+      pr: ${{ steps.plan.outputs.pr }}
+      commit: ${{ steps.plan.outputs.commit }}
+      backend: ${{ steps.plan.outputs.backend }}
+      frontend: ${{ steps.plan.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-  build-backend:
-    needs: no-ai-signs
-    uses: ./.github/workflows/build.yml
-    permissions:
-      contents: read
-      packages: write
-    with:
-      name: backend
-      context: backend
-      tag: pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
-      commit: ${{ github.event.pull_request.head.sha }}
-
-  build-frontend:
-    needs: no-ai-signs
-    uses: ./.github/workflows/build.yml
-    permissions:
-      contents: read
-      packages: write
-    with:
-      name: frontend
-      context: frontend
-      tag: pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
-      commit: ${{ github.event.pull_request.head.sha }}
+      # Sets pr, commit and the backend and frontend images as name@digest, or nothing when
+      # the pull request no longer asks for a preview of the built commit.
+      - name: Pick the pull request and its images
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          COMMIT: ${{ github.event.workflow_run.head_sha }}
+          PR: ${{ github.event.workflow_run.pull_requests[0].number }}
+        run: |
+          [[ $COMMIT =~ ^[0-9a-f]{40}$ ]] || { echo "::error::bad commit: '$COMMIT'"; exit 1; }
+          # workflow_run can list no pull request: then the open one of this repository's
+          # branches, into main, whose head is the built commit.
+          if [[ -z $PR ]]; then
+            PR=$(gh api "repos/$GH_REPO/commits/$COMMIT/pulls" | jq -r --arg repo "$GH_REPO" \
+              --arg commit "$COMMIT" '[.[] | select(.state == "open" and .base.ref == "main"
+                and .head.sha == $commit and .head.repo.full_name == $repo) | .number]
+                | if length == 1 then .[0] else empty end')
+            if [[ -z $PR ]]; then
+              echo "No single open pull request into main has $COMMIT as its head: nothing to deploy."
+              exit 0
+            fi
+          fi
+          not_wanted=$(.github/scripts/preview-wanted.sh "$PR" "$COMMIT")
+          if [[ -n $not_wanted ]]; then
+            echo "Nothing to deploy: $not_wanted."
+            exit 0
+          fi
+          # The digests the tags point to now; candlestack-deploy checks their form again.
+          tag=pr-$PR-$COMMIT
+          accept='application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'
+          for name in backend frontend; do
+            repo=candlestack-fei-stu/candlestack/$name
+            token=$(curl -fsS -u "token:$GH_TOKEN" \
+              "https://ghcr.io/token?service=ghcr.io&scope=repository:$repo:pull" | jq -r .token)
+            digest=$(curl -fsS --head -H "Authorization: Bearer $token" -H "Accept: $accept" \
+              "https://ghcr.io/v2/$repo/manifests/$tag" |
+              tr -d '\r' | awk 'tolower($1) == "docker-content-digest:" { print $2 }')
+            [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]] || {
+              echo "::error::No image ghcr.io/$repo:$tag in the registry."
+              exit 1
+            }
+            echo "$name=ghcr.io/$repo@$digest" >>"$GITHUB_OUTPUT"
+          done
+          echo "pr=$PR" >>"$GITHUB_OUTPUT"
+          echo "commit=$COMMIT" >>"$GITHUB_OUTPUT"
+          echo "Deploying $tag."
 
   deploy:
-    needs: [build-backend, build-frontend]
+    needs: plan
+    if: needs.plan.outputs.pr != ''
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
       name: preview
-      url: https://pr-${{ github.event.pull_request.number }}-preview.candlestack.tech
+      url: https://pr-${{ needs.plan.outputs.pr }}-preview.candlestack.tech
     # Deploys of different pull requests take turns, so each finds the slot as the one before
     # left it.
     concurrency:
@@ -82,10 +139,30 @@ jobs:
       contents: read
       packages: read
       pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PR: ${{ needs.plan.outputs.pr }}
+      COMMIT: ${{ needs.plan.outputs.commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # This job may have waited for the slot: deploy only what the pull request still asks for.
+      - name: Check the pull request again
+        id: wanted
+        run: |
+          not_wanted=$(.github/scripts/preview-wanted.sh "$PR" "$COMMIT")
+          if [[ -n $not_wanted ]]; then
+            echo "::notice::Not deployed: $not_wanted."
+            echo "deploy=false" >>"$GITHUB_OUTPUT"
+          else
+            echo "deploy=true" >>"$GITHUB_OUTPUT"
+          fi
 
       - name: List the running previews
+        if: steps.wanted.outputs.deploy == 'true'
         id: previews
         uses: ./.github/actions/deploy
         with:
@@ -99,10 +176,8 @@ jobs:
       # off, a comment says until when (about PREVIEW_HOURS after that preview was deployed) and
       # the job fails, so GitHub shows no deployment that does not exist.
       - name: Check the preview slot
+        if: steps.wanted.outputs.deploy == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number }}
           PREVIEWS: ${{ steps.previews.outputs.output }}
         run: |
           taken=$(awk -v own="pr-$PR" '$1 ~ /^pr-[0-9]+$/ && $1 != own' <<<"$PREVIEWS" | head -n 1)
@@ -122,12 +197,13 @@ jobs:
           exit 1
 
       - name: Deploy the preview
+        if: steps.wanted.outputs.deploy == 'true'
         uses: ./.github/actions/deploy
         with:
           command: >-
-            up pr-${{ github.event.pull_request.number }}
-            pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
-            ${{ needs.build-backend.outputs.image }} ${{ needs.build-frontend.outputs.image }}
+            up pr-${{ needs.plan.outputs.pr }}
+            pr-${{ needs.plan.outputs.pr }}-${{ needs.plan.outputs.commit }}
+            ${{ needs.plan.outputs.backend }} ${{ needs.plan.outputs.frontend }}
           ssh-key: ${{ secrets.DEPLOY_SSH_KEY }}
           known-hosts: ${{ vars.DEPLOY_KNOWN_HOSTS }}
           access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
@@ -136,17 +212,19 @@ jobs:
           env-secrets: |
             ALPACA_KEY_ID=${{ secrets.ALPACA_KEY_ID }}
             ALPACA_SECRET_KEY=${{ secrets.ALPACA_SECRET_KEY }}
-          health-url: https://pr-${{ github.event.pull_request.number }}-preview.candlestack.tech/api/health
-          health-expect: ${{ github.event.pull_request.head.sha }}
+          health-url: https://pr-${{ needs.plan.outputs.pr }}-preview.candlestack.tech/api/health
+          health-expect: ${{ needs.plan.outputs.commit }}
 
       - name: Smoke test
+        if: steps.wanted.outputs.deploy == 'true'
         env:
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
-        run: .github/scripts/smoke.sh https://pr-${{ github.event.pull_request.number }}-preview.candlestack.tech
+        run: .github/scripts/smoke.sh "https://pr-$PR-preview.candlestack.tech"
 
   remove:
     if: >-
+      github.event_name == 'pull_request_target' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
       ((contains(github.event.pull_request.labels.*.name, 'preview') &&
         (github.event.action == 'synchronize' || github.event.action == 'closed')) ||
@@ -159,7 +237,10 @@ jobs:
       contents: read
       pull-requests: write
     steps:
+      # main's copy, as on every pull_request_target run: never the pull request's head.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/deploy
         with:

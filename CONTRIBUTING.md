@@ -55,12 +55,16 @@ a newer base image or dependency fixes it. One that cannot be fixed yet goes to
 
 ## Preview environment
 
-Add the `preview` label to a pull request to deploy its current commit to
+Add the `preview` label to a pull request into `main` to deploy its current commit to
 `https://pr-<N>-preview.candlestack.tech` (team only). The server has room for one preview at a
 time: when another pull request holds it, the label comes off again and a comment says until
 when. A preview lives at most 6 hours (then the label comes off with a comment); a new commit,
 removing the label or closing the pull request removes it sooner. A new commit removes the
 label too: add it again to deploy that commit.
+
+The pull request's own workflow only builds the images (`preview-build.yml`); `main`'s
+`preview.yml` deploys them with `main`'s deploy action and smoke test, so a change to those
+reaches previews once it is merged (details in [infra/README.md](infra/README.md)).
 
 ## Backend
 

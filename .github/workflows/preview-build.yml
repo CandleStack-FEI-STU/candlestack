@@ -1,0 +1,63 @@
+name: Preview build
+
+# The untrusted half of a preview (see preview.yml): it runs the workflow of the pull request's
+# own branch, so it holds no secret and never touches the VM. When a pull request into main gets
+# the "preview" label (or is opened or reopened with it), it builds the backend and frontend
+# images of the pull request's commit and pushes them as pr-<N>-<commit>. Once this run
+# succeeds, preview.yml, always the one on main, deploys them. Pull requests from forks never
+# build.
+on:
+  pull_request:
+    types: [opened, reopened, labeled]
+    branches: [main]
+
+permissions: {}
+
+# A build shares its pull request's group with the runs of preview.yml that deploy or remove
+# its preview, so a new commit, removing the label or closing the pull request stops it. Every
+# other run (a label other than "preview", a pull request without it) builds nothing and gets a
+# group of its own.
+concurrency:
+  group: >-
+    preview-${{ github.event.pull_request.number }}-${{
+    (github.event.pull_request.head.repo.full_name == github.repository &&
+     contains(github.event.pull_request.labels.*.name, 'preview') &&
+     (github.event.action == 'opened' || github.event.action == 'reopened' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'preview')))
+    && 'env' || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  no-ai-signs:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(github.event.pull_request.labels.*.name, 'preview') &&
+      (github.event.action == 'opened' || github.event.action == 'reopened' ||
+       (github.event.action == 'labeled' && github.event.label.name == 'preview'))
+    uses: CandleStack-FEI-STU/.github/.github/workflows/no-ai-signs.yml@main
+    permissions:
+      contents: read
+
+  build-backend:
+    needs: no-ai-signs
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      name: backend
+      context: backend
+      tag: pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+      commit: ${{ github.event.pull_request.head.sha }}
+
+  build-frontend:
+    needs: no-ai-signs
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      name: frontend
+      context: frontend
+      tag: pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+      commit: ${{ github.event.pull_request.head.sha }}
