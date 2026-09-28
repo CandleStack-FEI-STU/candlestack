@@ -92,7 +92,7 @@
     "archived": false,
     "default_branch": "main",
     "delete_branch_on_merge": true,
-    "description": "Organization profile and shared community files",
+    "description": "Our organization profile, security policy and shared CI checks",
     "has_discussions": false,
     "has_issues": true,
     "has_projects": false,
