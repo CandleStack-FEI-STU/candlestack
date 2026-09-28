@@ -47,6 +47,7 @@ on every commit. From `backend/`, before every push:
 uv run ruff check . && uv run ruff format --check .
 uv run ty check
 uv run lint-imports
-uv run pytest                  # unit tests
-uv run pytest -m integration   # needs `docker compose up -d redis` from the repository root
+uv run pytest                      # unit tests
+uv run pytest --cov -m "not e2e"   # unit + integration, coverage >= 95%; needs
+                                   # `docker compose up -d redis` from the repository root
 ```

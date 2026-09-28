@@ -26,11 +26,13 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "diff-cover>=10.6.0",
     "granian[reload]>=2.8.3",
     "httpx2>=2.13.1",
     "import-linter>=2.15",
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
+    "pytest-socket>=0.8.1",
     "pytest-xdist>=3.8.0",
     "respx>=0.23.1",
     "ruff>=0.16.9",
@@ -96,14 +98,33 @@ missing-override-decorator = "error"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Plain `pytest` runs the unit tests; CI selects the other suites with -m.
-addopts = ["-m", "not integration and not e2e", "--strict-markers", "--import-mode=importlib", "-ra"]
+# Plain `pytest` runs the unit tests; CI selects the other suites with -m. No test opens a
+# network socket (pytest-socket) unless it is an integration or e2e test (tests/conftest.py).
+addopts = [
+    "-m", "not integration and not e2e",
+    "--strict-markers",
+    "--import-mode=importlib",
+    "-ra",
+    "--disable-socket",
+    "--allow-unix-socket",
+]
 markers = [
     "integration: needs a real Redis at REDIS_URL",
     "e2e: runs the built image with docker compose (tests/e2e/compose.yaml)",
 ]
 filterwarnings = ["error"]
 xfail_strict = true
+
+# The gate is for the unit and integration tests together (CI's integration job):
+# `pytest --cov -m "not e2e"` with Redis running.
+[tool.coverage.run]
+source = ["candlestack"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 95
+show_missing = true
+skip_covered = true
 
 [tool.importlinter]
 root_package = "candlestack"

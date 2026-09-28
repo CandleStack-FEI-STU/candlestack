@@ -151,7 +151,10 @@ jobs:
       run:
         working-directory: backend
     steps:
+      # The merge commit and its first parent, the base branch, for diff-cover.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
 
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
@@ -159,7 +162,14 @@ jobs:
           cache-dependency-glob: backend/uv.lock
 
       - run: uv sync --locked
-      - run: uv run pytest -m integration
+      # Unit and integration tests together, serially (the integration tests share one Redis),
+      # measured against the coverage gate of pyproject.toml (95%, branches included).
+      - run: uv run pytest -m "not e2e" --cov --cov-report=xml
+
+      # At least 90% of the lines a pull request changes are covered.
+      - name: Coverage of the changed lines
+        if: github.event_name == 'pull_request'
+        run: uv run diff-cover coverage.xml --compare-branch=HEAD^1 --fail-under=90
 
   e2e:
     needs: changes

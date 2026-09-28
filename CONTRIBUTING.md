@@ -51,7 +51,7 @@ All three are required to merge:
 | --- | --- |
 | `no-ai-signs / No AI signs` | commit messages, authors and the pull request text |
 | `linked-issue / Linked issue` | the pull request description closes an issue ("Closes #N"); the tech lead and Dependabot are exempt |
-| `ci` | the backend jobs `lint` (ruff, ty, import-linter, the root `compose.yaml` validated and its dev image built), `unit`, `integration` (Redis) and `e2e` (the built image, then scanned by Trivy); `api` (breaking changes to the API, see below); `infra` (actionlint with shellcheck on the workflows, shellcheck on the deploy and smoke scripts, the deploy script's tests, the compose files of `infra/` validated, the server agent's ruff and tests, the edge Caddyfile and the tunnel ingress rules validated, the frontend and server agent images built and scanned by Trivy; see [infra/README.md](infra/README.md#tests)) |
+| `ci` | the backend jobs `lint` (ruff, ty, import-linter, the root `compose.yaml` validated and its dev image built), `unit` (no network: pytest-socket), `integration` (the unit and integration tests with Redis, at least 95% branch coverage, and on a pull request at least 90% of the changed lines covered, diff-cover) and `e2e` (the built image, then scanned by Trivy); `api` (breaking changes to the API, see below); `infra` (actionlint with shellcheck on the workflows, shellcheck on the deploy and smoke scripts, the deploy script's tests, the compose files of `infra/` validated, the server agent's ruff and tests, the edge Caddyfile and the tunnel ingress rules validated, the frontend and server agent images built and scanned by Trivy; see [infra/README.md](infra/README.md#tests)) |
 
 The backend jobs run only when `backend/`, `docs/openapi.json`, a `compose*.yaml` file in the
 repository root (`compose.yaml`) or `.github/workflows/ci.yml` changed, and `infra` only when
@@ -101,8 +101,12 @@ uv run pytest -m e2e                                  # builds and runs the imag
 - `REDIS_URL` points the integration tests at another Redis; they flush the database they
   get, so never give them one whose data you need.
 - Coverage of the unit and integration tests (with Redis running):
-  `uv run pytest --cov=candlestack --cov-branch -m "not e2e"`. The team's convention is at
-  least 85% (branch coverage included); CI does not enforce it.
+  `uv run pytest --cov -m "not e2e"` fails under 95% (branch coverage included); CI also
+  wants at least 90% of the lines a pull request changes covered
+  (`uv run pytest --cov --cov-report=xml -m "not e2e" && uv run diff-cover coverage.xml
+  --compare-branch=origin/main --fail-under=90`).
+- Unit tests cannot open network sockets (pytest-socket); only the integration and e2e
+  tests may.
 - The market data endpoints (instruments, candles, `/api/health/sources`) are specified in
   [docs/data.md](docs/data.md). With `compose.yaml` running (`docker compose up --build` in the
   repository root), try them in the API reference at http://localhost:8000/api/v1/docs (test
