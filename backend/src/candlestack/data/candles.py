@@ -231,7 +231,7 @@ def fingerprint(
     end: int,
     df: pl.DataFrame,
 ) -> str:
-    """``sha256:<64 hex>`` over the request and its candles; the same candles give the same
+    r"""``sha256:<64 hex>`` over the request and its candles; the same candles give the same
     value whatever the row order, any changed number gives another.
 
     Byte layout (version 1) fed to SHA-256:
@@ -239,7 +239,7 @@ def fingerprint(
     1. ``candlestack-candles-v1`` and a line feed (LF, 0x0A).
     2. source, feed, instrument id, timeframe, start, end and the number of candles n, each as
        UTF-8 text followed by LF; integers in decimal, e.g.
-       ``binance\\nspot\\ncrypto:BTCUSDT\\n1h\\n1704067200\\n1704078000\\n3\\n``.
+       ``binance\nspot\ncrypto:BTCUSDT\n1h\n1704067200\n1704078000\n3\n``.
     3. the n open times ``ts`` in ascending order, each a big-endian signed 64-bit integer.
     4. the n opens, then the n highs, n lows, n closes and n volumes, each column in the order
        of ``ts`` and each value a big-endian IEEE 754 binary64 (``-0.0`` is written as ``0.0``).

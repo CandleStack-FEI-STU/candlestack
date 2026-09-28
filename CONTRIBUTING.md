@@ -126,6 +126,10 @@ uv run pytest -m e2e                                  # builds and runs the imag
 - Modules import each other only through their package root
   (`from candlestack.core import ProblemError`), and `candlestack.core` imports no other module.
   `lint-imports` checks both.
+- `ruff check` enforces more than style: complexity (McCabe 8, at most 8 branches and 30
+  statements per function), no commented-out code, no relative imports, and the format of
+  docstrings. Docstrings are optional; one that is written follows the Google style (a summary
+  sentence, then `Args:`, `Returns:`, `Raises:` sections where they help).
 - Add dependencies with `uv add <package>` (`--dev` for tools) and commit `uv.lock`.
 - Settings are environment variables, documented in `.env.example`.
 
