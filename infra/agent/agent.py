@@ -2,7 +2,7 @@
 
 Every INTERVAL seconds the agent samples host CPU, memory and disk (from /proc), the
 containers (through a read-only Docker socket proxy) and the health of every PR preview
-(on the internal Docker network). GET /api/snapshot returns the latest sample.
+(through the edge Caddy). GET /api/snapshot returns the latest sample.
 
 The ops Worker (github.com/CandleStack-FEI-STU/ops) fetches the snapshot every minute through
 Cloudflare Access and keeps all history, so the status page stays up when this server is
@@ -26,6 +26,9 @@ from pathlib import Path
 INTERVAL = int(os.environ.get("INTERVAL", "60"))
 DOCKER_URL = os.environ.get("DOCKER_URL", "http://socket-proxy:2375")
 VM_LABEL = os.environ.get("VM_LABEL", "")
+# The previews run pull requests' code on a network of their own that the agent does not join
+# (infra/edge/compose.yaml): their health is asked of the edge Caddy, by their hostname.
+EDGE_URL = os.environ.get("EDGE_URL", "http://edge-caddy")
 SCHEMA = 1
 PREVIEW_RE = re.compile(r"^pr-(\d{1,6})$")
 # Environments first, then the services that run them, then previews by number.
@@ -35,8 +38,11 @@ ORDER = {"prod": 0, "stage": 1, "edge": 2, "agent": 3}
 # --- collection ------------------------------------------------------------------------
 
 
-def http_json(url, timeout=10):
-    request = urllib.request.Request(url, headers={"User-Agent": "candlestack-agent/1.0"})
+def http_json(url, timeout=10, host=None):
+    headers = {"User-Agent": "candlestack-agent/1.0"}
+    if host:
+        headers["Host"] = host
+    request = urllib.request.Request(url, headers=headers)
     started = time.monotonic()
     with urllib.request.urlopen(request, timeout=timeout) as resp:
         body = json.loads(resp.read().decode())
@@ -45,7 +51,7 @@ def http_json(url, timeout=10):
 
 def check_preview(env):
     try:
-        body, ms = http_json(f"http://{env}-backend:8000/api/health")
+        body, ms = http_json(f"{EDGE_URL}/api/health", host=f"{env}-preview.candlestack.tech")
         version = body.get("version")
         return {
             "env": env,

@@ -69,6 +69,17 @@ redis_memory() {
   export REDIS_MAXMEMORY REDIS_MEM_LIMIT
 }
 
+# prod and stage share the network "edge" with the edge Caddy and the server agent. A preview
+# runs a pull request's code: it gets "edge-preview", where only the edge Caddy is too
+# (infra/edge/compose.yaml).
+edge_network() {
+  case "$1" in
+    prod | stage) EDGE_NETWORK=edge ;;
+    *) EDGE_NETWORK=edge-preview ;;
+  esac
+  export EDGE_NETWORK
+}
+
 compose() {
   docker compose -p "$env" -f "$compose_file" "$@"
 }
@@ -190,6 +201,7 @@ case "${action:-}" in
     read_secrets
     pull "$backend" "$frontend"
     redis_memory "$env"
+    edge_network "$env"
     ENV_NAME=$env APP_VERSION=$version BACKEND_IMAGE=$backend FRONTEND_IMAGE=$frontend \
       compose up --detach --remove-orphans
     if [ "$env" = stage ]; then
@@ -203,6 +215,7 @@ case "${action:-}" in
     may_touch "$env" || fail "the $scope key may not remove '$env'"
     # compose needs every variable of the file, even to remove the containers.
     redis_memory "$env"
+    edge_network "$env"
     ENV_NAME=$env APP_VERSION=none BACKEND_IMAGE=none FRONTEND_IMAGE=none \
       compose down --remove-orphans
     prune_images

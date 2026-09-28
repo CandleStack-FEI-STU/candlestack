@@ -2,8 +2,10 @@
 # infra/vm/candlestack-deploy on the VM, which also exports the backend's Alpaca keys
 # (ALPACA_KEY_ID, ALPACA_SECRET_KEY) and SENTRY_DSN (prod and stage only) for this command only:
 #   ENV_NAME=stage APP_VERSION=<version> BACKEND_IMAGE=<image@digest> FRONTEND_IMAGE=<image@digest> \
-#   REDIS_MAXMEMORY=128mb REDIS_MEM_LIMIT=160m docker compose -p stage -f infra/env/compose.yaml up -d
-# On the shared "edge" network the edge Caddy reaches <ENV_NAME>-backend:8000 (/api/*) and
+#   REDIS_MAXMEMORY=128mb REDIS_MEM_LIMIT=160m EDGE_NETWORK=edge \
+#   docker compose -p stage -f infra/env/compose.yaml up -d
+# On the edge network (EDGE_NETWORK: "edge" for prod and stage; "edge-preview" for previews,
+# which share it with the edge Caddy only) the edge Caddy reaches <ENV_NAME>-backend:8000 (/api/*) and
 # <ENV_NAME>-frontend:8080 (everything else). Redis is on the environment's own network only.
 services:
   backend:
@@ -88,5 +90,8 @@ services:
       - default
 
 networks:
+  # Without EDGE_NETWORK, the previews' one: prod or stage would fail to be reached, rather
+  # than a preview reach them.
   edge:
+    name: ${EDGE_NETWORK:-edge-preview}
     external: true
