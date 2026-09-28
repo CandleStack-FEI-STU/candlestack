@@ -21,6 +21,12 @@ jobs:
     permissions:
       contents: read
 
+  # The description closes an issue ("Closes #N"). Required and independent like no-ai-signs:
+  # editing the description re-runs only this check (linked-issue-edited.yml).
+  linked-issue:
+    if: github.event_name == 'pull_request'
+    uses: CandleStack-FEI-STU/.github/.github/workflows/linked-issue.yml@main
+
   # Decides which suites run: each only when something it checks changed.
   changes:
     runs-on: ubuntu-latest
