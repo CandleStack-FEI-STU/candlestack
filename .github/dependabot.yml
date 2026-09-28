@@ -16,8 +16,9 @@ updates:
       - dependency-name: uv-build
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
+  # The workflows and the composite actions in .github/actions.
   - package-ecosystem: github-actions
-    directory: /
+    directories: [/, /.github/actions/*]
     schedule:
       interval: weekly
     groups:
