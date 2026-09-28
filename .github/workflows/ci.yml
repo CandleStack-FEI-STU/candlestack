@@ -13,7 +13,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # Always the first job: no AI attribution in commits or the pull request.
+  # No AI attribution in commits or the pull request. A required check of its own, which the
+  # other jobs do not wait for: editing the pull request's title or description re-runs only
+  # this check (no-ai-signs-edited.yml), so the rest must already have run.
   no-ai-signs:
     uses: CandleStack-FEI-STU/.github/.github/workflows/no-ai-signs.yml@main
     permissions:
@@ -21,7 +23,6 @@ jobs:
 
   # Decides which suites run: each only when something it checks changed.
   changes:
-    needs: no-ai-signs
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -313,10 +314,11 @@ jobs:
           done
 
   # The one required check besides no-ai-signs: green when every job passed or was skipped.
+  # Without no-ai-signs, so that an edit fixing the pull request's text leaves it green.
   ci:
     name: ci
     if: always()
-    needs: [no-ai-signs, changes, lint, unit, integration, e2e, api, infra]
+    needs: [changes, lint, unit, integration, e2e, api, infra]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
