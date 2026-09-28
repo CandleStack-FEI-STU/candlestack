@@ -92,7 +92,7 @@
     "archived": false,
     "default_branch": "main",
     "delete_branch_on_merge": true,
-    "description": "CandleStack design sources: UI mockups and brand assets",
+    "description": "Mockups and brand assets for everything CandleStack",
     "has_discussions": false,
     "has_issues": true,
     "has_projects": true,
