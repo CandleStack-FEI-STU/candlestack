@@ -211,7 +211,8 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     threading.Thread(target=sampler, daemon=True).start()
-    ThreadingHTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
+    # Every interface of its container: the edge Caddy reaches it as vm-agent:8080.
+    ThreadingHTTPServer(("0.0.0.0", 8080), Handler).serve_forever()  # noqa: S104
 
 
 if __name__ == "__main__":

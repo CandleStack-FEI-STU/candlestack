@@ -1,7 +1,48 @@
 # ruff for the server agent and its tests. CI runs the backend's ruff release (backend/uv.lock)
-# with the backend's rules, except the pytest ones: the agent's tests use unittest.
+# with the backend's rules (backend/pyproject.toml), except the pytest ones (the agent's tests
+# use unittest) and the annotations (ANN): the agent is one small stdlib script.
 line-length = 100
 target-version = "py313"
 
 [lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+select = [
+    "E", "F", "W", "I", "UP", "B", "SIM", "RUF", "ASYNC",
+    "A", "ARG", "BLE", "C4", "C90", "DTZ", "ERA", "FBT", "FLY", "FURB", "G", "ICN", "INT", "ISC",
+    "LOG", "N", "PERF", "PGH", "PIE", "PL", "PTH", "Q", "RET", "RSE", "S", "SLF", "SLOT", "T20",
+    "TC", "TID",
+    "D",
+]
+ignore = [
+    "PLR2004",    # HTTP status codes and small literals read better inline
+    "S101",       # assert narrows types
+    "N818",       # exception names describe the problem
+    "ISC001",     # conflicts with ruff format
+    # Docstrings are optional (Google style when written): only their format is checked.
+    "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",
+    # A summary may wrap onto a second line and the closing quotes may end the last line.
+    "D205", "D209",
+]
+
+[lint.pydocstyle]
+convention = "google"
+
+[lint.mccabe]
+max-complexity = 8
+
+[lint.pylint]
+max-args = 6
+max-positional-args = 5
+max-branches = 8
+max-statements = 30
+max-returns = 6
+
+[lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[lint.per-file-ignores]
+# A stdlib daemon that must keep sampling: a failed probe becomes a value (ok false, null)
+# instead of an exception (BLE001, S110); its URLs are its own settings, plain http inside the
+# server's networks (S310); its state lives in module globals the tests reset (PLW0603); its
+# log is stdout (T201).
+"agent.py" = ["BLE001", "S110", "S310", "PLW0603", "T201"]
+"test_*.py" = ["ARG", "FBT", "PLR0913", "PLR0917", "PLR0915", "S", "SLF001", "D"]

@@ -176,7 +176,7 @@ class AgentTest(unittest.TestCase):
         self.clock[0] += agent.INTERVAL
         return agent.sample()
 
-    def assertShape(self, value, types):
+    def assert_shape(self, value, types):
         """``value`` has exactly the keys of ``types``, in that order, each of its type or
         types (exact types: a bool is no int, an int no float)."""
         self.assertEqual(list(value), list(types))
@@ -189,7 +189,7 @@ class AgentTest(unittest.TestCase):
         second = self.next_sample()
 
         for snapshot in first, second:
-            self.assertShape(
+            self.assert_shape(
                 snapshot,
                 {
                     "schema": int,
@@ -200,7 +200,7 @@ class AgentTest(unittest.TestCase):
                 },
             )
             self.assertEqual(snapshot["schema"], 1)
-            self.assertShape(
+            self.assert_shape(
                 snapshot["host"],
                 {
                     "label": str,
@@ -215,7 +215,7 @@ class AgentTest(unittest.TestCase):
                 },
             )
             for row in snapshot["containers"]:
-                self.assertShape(
+                self.assert_shape(
                     row,
                     {
                         "name": str,
@@ -230,7 +230,7 @@ class AgentTest(unittest.TestCase):
                     },
                 )
             for row in snapshot["previews"]:
-                self.assertShape(
+                self.assert_shape(
                     row, {"env": str, "ok": bool, "ms": (int, NoneType), "version": (str, NoneType)}
                 )
         self.assertEqual((first["host"]["cpu"], type(second["host"]["cpu"])), (None, float))
