@@ -1,5 +1,9 @@
 # Contributing
 
+The [Definition of Ready and of Done](https://github.com/CandleStack-FEI-STU/.github/blob/main/CONTRIBUTING.md#definition-of-ready)
+and the issue forms (Task, Bug, Spike) are shared by every repository of the organization. This
+file adds what is specific to this one.
+
 ## Branches and pull requests
 
 - `main` is protected. Every change goes through a pull request and is squash-merged once it
@@ -8,6 +12,7 @@
   Keep pull requests small and about one thing.
 - The pull request title becomes the commit on `main`: imperative, sentence case, no trailing
   period, e.g. "Add the candles endpoint".
+- The description closes its issue: "Closes #N" (the `linked-issue` check fails without it).
 - No AI attribution in commits or pull requests: no co-author trailers of AI tools,
   "Generated with ..." lines or session links. The `no-ai-signs` check fails on them.
 - Using Claude Code is fine: `CLAUDE.md` gives it the project's rules and
@@ -29,7 +34,8 @@ What the ruleset of `main` enforces:
   `.github/CODEOWNERS` (infrastructure, CI, the toolchain, the dependency set, the shared
   editor and Claude Code settings);
 - every review thread resolved;
-- the required checks `no-ai-signs / No AI signs` and `ci` (below) green;
+- the required checks `no-ai-signs / No AI signs`, `linked-issue / Linked issue` and `ci`
+  (below) green;
 - squash merging only (merge commits and rebase merging are off in the repository settings
   too);
 - no force pushes to `main` and no deleting it.
@@ -39,11 +45,12 @@ The squash commit takes the pull request title and number, e.g. "Add the candles
 
 ## Checks
 
-Both are required to merge:
+All three are required to merge:
 
 | Check | What it runs |
 | --- | --- |
 | `no-ai-signs / No AI signs` | commit messages, authors and the pull request text |
+| `linked-issue / Linked issue` | the pull request description closes an issue ("Closes #N"); the tech lead and Dependabot are exempt |
 | `ci` | the backend jobs `lint` (ruff, ty, import-linter, the root `compose.yaml` validated and its dev image built), `unit`, `integration` (Redis) and `e2e` (the built image, then scanned by Trivy); `api` (breaking changes to the API, see below); `infra` (actionlint with shellcheck on the workflows, shellcheck on the deploy and smoke scripts, the deploy script's tests, the compose files of `infra/` validated, the server agent's ruff and tests, the edge Caddyfile and the tunnel ingress rules validated, the frontend and server agent images built and scanned by Trivy; see [infra/README.md](infra/README.md#tests)) |
 
 The backend jobs run only when `backend/`, `docs/openapi.json`, a `compose*.yaml` file in the
