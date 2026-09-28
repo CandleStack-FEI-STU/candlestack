@@ -57,7 +57,8 @@ code of pull requests, on another, so a preview reaches neither prod, stage nor 
   `validation` (422), the framework's own errors `not-found` (404) and `method-not-allowed`
   (405), and an unhandled exception `internal-error` (500), whose `detail` reveals nothing and
   asks to report the response's `X-Request-ID`. The slugs of the data module are listed in
-  [data.md](data.md#errors). The `type` URIs are identifiers; they do not resolve to pages.
+  [data.md](data.md#errors). Each `type` URI opens a page on the website that says what the
+  problem means and what the client should do.
 - Every response carries `X-Request-ID` and `Server-Timing: app;dur=<ms>` (the app's time
   until the response started), so response times can be measured from outside.
 - Logs: one JSON object per line on stdout (`ts`, `level`, `logger`, `msg`); the access line
