@@ -6,11 +6,11 @@ import logging
 import time
 from collections.abc import Awaitable
 from types import SimpleNamespace
+from typing import Any
 
 import httpx
 import pytest
 
-import candlestack.data.catalog_store as catalog_store
 from candlestack.core import Settings
 from candlestack.data import (
     DataService,
@@ -18,6 +18,7 @@ from candlestack.data import (
     SearchResult,
     SourceUnavailable,
     build_data_service,
+    catalog_store,
 )
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]
@@ -41,7 +42,7 @@ def stale(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(catalog_store, "_time", lambda: time.time() + 25 * 3600)
 
 
-def with_new_pair(listed: dict) -> dict:
+def with_new_pair(listed: dict[str, Any]) -> dict[str, Any]:
     """``listed`` (an exchangeInfo body) with one more trading pair, NEWUSDT."""
     new = {**listed["symbols"][0], "symbol": "NEWUSDT", "baseAsset": "NEW"}
     return {**listed, "symbols": [*listed["symbols"], new]}
@@ -183,8 +184,10 @@ async def test_failed_refresh_keeps_the_stale_catalog_until_the_next_try(
     assert [(r.levelno, r.getMessage()) for r in warnings] == [
         (
             logging.WARNING,
-            "Refreshing the crypto catalog failed: Binance failed with HTTP 503. "
-            "Try again in a minute.",
+            (
+                "Refreshing the crypto catalog failed: Binance failed with HTTP 503. "
+                "Try again in a minute."
+            ),
         )
     ]
 

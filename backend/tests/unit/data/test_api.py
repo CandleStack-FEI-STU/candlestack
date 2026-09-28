@@ -409,8 +409,10 @@ def test_end_formats_and_default(
         ),
         (
             "instrument=AAPL&timeframe=1h&start=2024-06-03",
-            "query parameter 'instrument': Instrument id 'AAPL' must be <market>:<symbol>, "
-            "for example crypto:BTCUSDT or stock:AAPL.",
+            (
+                "query parameter 'instrument': Instrument id 'AAPL' must be <market>:<symbol>, "
+                "for example crypto:BTCUSDT or stock:AAPL."
+            ),
         ),
         (
             "instrument=stock:AAPL&timeframe=2h&start=2024-06-03",
@@ -422,23 +424,31 @@ def test_end_formats_and_default(
         ),
         (
             "instrument=stock:AAPL&timeframe=1h&start=yesterday",
-            "query parameter 'start': 'yesterday' is neither epoch seconds nor an ISO 8601 date "
-            "or date-time",
+            (
+                "query parameter 'start': 'yesterday' is neither epoch seconds nor an ISO 8601 "
+                "date or date-time"
+            ),
         ),
         (
             "instrument=stock:AAPL&timeframe=1h&start=-1717372800",
-            "query parameter 'start': '-1717372800' is neither epoch seconds nor an ISO 8601 "
-            "date or date-time",
+            (
+                "query parameter 'start': '-1717372800' is neither epoch seconds nor an ISO 8601 "
+                "date or date-time"
+            ),
         ),
         (
             "instrument=stock:AAPL&timeframe=1h&start=2024-06-03T00:00:00+02:00",
-            "query parameter 'start': '2024-06-03T00:00:00 02:00' is neither epoch seconds nor an "
-            "ISO 8601 date or date-time (in a URL, write + as %2B)",
+            (
+                "query parameter 'start': '2024-06-03T00:00:00 02:00' is neither epoch seconds "
+                "nor an ISO 8601 date or date-time (in a URL, write + as %2B)"
+            ),
         ),
         (
             "instrument=stock:AAPL&timeframe=1h&start=1717372800000",
-            "query parameter 'start': 1717372800000 is after the year 9999: send epoch seconds, "
-            "not milliseconds",
+            (
+                "query parameter 'start': 1717372800000 is after the year 9999: send epoch "
+                "seconds, not milliseconds"
+            ),
         ),
         (
             "instrument=stock:AAPL&timeframe=1h&start=2024-06-04&end=2024-06-03",

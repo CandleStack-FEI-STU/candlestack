@@ -6,7 +6,7 @@ Times are UTC epoch seconds everywhere; a candle is labelled by its open time.
 import re
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Literal, Self
+from typing import Literal, Self, override
 
 import polars as pl
 
@@ -88,6 +88,7 @@ class InstrumentId:
             )
         return cls(Market(market), symbol)
 
+    @override
     def __str__(self) -> str:
         return f"{self.market}:{self.symbol}"
 

@@ -48,13 +48,17 @@ target-version = "py313"
 [tool.ruff.lint]
 select = [
     "E", "F", "W", "I", "UP", "B", "SIM", "RUF", "ASYNC", "PT",
-    "A", "BLE", "C4", "C90", "DTZ", "ERA", "FLY", "FURB", "G", "ICN", "INT", "LOG", "N", "PGH",
-    "PIE", "PTH", "Q", "RET", "RSE", "SLF", "SLOT", "TID",
-    "PLR0912", "PLR0915",
+    "A", "ANN", "ARG", "BLE", "C4", "C90", "DTZ", "ERA", "FAST", "FBT", "FLY", "FURB", "G",
+    "ICN", "INT", "ISC", "LOG", "N", "PERF", "PGH", "PIE", "PL", "PTH", "Q", "RET", "RSE",
+    "S", "SLF", "SLOT", "T20", "TC", "TID",
     "D",
 ]
 ignore = [
+    "ANN401",     # Any is sometimes the honest type (JSON, **kwargs); ty checks the rest
+    "PLR2004",    # HTTP status codes and small literals read better inline
+    "S101",       # assert narrows types for ty
     "N818",       # exception names describe the problem (InstrumentNotFound)
+    "ISC001",     # conflicts with ruff format
     # Docstrings are optional (Google style when written): only their format is checked.
     "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107",
     # A summary may wrap onto a second line and the closing quotes may end the last line:
@@ -69,11 +73,26 @@ convention = "google"
 max-complexity = 8
 
 [tool.ruff.lint.pylint]
+max-args = 6
+max-positional-args = 5
 max-branches = 8
 max-statements = 30
+max-returns = 6
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests: fixtures and fakes need no annotations or docstrings, and may take what they ignore.
+"tests/**" = ["ANN", "ARG", "FBT", "PLR0913", "PLR0917", "PLR0915", "S", "SLF001", "D"]
+# The e2e stand-in for Binance and Alpaca reports on stdout.
+"tests/e2e/mock_sources.py" = ["T201"]
+
+[tool.ty.rules]
+# On top of ty's defaults: generics spell out their type arguments, and an overriding method
+# says so (typing.override), so renaming the base method breaks the check, not the behaviour.
+missing-type-argument = "error"
+missing-override-decorator = "error"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

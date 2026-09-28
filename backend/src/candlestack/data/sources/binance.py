@@ -216,7 +216,8 @@ class BinanceSource:
     def base_timeframe(self, timeframe: Timeframe) -> Timeframe:
         return timeframe
 
-    def periods(self, timeframe: Timeframe, start: int, end: int, now: int) -> list[Period]:
+    # DataSource.periods: Binance chunks every timeframe alike.
+    def periods(self, timeframe: Timeframe, start: int, end: int, now: int) -> list[Period]:  # noqa: ARG002
         return plan_periods(
             start,
             end,
@@ -356,7 +357,7 @@ class BinanceSource:
             f"Binance weight budget ({self._weight_limit} per minute)",
             RATE_KEY,
             self._weight_limit,
-            weight,
+            cost=weight,
         )
         response = await get(self._http, NAME, TITLE, self._api + path, params=params)
         self._watch_weight(response)

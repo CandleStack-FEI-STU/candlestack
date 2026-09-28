@@ -1,4 +1,5 @@
 import logging
+from typing import Annotated
 
 import pytest
 from fastapi import FastAPI, Query
@@ -23,7 +24,7 @@ def app(app: FastAPI) -> FastAPI:
         )
 
     @app.get("/api/test/items")
-    async def items(limit: int = Query(le=100)) -> dict[str, int]:
+    async def items(limit: Annotated[int, Query(le=100)]) -> dict[str, int]:
         return {"limit": limit}
 
     @app.get("/api/test/crash")

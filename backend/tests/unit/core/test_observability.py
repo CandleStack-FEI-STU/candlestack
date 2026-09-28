@@ -2,7 +2,7 @@ import json
 import logging
 import time
 from collections.abc import Iterator
-from typing import Any, cast
+from typing import Any, cast, override
 
 import pytest
 import sentry_sdk
@@ -31,6 +31,7 @@ class CapturingTransport(Transport):
         super().__init__()
         self.envelopes: list[Envelope] = []
 
+    @override
     def capture_envelope(self, envelope: Envelope) -> None:
         self.envelopes.append(envelope)
 
@@ -208,7 +209,7 @@ def test_traces_sampler() -> None:
 
 def test_before_send_log_outside_a_request() -> None:
     def log(**attributes: str) -> Log:
-        return cast(Log, {"attributes": attributes})
+        return cast("Log", {"attributes": attributes})
 
     assert (
         _before_send_log(log(**{"logger.name": "candlestack.access", "path": "/api/health"}), {})

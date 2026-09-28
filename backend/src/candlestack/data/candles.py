@@ -50,7 +50,8 @@ _RULES = [
     (
         "a missing or non-finite value",
         pl.any_horizontal(
-            pl.col("ts").is_null(), *(pl.col(c).is_finite().not_().fill_null(True) for c in _VALUES)
+            pl.col("ts").is_null(),
+            *(pl.col(c).is_finite().not_().fill_null(value=True) for c in _VALUES),
         ),
     ),
     ("a price at or below zero", pl.any_horizontal(pl.col(_PRICES) <= 0)),
@@ -178,7 +179,8 @@ def find_gaps(
     )
     runs = (
         missing.group_by(
-            (pl.col("i").diff() != 1).fill_null(True).cum_sum().alias("run"), maintain_order=True
+            (pl.col("i").diff() != 1).fill_null(value=True).cum_sum().alias("run"),
+            maintain_order=True,
         )
         .agg(pl.col("t").first().alias("first"), pl.col("t").last().alias("last"))
         .head(MAX_GAP_RANGES)
@@ -222,7 +224,8 @@ def slice_range(df: pl.DataFrame, start: int, end: int) -> pl.DataFrame:
     return df.filter((pl.col("ts") >= start) & (pl.col("ts") < end))
 
 
-def fingerprint(
+# The fields of the byte layout below, in its order.
+def fingerprint(  # noqa: PLR0913, PLR0917
     source: str,
     feed: str,
     instrument: InstrumentId | str,

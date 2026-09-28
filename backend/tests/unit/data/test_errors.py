@@ -78,13 +78,17 @@ def test_period_out_of_range_both_sides() -> None:
     [
         (
             1502942400,
-            "crypto:BTCUSDT has 1h candles from 2017-08-17T04:00:00Z (1502942400) "
-            "to 2026-09-26T12:00:00Z (1790424000). Choose start and end within this period.",
+            (
+                "crypto:BTCUSDT has 1h candles from 2017-08-17T04:00:00Z (1502942400) "
+                "to 2026-09-26T12:00:00Z (1790424000). Choose start and end within this period."
+            ),
         ),
         (
             None,
-            "crypto:BTCUSDT has 1h candles up to 2026-09-26T12:00:00Z (1790424000). "
-            "Choose start and end within this period.",
+            (
+                "crypto:BTCUSDT has 1h candles up to 2026-09-26T12:00:00Z (1790424000). "
+                "Choose start and end within this period."
+            ),
         ),
     ],
 )

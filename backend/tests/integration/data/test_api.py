@@ -44,7 +44,7 @@ def test_client_rate_limit(monkeypatch: pytest.MonkeyPatch, redis_url: str) -> N
         client_rate_limit=2,
     )
     app = create_app(settings)
-    app.dependency_overrides[get_data_service] = lambda: NoCandles()
+    app.dependency_overrides[get_data_service] = NoCandles
     # New /64 networks for every run: the counters of an earlier run are still in Redis.
     network = f"2001:db8:{uuid.uuid4().hex[:4]}"
     one, same_network, other = (

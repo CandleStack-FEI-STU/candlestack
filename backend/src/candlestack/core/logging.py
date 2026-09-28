@@ -4,7 +4,7 @@ import logging
 import sys
 from contextvars import ContextVar
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TextIO, override
 
 import orjson
 
@@ -18,6 +18,7 @@ _RECORD_ATTRS = frozenset(logging.makeLogRecord({}).__dict__) | {"message", "asc
 class JsonFormatter(logging.Formatter):
     """Formats a record as a JSON object: ts, level, logger, msg, extra fields, request_id."""
 
+    @override
     def format(self, record: logging.LogRecord) -> str:
         entry: dict[str, Any] = {
             "ts": datetime.fromtimestamp(record.created, UTC).isoformat(timespec="milliseconds"),
@@ -25,9 +26,11 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
             "msg": record.getMessage(),
         }
-        for key, value in record.__dict__.items():
-            if key not in _RECORD_ATTRS and not key.startswith("_"):
-                entry[key] = value
+        entry.update(
+            (key, value)
+            for key, value in record.__dict__.items()
+            if key not in _RECORD_ATTRS and not key.startswith("_")
+        )
         if "request_id" not in entry and (request_id := request_id_var.get()) is not None:
             entry["request_id"] = request_id
         if record.exc_info:
@@ -35,7 +38,7 @@ class JsonFormatter(logging.Formatter):
         return orjson.dumps(entry, default=str).decode()
 
 
-class _JsonHandler(logging.StreamHandler):
+class _JsonHandler(logging.StreamHandler[TextIO]):
     """The handler of setup_logging; recognised on a second call and replaced, not doubled."""
 
 

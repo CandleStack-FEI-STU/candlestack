@@ -14,7 +14,7 @@ from candlestack.data import (
     slice_range,
 )
 from candlestack.data.cache import decode_chunk, encode_chunk
-from candlestack.data.service import assemble, bin_open, newest_minute
+from candlestack.data.service import CandleRequest, assemble, bin_open, newest_minute
 from candlestack.data.sources.base import DAY, DataSource, Period, plan_periods
 
 BTC, AAPL = InstrumentId.parse("crypto:BTCUSDT"), InstrumentId.parse("stock:AAPL")
@@ -27,8 +27,8 @@ class Named:
         self.name, self.feed = name, feed
 
 
-Binance = cast(DataSource, Named("binance", "spot"))
-Alpaca = cast(DataSource, Named("alpaca", "iex"))
+Binance = cast("DataSource", Named("binance", "spot"))
+Alpaca = cast("DataSource", Named("alpaca", "iex"))
 
 
 def utc(text: str) -> int:
@@ -115,7 +115,12 @@ def test_assemble_resamples_stock_chunks_in_batches(
 
     for timeframe in (Timeframe.H1, Timeframe.H4):
         result = assemble(
-            Alpaca, AAPL, timeframe, Timeframe.M1, start, end, now, sessions, periods, blobs
+            Alpaca,
+            CandleRequest(AAPL, timeframe, start, end),
+            list(zip(periods, blobs, strict=True)),
+            base=Timeframe.M1,
+            now=now,
+            sessions=sessions,
         )
 
         assert len(periods) == 12
@@ -133,15 +138,11 @@ def test_assemble_knows_candles_only_up_to_the_live_fetch() -> None:
 
     result = assemble(
         Binance,
-        BTC,
-        Timeframe.M1,
-        Timeframe.M1,
-        utc("2026-09-26T11:50"),
-        now,
-        now,
-        None,
-        [live],
-        [blob],
+        CandleRequest(BTC, Timeframe.M1, utc("2026-09-26T11:50"), now),
+        [(live, blob)],
+        base=Timeframe.M1,
+        now=now,
+        sessions=None,
     )
 
     assert result.frame["ts"][-1] == utc("2026-09-26T11:59")

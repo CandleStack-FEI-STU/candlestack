@@ -8,7 +8,7 @@ validation errors, HTTP errors of the framework and unhandled exceptions into
 import logging
 from collections.abc import Mapping, Sequence
 from http import HTTPStatus
-from typing import Any
+from typing import Any, override
 
 import orjson
 from fastapi import FastAPI, Request, Response
@@ -37,6 +37,7 @@ class Problem(BaseModel):
 class ProblemResponse(Response):
     media_type = PROBLEM_MEDIA_TYPE
 
+    @override
     def render(self, content: Any) -> bytes:
         return orjson.dumps(content)
 
@@ -104,7 +105,7 @@ def problem_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
     }
 
 
-async def _problem_error(request: Request, exc: Exception) -> Response:
+async def _problem_error(_request: Request, exc: Exception) -> Response:
     assert isinstance(exc, ProblemError)
     return problem_response(
         exc.status,
@@ -116,7 +117,7 @@ async def _problem_error(request: Request, exc: Exception) -> Response:
     )
 
 
-async def _validation_error(request: Request, exc: Exception) -> Response:
+async def _validation_error(_request: Request, exc: Exception) -> Response:
     assert isinstance(exc, RequestValidationError)
     raw = exc.errors()
     return problem_response(
@@ -158,7 +159,7 @@ async def _http_error(request: Request, exc: Exception) -> Response:
     )
 
 
-async def _unhandled_error(request: Request, exc: Exception) -> Response:
+async def _unhandled_error(_request: Request, exc: Exception) -> Response:
     logger.error("Unhandled error", exc_info=exc)
     return internal_error_response()
 

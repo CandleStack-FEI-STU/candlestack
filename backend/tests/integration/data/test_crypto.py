@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+import respx
 from redis.asyncio import Redis
 
 import candlestack.data.service as service_module
@@ -431,7 +432,7 @@ async def test_ban_or_rate_limit_of_binance_pauses_every_rest_call(
     assert (today.call_count, first.call_count) == (1, 1)  # ETHUSDT's lookup was not sent
 
 
-def first_klines(upstream, used_weight: str) -> tuple:
+def first_klines(upstream, used_weight: str) -> tuple[respx.Route, respx.Route]:
     """The first-candle lookups of BTCUSDT, whose answer reports ``used_weight`` of our IP
     this minute, and of ETHUSDT."""
     klines = f"{upstream.BINANCE_API}/api/v3/klines"
