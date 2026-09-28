@@ -4,6 +4,7 @@
 (lifespan included) in a TestClient. Tests override ``settings`` or ``fake_redis`` to vary them.
 """
 
+import sys
 from collections.abc import Iterator
 
 import pytest
@@ -26,6 +27,18 @@ class FakeRedis:
         if not self.up:
             raise RedisConnectionError("Connection refused")
         return True
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Sockets are off (``--disable-socket`` in the pytest options) except for the suites that
+    need them: integration tests talk to Redis, e2e tests to the stack. On Windows the event
+    loop wakes itself through a loopback TCP pair, so unit tests there may reach loopback only.
+    """
+    for item in items:
+        if item.get_closest_marker("integration") or item.get_closest_marker("e2e"):
+            item.add_marker(pytest.mark.enable_socket)
+        elif sys.platform == "win32":
+            item.add_marker(pytest.mark.allow_hosts(["127.0.0.1", "::1"]))
 
 
 @pytest.fixture
