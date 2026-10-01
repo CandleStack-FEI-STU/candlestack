@@ -180,13 +180,16 @@ forbidden_modules = ["sentry_sdk"]
 allow_indirect_imports = true
 
 # The backtest is plain functions on Polars frames: no app, settings, Redis or outgoing HTTP.
+# The modules and libraries are named one by one: a new module of the project or a new server
+# library goes into forbidden_modules.
 [[tool.importlinter.contracts]]
 name = "Engine, signals and metrics stand alone"
 type = "forbidden"
 source_modules = ["candlestack.engine", "candlestack.signals", "candlestack.metrics"]
 forbidden_modules = [
     "candlestack.core", "candlestack.data", "candlestack.cli", "candlestack.main",
-    "candlestack.openapi", "fastapi", "redis", "httpx", "sentry_sdk", "pydantic_settings",
+    "candlestack.openapi", "fastapi", "starlette", "scalar_fastapi", "granian", "redis",
+    "httpx", "sentry_sdk", "pydantic_settings",
 ]
 
 [[tool.importlinter.contracts]]
@@ -195,6 +198,7 @@ type = "independence"
 modules = ["candlestack.engine", "candlestack.signals", "candlestack.metrics"]
 
 # The CLI wires signals, the engine and metrics together; it is an entry point, not a library.
+# The modules are named one by one: a new module of the project goes into source_modules.
 [[tool.importlinter.contracts]]
 name = "Nothing imports the CLI"
 type = "forbidden"

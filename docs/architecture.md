@@ -81,7 +81,7 @@ A module is a subpackage of `candlestack` under `backend/src/candlestack/`.
 | `engine` | started | the backtest loop: candles and signals in, trades and an equity series out; `ENGINE_VERSION` names its rules |
 | `metrics` | started | unified metrics and charts of one run |
 | `cli` | started | the `candlestack-bt` command: backtests from files on the command line |
-| `experiments` | later | assemble the three layers into runs, store and compare them |
+| `experiments` | later | assemble `preprocessing`, `ml`, `signals`, `engine` and `metrics` into runs, store and compare them |
 | `admin` | later | team-only administration (roles, audit) under `/admin` |
 
 Folders for later modules are created when their work starts, not before; `started` marks
@@ -92,9 +92,10 @@ the ones whose folder exists while their code is being written.
 - Dependencies point one way: `experiments` -> `preprocessing` -> `data` -> `core`. `core`
   imports no other module.
 - The backtest modules `signals`, `engine` and `metrics` stand alone: they import no other
-  module of the project, not each other, and no server library (`fastapi`, `redis`, `httpx`,
-  `sentry_sdk`, `pydantic_settings`). They are plain functions on Polars frames, put together
-  only by the code that runs them: `cli` now, `experiments` later.
+  module of the project, not each other, and no server library (`fastapi`, `starlette`,
+  `scalar_fastapi`, `granian`, `redis`, `httpx`, `sentry_sdk`, `pydantic_settings`). They are
+  plain functions on Polars frames, put together only by the code that runs them: `cli` now,
+  `experiments` later.
 - No module imports `cli`: it is the entry point of the `candlestack-bt` command
   (`[project.scripts]` in `backend/pyproject.toml`).
 - `ml` is worker-only, so the API process never loads TensorFlow: only the worker's
