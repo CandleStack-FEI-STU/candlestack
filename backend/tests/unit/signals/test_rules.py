@@ -105,3 +105,28 @@ def test_long_only_makes_an_integer_signal_float64() -> None:
 
     assert result.dtype == pl.Float64
     assert result.to_list() == [0.0, 0.0, 1.0]
+
+
+def test_long_only_gives_a_plain_zero() -> None:
+    # -0.0 is not positive, so it becomes a plain 0.0, as in threshold.
+    result = long_only(pl.Series([-0.0, 0.0, -1.0])).to_list()
+
+    assert [math.copysign(1.0, value) for value in result] == [1.0, 1.0, 1.0]
+
+
+def test_long_only_of_no_signal_is_an_empty_signal() -> None:
+    result = long_only(pl.Series([], dtype=pl.Float64))
+
+    assert result.dtype == pl.Float64
+    assert result.is_empty()
+
+
+@pytest.mark.parametrize("values", [[1.0, None], [1.0, math.nan]])
+def test_long_only_rejects_a_missing_or_nan_signal_value(values: list[float | None]) -> None:
+    with pytest.raises(ValueError, match="A signal value is missing or NaN"):
+        long_only(pl.Series(values, dtype=pl.Float64))
+
+
+def test_long_only_rejects_a_signal_that_is_not_numbers() -> None:
+    with pytest.raises(ValueError, match="Signal values must be numbers, not String"):
+        long_only(pl.Series(["1.0"]))
