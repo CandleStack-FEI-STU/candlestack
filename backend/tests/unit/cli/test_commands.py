@@ -23,4 +23,5 @@ def test_unknown_command_is_a_usage_error(capsys: pytest.CaptureFixture[str]) ->
         main(["walk"])
 
     assert exit_info.value.code == 2
-    assert "invalid choice: 'walk' (choose from run)" in capsys.readouterr().err
+    # Newer 3.13 releases quote the choices that follow, (choose from 'run'); older ones do not.
+    assert "argument command: invalid choice: 'walk'" in capsys.readouterr().err
