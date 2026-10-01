@@ -60,4 +60,5 @@ the feed CandleStack uses. Without keys, `/api/health/sources` answers 503 with 
 503 `source-unavailable`.
 
 More: [architecture](docs/architecture.md), [market data](docs/data.md),
-[contributing](CONTRIBUTING.md), [infrastructure](infra/README.md).
+[backtest engine](docs/engine.md), [contributing](CONTRIBUTING.md),
+[infrastructure](infra/README.md).
