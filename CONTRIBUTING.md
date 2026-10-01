@@ -36,7 +36,7 @@ What the ruleset of `main` enforces:
 - one approving review; a new push dismisses earlier approvals;
 - an approval from @ArsenLabovich when the pull request changes a path listed in
   `.github/CODEOWNERS` (infrastructure, CI, the toolchain, the dependency set, the shared
-  editor and Claude Code settings);
+  editor and Claude Code settings, the backtest engine and its reference data);
 - every review thread resolved;
 - the required checks `no-ai-signs / No AI signs`, `linked-issue / Linked issue`,
   `pr-hygiene / Title and branch` and `ci` (below) green;
@@ -98,6 +98,7 @@ uv run ruff check . && uv run ruff format --check .   # lint and format
 uv run ty check                                       # types
 uv run lint-imports                                   # module boundaries
 uv run pytest                                         # unit tests (-n auto: in parallel)
+uv run pytest -m slow                                 # speed and memory checks, by hand only (CI skips them)
 docker compose up -d redis                            # Redis of ../compose.yaml on 127.0.0.1:6379 ...
 uv run pytest -m integration                          # ... Redis DB 15, which the tests flush; runs serially
 uv run pytest -m e2e                                  # builds and runs the image with compose on 127.0.0.1:18000 (E2E_PORT to change)
@@ -106,10 +107,10 @@ uv run pytest -m e2e                                  # builds and runs the imag
 - `REDIS_URL` points the integration tests at another Redis; they flush the database they
   get, so never give them one whose data you need.
 - Coverage of the unit and integration tests (with Redis running):
-  `uv run pytest --cov -m "not e2e"` fails under 95% (branch coverage included); CI also
-  wants at least 90% of the lines a pull request changes covered
-  (`uv run pytest --cov --cov-report=xml -m "not e2e" && uv run diff-cover coverage.xml
-  --compare-branch=origin/main --fail-under=90`).
+  `uv run pytest --cov -m "not e2e and not slow"` fails under 95% (branch coverage included);
+  CI also wants at least 90% of the lines a pull request changes covered
+  (`uv run pytest --cov --cov-report=xml -m "not e2e and not slow" && uv run diff-cover
+  coverage.xml --compare-branch=origin/main --fail-under=90`).
 - Unit tests cannot open network sockets (pytest-socket); only the integration and e2e
   tests may.
 - The market data endpoints (instruments, candles, `/api/health/sources`) are specified in
@@ -134,7 +135,9 @@ uv run pytest -m e2e                                  # builds and runs the imag
   line per change, and those lines go to `docs/api-breaking-changes.txt`.
 - Modules import each other only through their package root
   (`from candlestack.core import ProblemError`), and `candlestack.core` imports no other module.
-  `lint-imports` checks both.
+  The backtest modules `engine`, `signals` and `metrics` import no other module, not each
+  other and no server library, and no module imports `cli` (the `candlestack-bt` command).
+  `lint-imports` checks all of these rules.
 - `ruff check` enforces more than style: complexity (McCabe 8, at most 8 branches, 30
   statements, 6 returns and 6 arguments, 5 of them positional, per function; a flag is a
   keyword-only argument), type annotations in `src/`, no unused arguments (prefix one a

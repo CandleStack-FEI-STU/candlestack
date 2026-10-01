@@ -20,6 +20,9 @@ dependencies = [
     "tzdata>=2026.4",
 ]
 
+[project.scripts]
+candlestack-bt = "candlestack.cli:main"
+
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13"]
 build-backend = "uv_build"
@@ -98,10 +101,11 @@ missing-override-decorator = "error"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Plain `pytest` runs the unit tests; CI selects the other suites with -m. No test opens a
-# network socket (pytest-socket) unless it is an integration or e2e test (tests/conftest.py).
+# Plain `pytest` runs the unit tests; CI selects the other suites with -m, never the slow ones.
+# No test opens a network socket (pytest-socket) unless it is an integration or e2e test
+# (tests/conftest.py).
 addopts = [
-    "-m", "not integration and not e2e",
+    "-m", "not integration and not e2e and not slow",
     "--strict-markers",
     "--import-mode=importlib",
     "-ra",
@@ -111,12 +115,13 @@ addopts = [
 markers = [
     "integration: needs a real Redis at REDIS_URL",
     "e2e: runs the built image with docker compose (tests/e2e/compose.yaml)",
+    "slow: speed and memory checks, run by hand with -m slow",
 ]
 filterwarnings = ["error"]
 xfail_strict = true
 
 # The gate is for the unit and integration tests together (CI's integration job):
-# `pytest --cov -m "not e2e"` with Redis running.
+# `pytest --cov -m "not e2e and not slow"` with Redis running.
 [tool.coverage.run]
 source = ["candlestack"]
 branch = true
@@ -149,12 +154,52 @@ protected_modules = ["candlestack.data.*"]
 allowed_importers = ["candlestack.data"]
 
 [[tool.importlinter.contracts]]
+name = "Other modules import engine only through its package root"
+type = "protected"
+protected_modules = ["candlestack.engine.*"]
+allowed_importers = ["candlestack.engine"]
+
+[[tool.importlinter.contracts]]
+name = "Other modules import signals only through its package root"
+type = "protected"
+protected_modules = ["candlestack.signals.*"]
+allowed_importers = ["candlestack.signals"]
+
+[[tool.importlinter.contracts]]
+name = "Other modules import metrics only through its package root"
+type = "protected"
+protected_modules = ["candlestack.metrics.*"]
+allowed_importers = ["candlestack.metrics"]
+
+[[tool.importlinter.contracts]]
 name = "Only core uses the Sentry SDK"
 type = "forbidden"
-source_modules = ["candlestack.data", "candlestack.main", "candlestack.openapi"]
+source_modules = ["candlestack.cli", "candlestack.data", "candlestack.main", "candlestack.openapi"]
 forbidden_modules = ["sentry_sdk"]
 # They reach Sentry through core (logging, setup_sentry), never by importing it themselves.
 allow_indirect_imports = true
+
+# The backtest is plain functions on Polars frames: no app, settings, Redis or outgoing HTTP.
+[[tool.importlinter.contracts]]
+name = "Engine, signals and metrics stand alone"
+type = "forbidden"
+source_modules = ["candlestack.engine", "candlestack.signals", "candlestack.metrics"]
+forbidden_modules = [
+    "candlestack.core", "candlestack.data", "candlestack.cli", "candlestack.main",
+    "candlestack.openapi", "fastapi", "redis", "httpx", "sentry_sdk", "pydantic_settings",
+]
+
+[[tool.importlinter.contracts]]
+name = "Engine, signals and metrics do not know each other"
+type = "independence"
+modules = ["candlestack.engine", "candlestack.signals", "candlestack.metrics"]
+
+# The CLI wires signals, the engine and metrics together; it is an entry point, not a library.
+[[tool.importlinter.contracts]]
+name = "Nothing imports the CLI"
+type = "forbidden"
+source_modules = ["candlestack.core", "candlestack.data", "candlestack.main", "candlestack.openapi"]
+forbidden_modules = ["candlestack.cli"]
 
 # Inside data, each layer imports only the ones below it. Modules of one layer joined by "|"
 # do not import each other; the ones joined by ":" may.

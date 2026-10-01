@@ -17,7 +17,9 @@ contract.
 - Do only what the task asks. No drive-by refactors, renames or new dependencies.
 - Modules import each other only through their package root
   (`from candlestack.core import ProblemError`), and `candlestack.core` imports no other module.
-  A new module gets its entry in the import-linter contracts in `backend/pyproject.toml`.
+  The backtest modules `engine`, `signals` and `metrics` import no other module, not each
+  other and no server library; no module imports `cli`. A new module gets its entry in the
+  import-linter contracts in `backend/pyproject.toml`.
 - The API is a contract: a change to it updates `docs/openapi.json`
   (`uv run python -m candlestack.openapi > ../docs/openapi.json`) and `docs/data.md` or
   `docs/architecture.md` in the same pull request. Keep existing clients working; the CI job
@@ -29,6 +31,8 @@ contract.
 - `infra/`, `.github/`, the Dockerfiles, the toolchain pins and the other paths in
   `.github/CODEOWNERS` belong to the tech lead: a change there needs their approval to merge,
   so propose it in the pull request description first.
+- The backtest engine (`candlestack.engine`) is the tech lead's area: extend it through
+  `signals` or `metrics`, not by changing the loop.
 - Dependencies only with `uv add <package>` (`--dev` for tools); commit `uv.lock` with them.
 - Settings are environment variables documented in `.env.example`. Never commit `.env` files,
   keys or tokens.
@@ -49,7 +53,8 @@ shell, Dockerfile, workflow and Markdown findings and AI attribution on every co
 uv run ruff check . && uv run ruff format --check .
 uv run ty check
 uv run lint-imports
-uv run pytest                      # unit tests
-uv run pytest --cov -m "not e2e"   # unit + integration, coverage >= 95%; needs
-                                   # `docker compose up -d redis` from the repository root
+uv run pytest                                   # unit tests
+uv run pytest --cov -m "not e2e and not slow"   # unit + integration, coverage >= 95%;
+                                                # needs `docker compose up -d redis` from
+                                                # the repository root
 ```
