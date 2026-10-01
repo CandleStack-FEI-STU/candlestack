@@ -1,6 +1,7 @@
-# A pull request that changes infrastructure, CI, the toolchain, the dependency set or the
-# shared editor and Claude Code settings needs an approval from the tech lead to merge, on top
-# of the one approval every pull request needs (see CONTRIBUTING.md).
+# A pull request that changes infrastructure, CI, the toolchain, the dependency set, the shared
+# editor and Claude Code settings or the backtest engine (its loop and tests, the supervisor's
+# reference data and docs/engine.md) needs an approval from the tech lead to merge, on top of
+# the one approval every pull request needs (see CONTRIBUTING.md).
 /infra/                  @ArsenLabovich
 /.github/                @ArsenLabovich
 /.claude/                @ArsenLabovich
@@ -22,3 +23,9 @@ Dockerfile               @ArsenLabovich
 /.editorconfig-checker.json @ArsenLabovich
 /.markdownlint-cli2.jsonc   @ArsenLabovich
 /.trivyignore.yaml       @ArsenLabovich
+# The backtest engine. Signals, metrics and the CLI, through which it is extended, get the
+# normal review.
+/backend/src/candlestack/engine/     @ArsenLabovich
+/backend/tests/unit/engine/          @ArsenLabovich
+/backend/tests/fixtures/supervisor/  @ArsenLabovich
+/docs/engine.md                      @ArsenLabovich

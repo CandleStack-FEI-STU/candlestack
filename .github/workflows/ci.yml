@@ -202,7 +202,7 @@ jobs:
       - run: uv sync --locked
       # Unit and integration tests together, serially (the integration tests share one Redis),
       # measured against the coverage gate of pyproject.toml (95%, branches included).
-      - run: uv run pytest -m "not e2e" --cov --cov-report=xml
+      - run: uv run pytest -m "not e2e and not slow" --cov --cov-report=xml
 
       # At least 90% of the lines a pull request changes are covered.
       - name: Coverage of the changed lines

@@ -4,7 +4,9 @@ The CandleStack backend is one Python service: a FastAPI application that serves
 under `/api`. In this milestone it has two modules: `core` (configuration, logging, errors,
 Redis and HTTP clients, health, Sentry) and `data` (market data: instrument catalog and candles from
 Binance and Alpaca, see [data.md](data.md)). It stores nothing: the sources are the truth and
-Redis is a cache that can be lost at any time.
+Redis is a cache that can be lost at any time. The backtest is being built next to them
+(`signals`, `engine`, `metrics` and the `candlestack-bt` command in `cli`, see
+[Modules](#modules)); it runs from the command line, not in the service.
 
 ## Runtime
 
@@ -75,17 +77,27 @@ A module is a subpackage of `candlestack` under `backend/src/candlestack/`.
 | `data` | now | instrument catalog, candles, sessions, cache, source adapters, rate limits |
 | `preprocessing` | later | Renko, Kagi, time windows, normalization, segmentation |
 | `ml` | later | upload `.keras` models, validate input/output shapes, run inference; worker only (below) |
-| `postprocessing` | later | turn predictions into signals: thresholds, smoothing, holding period, sizing, risk limits |
-| `metrics` | later | unified metrics and charts of one run |
-| `experiments` | later | assemble the three layers into runs, store and compare them |
+| `signals` | started | turn predictions into signals: align them with the candles, thresholds, long only; later smoothing, holding period, sizing, risk limits |
+| `engine` | started | the backtest loop: candles and signals in, trades and an equity series out; `ENGINE_VERSION` names its rules |
+| `metrics` | started | unified metrics and charts of one run |
+| `cli` | started | the `candlestack-bt` command: backtests from files on the command line |
+| `experiments` | later | assemble `preprocessing`, `ml`, `signals`, `engine` and `metrics` into runs, store and compare them |
 | `admin` | later | team-only administration (roles, audit) under `/admin` |
 
-Folders for later modules are created when their work starts, not before.
+Folders for later modules are created when their work starts, not before; `started` marks
+the ones whose folder exists while their code is being written.
 
 ## Import rules
 
-- Dependencies point one way: `experiments` -> pipeline layers (`preprocessing`,
-  `postprocessing`, `metrics`) -> `data` -> `core`. `core` imports no other module.
+- Dependencies point one way: `experiments` -> `preprocessing` -> `data` -> `core`. `core`
+  imports no other module.
+- The backtest modules `signals`, `engine` and `metrics` stand alone: they import no other
+  module of the project, not each other, and no server library (`fastapi`, `starlette`,
+  `scalar_fastapi`, `granian`, `redis`, `httpx`, `sentry_sdk`, `pydantic_settings`). They are
+  plain functions on Polars frames, put together only by the code that runs them: `cli` now,
+  `experiments` later.
+- No module imports `cli`: it is the entry point of the `candlestack-bt` command
+  (`[project.scripts]` in `backend/pyproject.toml`).
 - `ml` is worker-only, so the API process never loads TensorFlow: only the worker's
   composition root (a future `candlestack/worker.py`) imports it and wires it into the
   experiment runs, and the API enqueues worker tasks by name instead of importing them.
@@ -98,7 +110,7 @@ Folders for later modules are created when their work starts, not before.
   `from candlestack.data import DataService`, never `from candlestack.data.sources import ...`.
   The package root's `__init__.py` is the module's public API.
 - `candlestack.main` (builds the app) and `candlestack.openapi` (schema snapshot) wire the
-  modules together and may import any module root except `ml`.
+  modules together and may import any module root except `ml` and `cli`.
 - Checked by import-linter (`uv run lint-imports`, contracts in `backend/pyproject.toml`) in
   the CI `lint` job.
 
