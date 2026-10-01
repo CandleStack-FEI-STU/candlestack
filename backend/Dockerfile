@@ -41,6 +41,11 @@ CMD ["granian", "--interface", "asgi", "--host", "0.0.0.0", "--port", "8000", \
 # glibc gives each thread that allocates (the workers that parse and resample candles) arenas of
 # its own that keep freed memory; two arenas keep the process within its memory limit.
 FROM python:3.13-slim AS api
+# Debian's security fixes that the base image does not have yet (the image scan fails on them
+# until python:3.13-slim is rebuilt with them); with an up-to-date base image it changes nothing.
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes \
+    && rm -rf /var/lib/apt/lists/*
 # The app runs from the venv and never installs anything: pip goes, with the libraries it
 # bundles, which the image scan would report.
 RUN python -m pip uninstall --yes --quiet --root-user-action=ignore pip
