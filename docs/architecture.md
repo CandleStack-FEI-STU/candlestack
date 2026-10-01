@@ -6,7 +6,8 @@ Redis and HTTP clients, health, Sentry) and `data` (market data: instrument cata
 Binance and Alpaca, see [data.md](data.md)). It stores nothing: the sources are the truth and
 Redis is a cache that can be lost at any time. The backtest is being built next to them
 (`signals`, `engine`, `metrics` and the `candlestack-bt` command in `cli`, see
-[Modules](#modules)); it runs from the command line, not in the service.
+[Modules](#modules) and the contract in [engine.md](engine.md)); it runs from the command line,
+not in the service.
 
 ## Runtime
 
@@ -78,7 +79,7 @@ A module is a subpackage of `candlestack` under `backend/src/candlestack/`.
 | `preprocessing` | later | Renko, Kagi, time windows, normalization, segmentation |
 | `ml` | later | upload `.keras` models, validate input/output shapes, run inference; worker only (below) |
 | `signals` | started | turn predictions into signals: align them with the candles, thresholds, long only; later smoothing, holding period, sizing, risk limits |
-| `engine` | started | the backtest loop: candles and signals in, trades and an equity series out; `ENGINE_VERSION` names its rules |
+| `engine` | started | the backtest loop: candles and signals in, trades and an equity series out; `ENGINE_VERSION` names its rules ([engine.md](engine.md)) |
 | `metrics` | started | unified metrics and charts of one run |
 | `cli` | started | the `candlestack-bt` command: backtests from files on the command line |
 | `experiments` | later | assemble `preprocessing`, `ml`, `signals`, `engine` and `metrics` into runs, store and compare them |
