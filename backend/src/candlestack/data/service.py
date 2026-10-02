@@ -97,11 +97,13 @@ class DataService:
         self._catalogs = catalogs
         self._candles_max = candles_max
 
-    async def search(self, q: str, market: Market | None = None, limit: int = 20) -> SearchResult:
-        """Instruments matching ``q``, best first (ranking in ``candlestack.data.catalog``), in
-        the markets whose catalog can be loaded; ``unavailable`` names the others. Raises the
-        source's error when none can be loaded."""
-        if limit <= 0 or not normalise_query(q):
+    async def search(
+        self, q: str | None, market: Market | None = None, limit: int = 20
+    ) -> SearchResult:
+        """Instruments matching ``q``, best first (ranking in ``candlestack.data.catalog``), or
+        every instrument by symbol without ``q``, in the markets whose catalog can be loaded;
+        ``unavailable`` names the others. Raises the source's error when none can be loaded."""
+        if limit <= 0 or (q is not None and not normalise_query(q)):
             return SearchResult([], [])
         catalog = await self._catalogs.catalog(market)
         return SearchResult(catalog.search(q, market, limit), self._catalogs.missing(market))

@@ -157,6 +157,41 @@ def test_search_market_and_limit(catalog: Catalog) -> None:
     assert catalog.search("btc", limit=0) == []
 
 
+def test_list_without_a_query(catalog: Catalog) -> None:
+    assert ids(catalog.search(None)) == [
+        "stock:AAPL",
+        "stock:APLE",
+        "stock:BRK.B",
+        "stock:BTC",
+        "crypto:BTCUSDC",
+        "crypto:BTCUSDT",
+        "crypto:ETHBTC",
+        "crypto:ETHUSDT",
+        "stock:SPY",
+        "crypto:WBTCUSDT",
+        "stock:XBTC",
+        "crypto:币安人生USDT",
+    ]
+
+
+def test_list_without_a_query_market_and_limit(catalog: Catalog) -> None:
+    assert ids(catalog.search(None, market=Market.STOCK, limit=3)) == [
+        "stock:AAPL",
+        "stock:APLE",
+        "stock:BRK.B",
+    ]
+    assert ids(catalog.search(None, market=Market.CRYPTO, limit=2)) == [
+        "crypto:BTCUSDC",
+        "crypto:BTCUSDT",
+    ]
+    assert catalog.search(None, limit=0) == []
+
+
+def test_list_without_a_query_orders_equal_symbols_by_market() -> None:
+    both = [stock("BTC", "Grayscale Bitcoin Mini Trust ETF"), crypto("BTC", "BTC", "")]
+    assert ids(search(both, None)) == ["crypto:BTC", "stock:BTC"]
+
+
 @pytest.mark.parametrize("query", ["", "   ", "/-.", "zzzz"])
 def test_search_without_matches(catalog: Catalog, query: str) -> None:
     assert catalog.search(query) == []
