@@ -185,6 +185,8 @@ def test_list_without_a_query_market_and_limit(catalog: Catalog) -> None:
         "crypto:BTCUSDT",
     ]
     assert catalog.search(None, limit=0) == []
+    assert catalog.search(None, limit=-1) == []
+    assert catalog.search("btc", limit=-1) == []
 
 
 def test_list_without_a_query_orders_equal_symbols_by_market() -> None:

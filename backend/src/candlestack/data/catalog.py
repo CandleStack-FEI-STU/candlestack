@@ -69,11 +69,13 @@ class Catalog:
     ) -> list[Instrument]:
         """Best matches first (see the module docstring); ``None`` lists every instrument by
         symbol, an empty query finds nothing."""
+        if limit <= 0:
+            return []
         frame = self._market(market)
         if q is None:
             return self._take(frame.sort("symbol", "market").head(limit))
         key, words = normalise_query(q), _words(q).lstrip()
-        if not key or not words or limit <= 0:
+        if not key or not words:
             return []
         pair = pl.col("base") == key
         top_pair = pair & (pl.col("quote_pairs") == pl.col("quote_pairs").filter(pair).max())
