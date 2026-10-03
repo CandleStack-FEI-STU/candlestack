@@ -157,6 +157,64 @@ def test_search_market_and_limit(catalog: Catalog) -> None:
     assert catalog.search("btc", limit=0) == []
 
 
+def test_list_without_a_query(catalog: Catalog) -> None:
+    assert ids(catalog.search(None)) == [
+        "stock:AAPL",
+        "stock:APLE",
+        "stock:BRK.B",
+        "stock:BTC",
+        "crypto:BTCUSDC",
+        "crypto:BTCUSDT",
+        "crypto:ETHBTC",
+        "crypto:ETHUSDT",
+        "stock:SPY",
+        "crypto:WBTCUSDT",
+        "stock:XBTC",
+        "crypto:币安人生USDT",
+    ]
+
+
+def test_list_without_a_query_market_and_limit(catalog: Catalog) -> None:
+    assert ids(catalog.search(None, market=Market.STOCK, limit=3)) == [
+        "stock:AAPL",
+        "stock:APLE",
+        "stock:BRK.B",
+    ]
+    assert ids(catalog.search(None, market=Market.CRYPTO, limit=2)) == [
+        "crypto:BTCUSDC",
+        "crypto:BTCUSDT",
+    ]
+    assert catalog.search(None, limit=0) == []
+    assert catalog.search(None, limit=-1) == []
+    assert catalog.search("btc", limit=-1) == []
+
+
+def test_list_without_a_query_orders_equal_symbols_by_market() -> None:
+    both = [stock("BTC", "Grayscale Bitcoin Mini Trust ETF"), crypto("BTC", "BTC", "")]
+    assert ids(search(both, None)) == ["crypto:BTC", "stock:BTC"]
+
+
+def test_pages(catalog: Catalog) -> None:
+    listed = ids(catalog.search(None, limit=100))
+    pages = [catalog.page(None, limit=5, offset=offset) for offset in (0, 5, 10)]
+
+    assert [found for page, _ in pages for found in ids(page)] == listed
+    assert [total for _, total in pages] == [len(INSTRUMENTS)] * 3
+    assert ids(catalog.search("btc", limit=2, offset=1)) == ids(catalog.search("btc"))[1:3]
+    assert catalog.page("btc", market=Market.STOCK, limit=1) == ([INSTRUMENTS[6]], 2)
+
+
+@pytest.mark.parametrize("offset", [len(INSTRUMENTS), 10**30])
+def test_page_past_the_end(catalog: Catalog, offset: int) -> None:
+    assert catalog.page(None, limit=20, offset=offset) == ([], len(INSTRUMENTS))
+    assert catalog.page("btc", offset=offset) == ([], 6)
+
+
+def test_page_counts_matches_without_items(catalog: Catalog) -> None:
+    assert catalog.page("btc", limit=0) == ([], 6)
+    assert catalog.page("zzzz") == ([], 0)
+
+
 @pytest.mark.parametrize("query", ["", "   ", "/-.", "zzzz"])
 def test_search_without_matches(catalog: Catalog, query: str) -> None:
     assert catalog.search(query) == []

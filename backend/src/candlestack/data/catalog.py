@@ -6,7 +6,7 @@ that ticker); exact symbol; the other pairs of that base asset, the same way (BT
 BTCTRY); symbol prefix; prefix of a word in the name; substring of the symbol; substring of the
 name. Other ties go to the shorter symbol, then alphabetically. Symbols are compared without
 separators and case (``btc/usdt`` finds ``BTCUSDT``, ``brkb`` finds ``BRK.B``), names word by
-word without case and punctuation.
+word without case and punctuation. Without a query, every instrument comes back in symbol order.
 """
 
 import re
@@ -64,14 +64,34 @@ class Catalog:
     def get(self, instrument_id: InstrumentId) -> Instrument | None:
         return self._by_id.get(instrument_id)
 
-    def search(self, q: str, market: Market | None = None, limit: int = 20) -> list[Instrument]:
-        """Best matches first (see the module docstring); an empty query finds nothing."""
+    def search(
+        self, q: str | None, market: Market | None = None, limit: int = 20, offset: int = 0
+    ) -> list[Instrument]:
+        """Best matches first (see the module docstring); ``None`` lists every instrument by
+        symbol, an empty query finds nothing."""
+        return self.page(q, market, limit, offset)[0]
+
+    def page(
+        self, q: str | None, market: Market | None = None, limit: int = 20, offset: int = 0
+    ) -> tuple[list[Instrument], int]:
+        """``limit`` matches from ``offset`` on, as ``search`` orders them, and the number of
+        all matches."""
+        found = self._matches(q, market)
+        total = found.height
+        if limit <= 0:
+            return [], total
+        # Clamped: an offset past the end is an empty page, and polars takes no huge offset.
+        page = found.slice(min(offset, total), limit)
+        return [self._items[index] for index in page["index"]], total
+
+    def _matches(self, q: str | None, market: Market | None) -> pl.DataFrame:
+        """The ``index`` of every match, in order."""
+        frame = self._market(market)
+        if q is None:
+            return frame.sort("symbol", "market").select("index")
         key, words = normalise_query(q), _words(q).lstrip()
-        if not key or not words or limit <= 0:
-            return []
-        frame = self._frame
-        if market is not None:
-            frame = frame.filter(pl.col("market") == str(market))
+        if not key or not words:
+            return frame.clear().select("index")
         pair = pl.col("base") == key
         top_pair = pair & (pl.col("quote_pairs") == pl.col("quote_pairs").filter(pair).max())
         rank = (
@@ -92,27 +112,33 @@ class Catalog:
         )
         # Pairs of the base asset: the most common quote asset first (USDC before TRY, ...).
         quote_pairs = pl.when(pl.col("rank") == 2).then(pl.col("quote_pairs")).otherwise(0)
-        found = (
-            frame.select("index", "symbol", "quote_pairs", rank.alias("rank"))
+        return (
+            frame.select("index", "market", "symbol", "quote_pairs", rank.alias("rank"))
             .filter(pl.col("rank").is_not_null())
             .sort(
                 "rank",
                 quote_pairs,
                 pl.col("symbol").str.len_chars(),
                 "symbol",
-                descending=[False, True, False, False],
+                "market",  # a stable order for paging: equal symbols in both markets
+                descending=[False, True, False, False, False],
             )
-            .head(limit)
+            .select("index")
         )
-        return [self._items[index] for index in found["index"]]
+
+    def _market(self, market: Market | None) -> pl.DataFrame:
+        if market is None:
+            return self._frame
+        return self._frame.filter(pl.col("market") == str(market))
 
 
 def search(
     instruments: Catalog | Iterable[Instrument],
-    q: str,
+    q: str | None,
     market: Market | None = None,
     limit: int = 20,
+    offset: int = 0,
 ) -> list[Instrument]:
     """``Catalog.search``; pass a ``Catalog`` to reuse its keys across searches."""
     catalog = instruments if isinstance(instruments, Catalog) else Catalog(instruments)
-    return catalog.search(q, market, limit)
+    return catalog.search(q, market, limit, offset)
