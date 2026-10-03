@@ -24,6 +24,9 @@ dist/
 .claude/settings.local.json
 CLAUDE.local.md
 
+# Redis snapshots of a local redis-server
+*.rdb
+
 # Local settings, never committed
 .env
 .env.*
