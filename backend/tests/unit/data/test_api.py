@@ -94,7 +94,9 @@ class FakeDataService:
 
     unavailable: list[Market] = field(default_factory=list)
 
-    async def search(self, q: str, market: Market | None = None, limit: int = 20) -> SearchResult:
+    async def search(
+        self, q: str | None, market: Market | None = None, limit: int = 20
+    ) -> SearchResult:
         self._called("search", q, market, limit)
         return SearchResult([BTCUSDT, AAPL][:limit], self.unavailable)
 
@@ -209,10 +211,17 @@ def test_search_passes_market_and_limit(client: TestClient, service: FakeDataSer
     assert service.calls == [("search", ("apple", Market.STOCK, 1))]
 
 
+def test_search_without_a_query(client: TestClient, service: FakeDataService) -> None:
+    response = client.get("/api/v1/data/instruments?market=stock")
+
+    assert response.status_code == 200
+    assert response.json()["count"] == 2
+    assert service.calls == [("search", (None, Market.STOCK, 20))]
+
+
 @pytest.mark.parametrize(
     ("query", "detail"),
     [
-        ("", "query parameter 'q': Field required"),
         ("q=", "query parameter 'q': String should have at least 1 character"),
         (f"q={'a' * 51}", "query parameter 'q': String should have at most 50 characters"),
         ("q=btc&limit=0", "query parameter 'limit': Input should be greater than or equal to 1"),
