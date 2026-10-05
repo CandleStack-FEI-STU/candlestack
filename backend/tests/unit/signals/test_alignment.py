@@ -92,6 +92,19 @@ def test_relabel_shifts_only_the_named_column_and_makes_it_int64() -> None:
             "'ts' of the frame must be integer epoch seconds, not Datetime",
         ),
         (pl.DataFrame({"ts": [1800, None]}), HALF_HOUR, "'ts' of the frame has a missing value"),
+        (
+            pl.DataFrame({"ts": [2**63]}, schema={"ts": pl.UInt64}),
+            HALF_HOUR,
+            f"'ts' of the frame leaves the Int64 range, at {2**63}",
+        ),
+        (
+            pl.DataFrame({"ts": [-(2**63) + 1799]}),
+            HALF_HOUR,
+            (
+                "'ts' of the frame leaves the Int64 range once moved back by 1800 seconds, at "
+                f"{-(2**63) + 1799}"
+            ),
+        ),
         (pl.DataFrame({"ts": [1800]}), 0, "timeframe_seconds must be positive, got 0"),
         (pl.DataFrame({"ts": [1800]}), -HALF_HOUR, "timeframe_seconds must be positive, got -1800"),
         (pl.DataFrame({"ts": [1800]}), 1800.0, "timeframe_seconds must be an int, got 1800.0"),
@@ -140,15 +153,57 @@ def test_align_repeats_the_previous_prediction_on_candles_without_one() -> None:
     assert report == AlignReport(predictions_without_candle=0, candles_without_prediction=2)
 
 
-def test_align_counts_a_missing_prediction_as_no_prediction() -> None:
-    result, report = align(
-        candles(100, 200, 300, 400),
-        predictions({100: None, 200: 0.2, 300: None, 400: 0.4}),
-        strict=False,
+@pytest.mark.parametrize("strict", [True, False])
+@pytest.mark.parametrize(
+    ("values", "message"),
+    [
+        pytest.param(
+            {100: 0.1, 200: None, 300: 0.3},
+            "1 prediction is missing or NaN, first at ts 200: ",
+            id="null",
+        ),
+        pytest.param(
+            {100: 0.1, 400: float("nan"), 200: None, 300: 0.3},
+            "2 predictions are missing or NaN, first at ts 200: ",
+            id="NaN and null",
+        ),
+        pytest.param(
+            {100: None},
+            "1 prediction is missing or NaN, first at ts 100: ",
+            id="only a null",
+        ),
+    ],
+)
+def test_align_refuses_missing_and_nan_predictions(
+    values: dict[int, float | None], message: str, strict: bool
+) -> None:
+    # Neither is a prediction to repeat or a gap to fill: the model's output is broken.
+    with pytest.raises(ValueError, match=message):
+        align(candles(100, 200, 300, 400), predictions(values), strict=strict)
+
+
+def test_align_refuses_a_repeated_ts_even_with_a_missing_prediction() -> None:
+    twice = pl.concat([predictions({100: 0.1, 200: 0.2}), predictions({200: None})])
+
+    with pytest.raises(ValueError, match="The predictions repeat ts 200: each ts must be unique"):
+        align(candles(100, 200), twice, strict=False)
+
+
+def test_align_refuses_a_model_column_that_is_not_text() -> None:
+    numbered = predictions({100: 0.1}).with_columns(model=pl.lit(1))
+
+    with pytest.raises(ValueError, match="'model' of the predictions must be text, not Int32"):
+        align(candles(100), numbered, model="1")
+
+
+def test_align_takes_a_categorical_model_column() -> None:
+    both = pl.concat([predictions({100: 0.1}, "a"), predictions({100: 0.2}, "b")])
+
+    result, _ = align(
+        candles(100), both.with_columns(pl.col("model").cast(pl.Categorical)), model="b"
     )
 
-    assert rows(result) == [(200, 0.2), (300, 0.2), (400, 0.4)]
-    assert report == AlignReport(predictions_without_candle=0, candles_without_prediction=1)
+    assert rows(result) == [(100, 0.2)]
 
 
 def test_align_does_not_fill_in_missing_candles() -> None:
@@ -206,18 +261,9 @@ def test_align_strict_names_the_first_of_several_predictions_without_a_candle() 
         align(candles(100, 200), predictions({250: 0.2, 50: 0.1, 100: 0.0}))
 
 
-@pytest.mark.parametrize(
-    ("values", "ts"),
-    [
-        pytest.param({100: 0.1, 300: 0.3}, 200, id="no prediction"),
-        pytest.param({100: 0.1, 200: None, 300: 0.3}, 200, id="missing prediction"),
-    ],
-)
-def test_align_strict_refuses_a_candle_without_a_prediction(
-    values: dict[int, float | None], ts: int
-) -> None:
-    with pytest.raises(ValueError, match=f"1 candle has no prediction, first at ts {ts}: "):
-        align(candles(100, 200, 300), predictions(values))
+def test_align_strict_refuses_a_candle_without_a_prediction() -> None:
+    with pytest.raises(ValueError, match="1 candle has no prediction, first at ts 200: "):
+        align(candles(100, 200, 300), predictions({100: 0.1, 300: 0.3}))
 
 
 def test_align_strict_names_the_first_of_several_candles_without_a_prediction() -> None:
@@ -309,10 +355,17 @@ def test_align_keeps_float32_predictions_as_they_are() -> None:
         ),
         pytest.param(
             candles(100),
-            predictions({100: None}),
+            predictions({}),
             {},
             "There are no predictions to align",
-            id="only missing predictions",
+            id="no predictions",
+        ),
+        pytest.param(
+            candles(100),
+            pl.DataFrame({"ts": [2**63], "prediction": [0.1]}, schema_overrides={"ts": pl.UInt64}),
+            {},
+            f"'ts' of the predictions leaves the Int64 range, at {2**63}",
+            id="prediction ts beyond Int64",
         ),
         pytest.param(
             candles(100),

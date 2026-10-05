@@ -280,7 +280,9 @@ The worked example with `fill="next_open"` and 10 bps of slippage as well
   must be integer and unique in both frames (per model for the predictions); the candles must
   not have a `prediction` column yet.
 - `predictions` has `ts` and `prediction`, and `model` when it holds several models; then
-  `model=` picks one and is required. A missing (null) prediction counts as no prediction.
+  `model=` picks one and is required. Each prediction must be a number: a missing (null) or
+  NaN one is refused with their count and the first `ts`, and a row with a missing prediction
+  still counts for the unique `ts`.
 - The rows run from the first to the last prediction that has a candle. Missing candles are
   never filled in.
 - `AlignReport` counts what did not match one to one: `predictions_without_candle` and
@@ -378,7 +380,7 @@ command prints the help).
 
 The steps are the public functions above, so a run from code gives the same numbers: read both
 files, rename their time column to `ts`, `relabel` both with `--labels close`, `align`
-(strict), `threshold` (and `long_only`), `backtest`, `stats`.
+(strict unless `--allow-gaps`), `threshold` (and `long_only`), `backtest`, `stats`.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -387,8 +389,9 @@ files, rename their time column to `ts`, `relabel` both with `--labels close`, `
 | `--out DIR` | required | folder for the four result files, created if needed |
 | `--ts-column NAME` | `ts` | the time column of both files, integer UTC epoch seconds; renamed to `ts` (the supervisor's files use `unix`) |
 | `--labels open\|close` | `open` | whether the time is a candle's open or its close; `close` moves both files back by `--timeframe` |
-| `--timeframe LENGTH` | none | the length of a candle: a number and `m`, `h` or `d` (`30m`, `1h`, `1d`); needed with `--labels close` |
+| `--timeframe LENGTH` | none | the length of a candle: a number and `m`, `h` or `d` (`30m`, `1h`, `1d`); needed with `--labels close`, refused with `--labels open` |
 | `--model NAME` | none | backtest only this model's predictions (column `model`); needed when the file holds several models |
+| `--allow-gaps` | off | `align(strict=False)`: a prediction without a candle is dropped and a candle without a prediction repeats the previous one; `run.json` counts both. Off, either stops the run |
 | `--threshold LIMIT` | `0` | long at a prediction of LIMIT or more, short at -LIMIT or less, else flat |
 | `--long-only` | off | flat instead of short |
 | `--fill next_open\|signal_close` | `next_open` | `Settings.fill` |
@@ -405,10 +408,15 @@ What it writes to `--out`:
 | `stats.json` | the statistics, None as `null`, in the order of [Metrics](#metrics) |
 | `run.json` | `engine_version`; `inputs`: path and SHA-256 of both files; `settings`: the time label and signal options and the `Settings` fields; `align`: the `AlignReport` |
 
-Exit codes: 0 after a run. 2 for a wrong option (with the usage), and for a missing or unreadable
-file, a missing column or data a step refuses: then it prints
-`candlestack-bt run: error: <reason>` and writes no file. The same files and options write the
-same bytes again.
+Exit codes:
+
+| Code | When |
+| --- | --- |
+| 0 | the run wrote its four files |
+| 2 | a wrong option or a wrong mix of options (`--labels close` without `--timeframe`, `--timeframe` with `--labels open`): the usage and the reason |
+| 2 | a missing or unreadable file, a missing or mistyped column, a missing or NaN prediction, a prediction without a candle or a candle without a prediction (without `--allow-gaps`), or any other data a step (or Polars) refuses: one line, `candlestack-bt run: error: <reason>`, never a traceback |
+
+On exit code 2 it writes no file. The same files and options write the same bytes again.
 
 The worked example from files (the candles without `signal`, predictions of 0.01, 0.3, 0.2, 0.1
 and 0.4, which the threshold turns into 0, +1, +1, +1, +1):
@@ -442,6 +450,7 @@ Its `run.json` (hashes shortened):
     "labels": "open",
     "timeframe_seconds": null,
     "model": null,
+    "allow_gaps": false,
     "threshold": 0.05,
     "long_only": false,
     "fill": "signal_close",
