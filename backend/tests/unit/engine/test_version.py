@@ -15,7 +15,9 @@ from candlestack.engine import ENGINE_VERSION, Settings, backtest
 # The sha256 of output_json() for each ENGINE_VERSION. Keep the old entries: they record what
 # each version produced.
 OUTPUT_SHA256 = {
+    # 0.1.0 on the 40-candle example of its time; 0.2.0 extended the example.
     "0.1.0": "c5fe0ee75777b3d191cdbad159ff1de43e83766eff772bb7409a723bdc9261c9",
+    "0.2.0": "d6ca5c67715702cd7cfafadcf9ab8a361b3083be7ffbb5b9c0d99129df3401b0",
 }
 
 INPUT_SCHEMA = {
@@ -28,9 +30,13 @@ INPUT_SCHEMA = {
 }
 START = 1_704_205_800  # 2024-01-02 14:30 UTC
 
-# 40 half-hour candles (open, high, low, close, signal). Both fills, with a 5% stop, a 5 bps fee
+# 50 half-hour candles (open, high, low, close, signal). Both fills, with a 5% stop, a 5 bps fee
 # and 2 bps of slippage, trade the same story: a long flipped to a short, a long stopped out on
-# its low, a short that gaps out at the open, two more flips and a long still open at the end.
+# its low, a short that gaps out at the open, two more flips, a long closed by the signal on a
+# candle that opens beyond its stop, a short stopped out on its high and a change on the last
+# row. With next_open the order closes that long at the open (rule 2), the short's stop is on
+# its entry candle, where only a touch counts (rule 4), and the last change is never filled, so
+# the long ends at the last close; signal_close closes it on the last row.
 EXAMPLE = pl.DataFrame(
     [
         (START + 1800 * row, *candle)
@@ -73,9 +79,19 @@ EXAMPLE = pl.DataFrame(
                 (99.3, 99.8, 98.5, 98.8, -1),
                 (98.8, 99.1, 97.6, 97.9, -1),
                 (97.9, 98.4, 97.2, 97.5, -1),
-                (97.5, 97.9, 96.8, 97.2, 1),  # flip to long
+                (97.5, 97.9, 96.8, 97.2, 1),  # flip to long: the stop is about 92.3-92.4
                 (97.2, 97.6, 96.5, 96.9, 1),
-                (96.9, 97.3, 96.4, 97.0, 1),  # still long: closed at the last close
+                (96.9, 97.3, 96.4, 97.0, 0),  # go flat
+                (91.0, 91.5, 90.0, 90.5, 0),  # next_open: out at this open, beyond the stop
+                (90.5, 91.0, 90.0, 90.8, 0),
+                (90.8, 91.2, 90.4, 91.0, -1),  # go short: the stop is about 95.5
+                (91.0, 96.0, 90.6, 95.0, -1),  # the high reaches it (next_open: entry candle)
+                (95.0, 95.5, 94.5, 95.2, -1),  # still short: no new decision
+                (95.2, 95.6, 94.8, 95.0, 0),
+                (95.0, 95.4, 94.6, 95.3, 1),  # go long
+                (95.4, 96.0, 95.0, 95.8, 1),
+                (95.8, 96.2, 95.4, 96.0, 1),
+                (96.0, 96.5, 95.7, 96.3, 0),  # go flat on the last row
             ]
         )
     ],
@@ -117,17 +133,41 @@ def test_engine_version_is_major_minor_patch() -> None:
 
 
 @pytest.mark.parametrize("settings", SETTINGS, ids=IDS)
-def test_the_example_has_flips_a_stop_a_gap_and_an_end_with_costs(settings: Settings) -> None:
+def test_the_example_has_flips_a_stop_a_gap_and_a_last_row_change_with_costs(
+    settings: Settings,
+) -> None:
     trades = backtest(EXAMPLE, settings).trades
     flips = trades.filter(
         (pl.col("exit_reason") == "signal")
         & (pl.col("close_ts") == pl.col("open_ts").shift(-1))
         & (pl.col("side") == -pl.col("side").shift(-1))
     )
+    last = trades.row(-1, named=True)
 
-    assert set(trades["exit_reason"]) == {"signal", "stop", "gap", "end"}
+    assert {"signal", "stop", "gap"} <= set(trades["exit_reason"])
     assert flips.height == 3
     assert (trades["fees"] > 0).all()
+    assert (trades["slippage_cost"] > 0).all()
+    assert EXAMPLE["signal"][-1] != EXAMPLE["signal"][-2]
+    assert last["close_ts"] == EXAMPLE["ts"][-1]
+    assert last["exit_reason"] == ("end" if settings.fill == "next_open" else "signal")
+
+
+def test_with_next_open_the_example_fills_before_the_stop_and_stops_on_an_entry_candle() -> None:
+    trades = backtest(EXAMPLE, SETTINGS[1]).trades
+    opens = dict(EXAMPLE.select("ts", "open").rows())
+    beyond = [
+        trade
+        for trade in trades.iter_rows(named=True)
+        if trade["exit_reason"] == "signal"
+        and trade["side"] * (opens[trade["close_ts"]] - trade["stop_price"]) <= 0
+    ]
+    on_entry = trades.filter(
+        (pl.col("exit_reason") == "stop") & (pl.col("open_ts") == pl.col("close_ts"))
+    )
+
+    assert len(beyond) == 1  # closed by its order at an open beyond its stop: no gap (rule 2)
+    assert on_entry.height == 1  # stopped on its entry candle, by a touch (rule 4)
 
 
 def test_the_output_on_the_example_is_the_one_recorded_for_this_engine_version() -> None:

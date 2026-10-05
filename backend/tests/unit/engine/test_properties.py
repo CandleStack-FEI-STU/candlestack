@@ -174,3 +174,23 @@ def test_the_last_equity_compounds_the_trade_returns(seed: int, settings: Settin
     assert result.series["equity"][-1] == pytest.approx(growth, rel=1e-12)
     assert result.series["position"][-1] == 0
     assert set(result.series["position"]) <= {-1.0, 0.0, 1.0}
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_fees_and_slippage_cost_add_up_to_the_cost_of_each_trade(seed: int) -> None:
+    settings = Settings(fill="next_open", stop_loss=0.02, fee_bps=5, slippage_bps=3)
+    s = settings.slippage_bps * 1e-4
+
+    result = backtest(random_candles(random.Random(seed)), settings)
+
+    assert not result.trades.is_empty()
+    for trade in result.trades.iter_rows(named=True):
+        side = trade["side"]
+        # The prices before slippage: what the trade would have returned without costs.
+        entry = trade["open_price"] / (1 + side * s)
+        exit_ = trade["close_price"] / (1 - side * s)
+        without_costs = side * (exit_ / entry - 1)
+        assert trade["slippage_cost"] > 0
+        assert trade["fees"] + trade["slippage_cost"] == pytest.approx(
+            without_costs - trade["return"], rel=1e-9
+        )
