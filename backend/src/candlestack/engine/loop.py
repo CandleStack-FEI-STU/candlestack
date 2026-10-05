@@ -131,7 +131,8 @@ class Loop:
         growth = exit_price / self.entry_price  # exit notional per unit of entry notional
         fees = self.fee * (1.0 + growth)
         result = side * (growth - 1.0) - fees
-        slippage_cost = side * (price / self.entry_quote - growth)
+        # + 0.0: a short without slippage costs 0.0, not -0.0, in the stored trades.
+        slippage_cost = side * (price / self.entry_quote - growth) + 0.0
         ts = self.candles.ts
         self.trades.append(
             (

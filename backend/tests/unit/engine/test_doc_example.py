@@ -213,6 +213,7 @@ def test_the_command_writes_the_run_json_of_the_document(
             "labels": "open",
             "timeframe_seconds": None,
             "model": None,
+            "allow_gaps": False,
             "threshold": 0.05,
             "long_only": False,
             "fill": "signal_close",
