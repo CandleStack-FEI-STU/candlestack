@@ -159,10 +159,14 @@ def test_the_command_gives_the_numbers_of_the_calls_from_code(
 ) -> None:
     out = tmp_path / "runs" / "plain"
 
-    assert run(*plain, out) == 0
+    assert run(*plain, out, "--stop-loss", "0.02") == 0
 
-    result, values = in_code(pl.read_parquet(plain[0]), pl.read_parquet(plain[1]), Settings())
+    settings = Settings(stop_loss=0.02)
+    result, values = in_code(pl.read_parquet(plain[0]), pl.read_parquet(plain[1]), settings)
+    # The fixture covers shorts and the stop and end exits, so the files are checked on them.
     assert result.trades.height >= 3
+    assert -1 in result.trades["side"]
+    assert {"stop", "end"} <= set(result.trades["exit_reason"])
     assert values["sharpe"] is not None
     assert_written(out, result, values)
     assert capsys.readouterr().err == ""
@@ -243,6 +247,7 @@ def test_a_run_writes_its_settings_engine_version_input_hashes_and_align_report(
             "labels": "close",
             "timeframe_seconds": HALF_HOUR,
             "model": "B",
+            "allow_gaps": False,
             "threshold": 0.0,
             "long_only": False,
             "fill": "next_open",
@@ -269,6 +274,62 @@ def test_the_timeframe_is_a_number_and_a_unit(
     assert record["settings"]["timeframe_seconds"] == seconds
     series = pl.read_parquet(out / "series.parquet")
     assert series["ts"].to_list() == [ts - seconds for ts in OPENS]
+
+
+def gappy(tmp_path: Path) -> Path:
+    """Predictions without those of candles 5 to 7 and with one between two candles."""
+    values = predictions(OPENS, 1.5).filter(~pl.int_range(pl.len()).is_between(5, 7))
+    between = pl.DataFrame(
+        {"ts": [OPENS[10] + 60], "prediction": [0.5]},
+        schema={"ts": pl.Int64, "prediction": pl.Float32},
+    )
+    return write(pl.concat([values, between]), tmp_path / "gappy.parquet")
+
+
+def test_allow_gaps_aligns_without_strict_and_counts_the_gaps(
+    plain: tuple[Path, Path], tmp_path: Path
+) -> None:
+    gaps = gappy(tmp_path)
+    out = tmp_path / "out"
+
+    assert run(plain[0], gaps, out, "--allow-gaps") == 0
+
+    record = json.loads((out / "run.json").read_text(encoding="utf-8"))
+    assert record["settings"]["allow_gaps"] is True
+    assert record["align"] == {"predictions_without_candle": 1, "candles_without_prediction": 3}
+    frame, _ = align(pl.read_parquet(plain[0]), pl.read_parquet(gaps), strict=False)
+    result = backtest(frame.with_columns(threshold(frame["prediction"], 0.0)), Settings())
+    assert_written(out, result, stats(result.trades, result.series, frame))
+
+
+def test_without_allow_gaps_a_gap_is_refused(
+    plain: tuple[Path, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Strict alignment: the prediction without a candle is the first thing it refuses.
+    out = tmp_path / "out"
+
+    code = run(plain[0], gappy(tmp_path), out)
+
+    message = (
+        f"1 prediction has no candle, first at ts {OPENS[10] + 60}: check that both are "
+        "labelled by the candle's open (relabel), or pass --allow-gaps to drop them"
+    )
+    assert_refused(code, capsys, out, message)
+
+
+def test_without_allow_gaps_a_candle_without_a_prediction_is_refused(
+    plain: tuple[Path, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    holes = predictions(OPENS, 1.5).filter(pl.col("ts") != OPENS[4])
+    out = tmp_path / "out"
+
+    code = run(plain[0], write(holes, tmp_path / "holes.parquet"), out)
+
+    message = (
+        f"1 candle has no prediction, first at ts {OPENS[4]}: pass --allow-gaps to repeat the "
+        "previous prediction on them"
+    )
+    assert_refused(code, capsys, out, message)
 
 
 def test_the_summary_and_stats_of_a_hand_made_run(
@@ -484,6 +545,23 @@ def test_close_labels_need_a_timeframe(
     assert not out.exists()
 
 
+def test_open_labels_refuse_a_timeframe(
+    plain: tuple[Path, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Open labels are not moved, so a timeframe would be silently ignored.
+    out = tmp_path / "out"
+
+    with pytest.raises(SystemExit) as exit_info:
+        run(*plain, out, "--timeframe", "30m")
+
+    assert exit_info.value.code == 2
+    assert capsys.readouterr().err.endswith(
+        "candlestack-bt run: error: --timeframe goes only with --labels close: open labels are "
+        "not moved\n"
+    )
+    assert not out.exists()
+
+
 BETWEEN = "must be between 0 and 1 (0.05 is 5%), got"
 LENGTH = "not a candle length like 30m, 1h or 1d:"
 
@@ -534,6 +612,124 @@ def test_the_engines_invalid_input_is_a_message(
 
     message = "Invalid backtest input: 1 row has a price at or below zero, first at row 2."
     assert_refused(code, capsys, out, message)
+
+
+def test_a_cut_parquet_file(
+    plain: tuple[Path, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cut = tmp_path / "cut.parquet"
+    cut.write_bytes(plain[0].read_bytes()[:200])
+    out = tmp_path / "out"
+
+    code = run(cut, plain[1], out)
+
+    assert code == 2
+    err = capsys.readouterr().err
+    assert err.startswith(f"candlestack-bt run: error: Cannot read the candles file {cut} ")
+    assert err.count("\n") == 1
+    assert not out.exists()
+
+
+TIMEFRAME = ["--labels", "close", "--timeframe", "30m"]
+
+
+@pytest.mark.parametrize(
+    ("side", "change", "options", "message"),
+    [
+        pytest.param(
+            "candles",
+            pl.col("open").cast(pl.String),
+            [],
+            "Invalid backtest input: open is String, not a number.",
+            id="text prices",
+        ),
+        pytest.param(
+            "predictions",
+            pl.col("prediction").cast(pl.String),
+            [],
+            "Predictions must be numbers, not String",
+            id="text predictions",
+        ),
+        pytest.param(
+            "predictions",
+            pl.lit(1).alias("model"),
+            ["--model", "A"],
+            "'model' of the predictions must be text, not Int32",
+            id="number models",
+        ),
+        pytest.param(
+            "predictions",
+            pl.when(pl.col("ts") == OPENS[3])
+            .then(float("nan"))
+            .otherwise("prediction")
+            .alias("prediction"),
+            [],
+            f"1 prediction is missing or NaN, first at ts {OPENS[3]}: each prediction must be a "
+            "number",
+            id="NaN prediction",
+        ),
+        pytest.param(
+            "predictions",
+            pl.when(pl.col("ts").is_in(OPENS[5:7]))
+            .then(None)
+            .otherwise("prediction")
+            .alias("prediction"),
+            [],
+            f"2 predictions are missing or NaN, first at ts {OPENS[5]}: each prediction must be "
+            "a number",
+            id="null predictions",
+        ),
+        pytest.param(
+            "candles",
+            pl.col("ts").cast(pl.UInt64) + 2**63,
+            TIMEFRAME,
+            f"'ts' of the frame leaves the Int64 range, at {OPENS[-1] + 2**63}",
+            id="ts beyond Int64 when relabelled",
+        ),
+        pytest.param(
+            "candles",
+            pl.lit(-(2**63), pl.Int64).alias("ts"),
+            TIMEFRAME,
+            "'ts' of the frame leaves the Int64 range once moved back by 1800 seconds, at "
+            f"{-(2**63)}",
+            id="ts below Int64 when relabelled",
+        ),
+    ],
+)
+def test_mistyped_or_bad_columns_are_a_message(
+    plain: tuple[Path, Path],
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    side: str,
+    change: pl.Expr,
+    options: list[str],
+    message: str,
+) -> None:
+    paths = dict(zip(["candles", "predictions"], plain, strict=True))
+    paths[side] = write(pl.read_parquet(paths[side]).with_columns(change), tmp_path / "bad.parquet")
+    out = tmp_path / "out"
+
+    code = run(paths["candles"], paths["predictions"], out, *options)
+
+    assert_refused(code, capsys, out, message)
+
+
+def test_a_polars_error_is_a_one_line_message(
+    plain: tuple[Path, Path],
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Data no step checks for can still stop Polars; its message spans several lines.
+    def broken(frame: pl.DataFrame, timeframe_seconds: int) -> pl.DataFrame:
+        raise pl.exceptions.ComputeError("cannot relabel\n\nin this expression:\n\tcol('ts')")
+
+    monkeypatch.setattr("candlestack.cli.run.relabel", broken)
+    out = tmp_path / "out"
+
+    code = run(*plain, out, *TIMEFRAME)
+
+    assert_refused(code, capsys, out, "cannot relabel in this expression: col('ts')")
 
 
 def test_predictions_without_candles_are_refused(
