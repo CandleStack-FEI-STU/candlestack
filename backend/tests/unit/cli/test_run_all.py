@@ -11,9 +11,10 @@ import polars as pl
 import pytest
 from polars.testing import assert_frame_equal
 
+import candlestack.cli.run_all as run_all_module
 from candlestack.cli import main
 from candlestack.cli.run_all import _one_polars_thread
-from candlestack.engine import ENGINE_VERSION
+from candlestack.engine import ENGINE_VERSION, Result, Settings
 
 HALF_HOUR = 1800
 DAY = 86_400
@@ -166,6 +167,29 @@ def test_each_combination_gives_the_trades_and_stats_of_run(data: Path, tmp_path
     assert trades.height >= 20
 
 
+def test_slippage_cost_and_ruin_reach_the_trades_as_in_run(data: Path, tmp_path: Path) -> None:
+    folder = stock(data, "RUIN", 0.0, {"A": 1.5})
+    # Short from the second candle on (the first is no decision) while the price triples.
+    opens = pl.Series([100.0 + 10 * i for i in range(len(OPENS))])
+    candles(0.0).with_columns(
+        open=opens, high=opens + 10, low=opens, close=opens + 10
+    ).write_parquet(folder / "candles.parquet")
+    signs = pl.Series([1.0] + [-1.0] * (len(OPENS) - 1), dtype=pl.Float32)
+    predictions({"A": 1.5}).with_columns(prediction=0.2 * signs).write_parquet(
+        folder / "predictions.parquet"
+    )
+    out = tmp_path / "all"
+
+    assert run_all(data, out, *LABELS, "--slippage-bps", "10") == 0
+
+    assert run(folder, tmp_path / "one", *LABELS, "--model", "A", "--slippage-bps", "10") == 0
+    trades = pl.read_parquet(out / "trades.parquet")
+    ruined = trades.filter(pl.col("stock") == "RUIN").drop(KEYS)
+    assert_frame_equal(ruined, pl.read_parquet(tmp_path / "one" / "trades.parquet"))
+    assert ruined["exit_reason"].to_list() == ["ruin"]
+    assert (trades["slippage_cost"] > 0).all()
+
+
 def test_the_defaults_are_runs_defaults(data: Path, tmp_path: Path) -> None:
     out = tmp_path / "all"
 
@@ -241,6 +265,7 @@ def test_run_json_holds_the_settings_models_hashes_and_align_reports(
             "ts_column": "unix",
             "labels": "close",
             "timeframe_seconds": HALF_HOUR,
+            "allow_gaps": False,
             "models": None,
             "thresholds": [0.1, 0.0],
             "long_only": False,
@@ -269,7 +294,7 @@ def test_the_summary(data: Path, tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert captured.out == (
         f"Wrote stats.parquet, trades.parquet and run.json to {out}\n"
         "  stocks  2 ran, 0 failed\n"
-        "  models  2\n"
+        "  models  2 ran, 0 failed on a stock\n"
         "  runs    8\n"
         f"  trades  {trades}\n"
     )
@@ -279,31 +304,69 @@ def test_the_summary(data: Path, tmp_path: Path, capsys: pytest.CaptureFixture[s
 # Stocks that fail: reported, and the others still run
 
 
-def test_a_failing_stock_is_reported_and_the_others_run(
+def gappy_stock(data: Path) -> Path:
+    """A stock whose model A lacks the prediction of the fourth candle; B has them all."""
+    folder = stock(data, "GAPPY", 0.5, {"A": 1.5, "B": 0.7})
+    path = folder / "predictions.parquet"
+    gap = (pl.col("model") == "A") & (pl.col("unix") == OPENS[3] + HALF_HOUR)
+    pl.read_parquet(path).filter(~gap).write_parquet(path)
+    return folder
+
+
+def test_a_failing_stock_or_model_is_reported_and_the_others_run(
     data: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     (data / "EMPTY").mkdir()
-    gappy = stock(data, "GAPPY", 0.5, {"A": 1.5})
-    predictions({"A": 1.5}).filter(pl.col("unix") != OPENS[3] + HALF_HOUR).write_parquet(
-        gappy / "predictions.parquet"
-    )
+    gappy_stock(data)
     out = tmp_path / "all"
 
     code = run_all(data, out, *LABELS)
 
     assert code == 1
     missing = data / "EMPTY" / "candles.parquet"
-    gap = f"Model 'A': 1 candle has no prediction, first at ts {OPENS[3]}"
-    err = capsys.readouterr().err.splitlines()
+    gap = (
+        f"1 candle has no prediction, first at ts {OPENS[3]}: pass --allow-gaps to repeat the "
+        "previous prediction"
+    )
+    captured = capsys.readouterr()
+    err = captured.err.splitlines()
     assert err[0] == f"candlestack-bt run-all: error: EMPTY: No candles file at {missing}"
-    assert err[1].startswith(f"candlestack-bt run-all: error: GAPPY: {gap}")
+    assert err[1].startswith(f"candlestack-bt run-all: error: GAPPY 'A': {gap}")
     assert len(err) == 2
+    assert "  stocks  3 ran, 1 failed\n  models  2 ran, 1 failed on a stock\n" in captured.out
     record = json.loads((out / "run.json").read_text(encoding="utf-8"))
-    assert [entry["stock"] for entry in record["stocks"]] == ["AAPL", "MSFT"]
-    assert record["failed"][0] == {"stock": "EMPTY", "error": f"No candles file at {missing}"}
+    assert [entry["stock"] for entry in record["stocks"]] == ["AAPL", "GAPPY", "MSFT"]
+    assert record["stocks"][1]["align"] == {"B": NO_GAP}
+    assert record["failed"][0] == {
+        "stock": "EMPTY",
+        "model": None,
+        "error": f"No candles file at {missing}",
+    }
+    assert record["failed"][1]["stock"] == "GAPPY"
+    assert record["failed"][1]["model"] == "A"
     assert record["failed"][1]["error"].startswith(gap)
+    assert len(record["failed"]) == 2
+    rows = pl.read_parquet(out / "stats.parquet").select("stock", "model").rows()
+    assert rows == [("AAPL", "A"), ("AAPL", "B"), ("GAPPY", "B"), ("MSFT", "A"), ("MSFT", "B")]
+
+
+def test_allow_gaps_runs_the_gaps_as_run_does(data: Path, tmp_path: Path) -> None:
+    gappy = gappy_stock(data)
+    out = tmp_path / "all"
+
+    assert run_all(data, out, *LABELS, "--allow-gaps") == 0
+
+    record = json.loads((out / "run.json").read_text(encoding="utf-8"))
+    assert record["settings"]["allow_gaps"] is True
+    assert record["stocks"][1]["align"] == {
+        "A": {"predictions_without_candle": 0, "candles_without_prediction": 1},
+        "B": NO_GAP,
+    }
+    assert run(gappy, tmp_path / "one", *LABELS, "--model", "A", "--allow-gaps") == 0
     stats_frame = pl.read_parquet(out / "stats.parquet")
-    assert stats_frame["stock"].unique(maintain_order=True).to_list() == ["AAPL", "MSFT"]
+    row = stats_frame.filter(combination(("GAPPY", "A", 0.0, None))).row(0, named=True)
+    written = json.loads((tmp_path / "one" / "stats.json").read_text(encoding="utf-8"))
+    assert {name: row[name] for name in written} == written
 
 
 @pytest.mark.parametrize(
@@ -318,8 +381,12 @@ def test_a_failing_stock_is_reported_and_the_others_run(
             "Column 'model' of the predictions file {path} must be text",
         ),
         (
-            lambda frame: frame.filter(pl.col("model") == "A"),
-            "The predictions file {path} has no model 'B'",
+            lambda frame: frame.with_columns(pl.lit(None, pl.String).alias("model")),
+            "The predictions file {path} names no model: column 'model' is empty",
+        ),
+        (
+            lambda frame: frame.clear(),
+            "The predictions file {path} names no model: column 'model' is empty",
         ),
     ],
 )
@@ -330,13 +397,96 @@ def test_bad_predictions_fail_their_stock(
     change(pl.read_parquet(path)).write_parquet(path)
     out = tmp_path / "all"
 
-    assert run_all(data, out, *LABELS, "--models", "A,B") == 1
+    assert run_all(data, out, *LABELS) == 1
 
     error = message.format(path=path)
     assert capsys.readouterr().err == f"candlestack-bt run-all: error: MSFT: {error}\n"
     record = json.loads((out / "run.json").read_text(encoding="utf-8"))
-    assert record["failed"] == [{"stock": "MSFT", "error": error}]
+    assert record["failed"] == [{"stock": "MSFT", "model": None, "error": error}]
     assert pl.read_parquet(out / "stats.parquet")["stock"].unique().to_list() == ["AAPL"]
+
+
+def test_a_model_a_stock_lacks_fails_only_that_model(
+    data: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = data / "MSFT" / "predictions.parquet"
+    pl.read_parquet(path).filter(pl.col("model") == "A").write_parquet(path)
+    out = tmp_path / "all"
+
+    assert run_all(data, out, *LABELS, "--models", "A,B") == 1
+
+    error = f"The predictions file {path} has no model 'B'"
+    assert capsys.readouterr().err == f"candlestack-bt run-all: error: MSFT 'B': {error}\n"
+    record = json.loads((out / "run.json").read_text(encoding="utf-8"))
+    assert record["failed"] == [{"stock": "MSFT", "model": "B", "error": error}]
+    rows = pl.read_parquet(out / "stats.parquet").select("stock", "model").rows()
+    assert rows == [("AAPL", "A"), ("AAPL", "B"), ("MSFT", "A")]
+
+
+def test_a_polars_error_fails_only_its_model(
+    data: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real = run_all_module.backtest
+    calls: list[None] = []
+
+    def backtest(frame: pl.DataFrame, settings: Settings) -> Result:
+        calls.append(None)
+        if len(calls) == 4:  # MSFT's model B: one backtest per stock and model here
+            raise pl.exceptions.ComputeError("bad\ndata")
+        return real(frame, settings)
+
+    monkeypatch.setattr(run_all_module, "backtest", backtest)
+    out = tmp_path / "all"
+
+    assert run_all(data, out, *LABELS) == 1
+
+    assert capsys.readouterr().err == "candlestack-bt run-all: error: MSFT 'B': bad data\n"
+    rows = pl.read_parquet(out / "stats.parquet").select("stock", "model").rows()
+    assert rows == [("AAPL", "A"), ("AAPL", "B"), ("MSFT", "A")]
+
+
+def test_a_polars_error_on_the_files_fails_only_its_stock(
+    data: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real = run_all_module.relabel
+    calls: list[None] = []
+
+    def relabel(frame: pl.DataFrame, seconds: int) -> pl.DataFrame:
+        calls.append(None)
+        if len(calls) == 3:  # MSFT's candles: the candles, then the predictions of each stock
+            raise pl.exceptions.SchemaError("bad schema")
+        return real(frame, seconds)
+
+    monkeypatch.setattr(run_all_module, "relabel", relabel)
+    out = tmp_path / "all"
+
+    assert run_all(data, out, *LABELS) == 1
+
+    assert capsys.readouterr().err == "candlestack-bt run-all: error: MSFT: bad schema\n"
+    record = json.loads((out / "run.json").read_text(encoding="utf-8"))
+    assert record["failed"] == [{"stock": "MSFT", "model": None, "error": "bad schema"}]
+    assert [entry["stock"] for entry in record["stocks"]] == ["AAPL"]
+
+
+def test_a_stock_whose_models_all_fail_has_no_rows(
+    data: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = tmp_path / "all"
+
+    assert run_all(data, out, *LABELS, "--models", "C") == 1
+
+    err = capsys.readouterr().err.splitlines()
+    assert [line.split(": ")[2] for line in err] == ["AAPL 'C'", "MSFT 'C'"]
+    record = json.loads((out / "run.json").read_text(encoding="utf-8"))
+    assert [entry["align"] for entry in record["stocks"]] == [{}, {}]
+    assert record["models"] == []
+    assert pl.read_parquet(out / "stats.parquet").columns == KEYS
 
 
 def test_when_every_stock_fails_the_files_hold_the_keys_alone(
@@ -381,6 +531,7 @@ def assert_usage_error(
         (["--jobs", "two"], "argument --jobs: not a whole number: 'two'"),
         (["--fee-bps", "-1"], "argument --fee-bps: must be 0 or more, got -1"),
         (["--labels", "close"], "error: --labels close needs --timeframe"),
+        (["--timeframe", "30m"], "error: --timeframe goes only with --labels close"),
     ],
 )
 def test_bad_options_are_usage_errors(

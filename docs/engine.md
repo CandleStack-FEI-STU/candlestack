@@ -495,7 +495,8 @@ Files labelled by the candle's close in a `unix` column, with several models:
 `candlestack-bt run-all` runs every stock × model × threshold × stop loss of a data folder in
 one command, like the supervisor's `all_stats`. Each combination runs the steps of `run` with
 the same functions, so it gives the trades and statistics `run` gives with the same options. A
-stock's files are read and relabelled once and aligned once per model.
+stock's files are read and relabelled once and aligned once per model (`align` strict unless
+`--allow-gaps`).
 
 ```text
 <--data>/
@@ -509,8 +510,8 @@ stock's files are read and relabelled once and aligned once per model.
 
 ```sh
 uv run candlestack-bt run-all --data <folder> --ts-column unix --labels close --timeframe 30m \
-  --models all --thresholds 0,0.01,0.05,0.1 --stop-losses 0.05,0.07,0.1 --fill signal_close \
-  --jobs 4 --out runs/all
+  --allow-gaps --models all --thresholds 0,0.01,0.05,0.1 --stop-losses 0.05,0.07,0.1 \
+  --fill signal_close --jobs 4 --out runs/all
 ```
 
 | Option | Default | Meaning |
@@ -518,6 +519,7 @@ uv run candlestack-bt run-all --data <folder> --ts-column unix --labels close --
 | `--data DIR` | required | folder with one folder per stock holding `candles.parquet` and `predictions.parquet` |
 | `--out DIR` | required | folder for the three result files, created if needed |
 | `--ts-column`, `--labels`, `--timeframe` | as in `run` | the time labels of all files |
+| `--allow-gaps` | off | as in `run`, for every stock and model; `run.json` counts the gaps in each align report |
 | `--models NAMES` | `all` | comma-separated models (column `model`), or `all`: every model of each stock, by name |
 | `--thresholds LIMITS` | `0` | comma-separated thresholds, each as `run`'s `--threshold` |
 | `--long-only` | off | flat instead of short, for every combination |
@@ -535,17 +537,29 @@ What it writes to `--out`:
 | File | Content |
 | --- | --- |
 | `stats.parquet` | one row per stock × model × threshold × stop loss, stocks by folder name: the keys `stock`, `model`, `threshold`, `stop_loss` (null for no stop); the shared settings `long_only`, `fill`, `fee_bps`, `slippage_bps`; then every statistic of [Metrics](#metrics) in its order, null when `run` writes `null` |
-| `trades.parquet` | the engine's `trades` of every combination, in the same order, after the four keys |
-| `run.json` | `engine_version`; `data`; `settings`: the options above but `--jobs`; `models`: the models run, by name; `stocks`: for each stock that ran, its name, `inputs` (path and SHA-256 of both files) and `align` (the `AlignReport` of each model); `failed`: each stock that failed and why |
+| `trades.parquet` | the engine's `trades` of every combination (all their columns, `slippage_cost` and the exit reason `ruin` included), in the same order, after the four keys |
+| `run.json` | `engine_version`; `data`; `settings`: the options above but `--jobs`; `models`: the models run, by name; `stocks`: for each stock whose files were read, its name, `inputs` (path and SHA-256 of both files) and `align` (the `AlignReport` of each model that ran); `failed`: each failure as `stock`, `model` (null when the whole stock failed) and `error` |
 
-It prints how many stocks ran and failed, how many models, runs and trades.
+It prints how many stocks ran and failed, how many models ran and failed on a stock, and how
+many runs and trades it wrote.
 
-A stock whose files a step refuses (a missing file or column, a model asked for that it lacks,
-a candle without a prediction) does not stop the others: it is left out of both Parquet files,
-listed in `run.json` under `failed` and printed as `candlestack-bt run-all: error: <stock>:
-<reason>`. Exit codes: 0 when every stock ran, 1 when any failed, 2 for a wrong option, a
-missing data folder, a data folder without a stock folder or an `--out` it cannot write to. The
-same files and options write the same bytes again, whatever `--jobs` is.
+A failure does not stop the others; it is listed in `run.json` under `failed` and printed on
+one line, never as a traceback:
+
+- A stock fails when its files are refused as `run` refuses them (a missing or unreadable file,
+  a missing or mistyped column, any other data a step or Polars refuses) or when its column
+  `model` names no model: `candlestack-bt run-all: error: <stock>: <reason>`. It is left out of
+  `stocks` and of both Parquet files.
+- A model of a stock fails when the stock lacks a model asked for in `--models`, or when `align`
+  or a run refuses it (a candle without a prediction without `--allow-gaps`, a missing or NaN
+  prediction, a repeated `ts`, an error from Polars):
+  `candlestack-bt run-all: error: <stock> '<model>': <reason>`. Only that model's rows are left
+  out; the stock's other models run.
+
+Exit codes: 0 when everything ran, 1 when a stock or a model of a stock failed, 2 for a wrong
+option or a wrong mix of options (as in `run`), a missing data folder, a data folder without a
+stock folder or an `--out` it cannot write to. The same files and options write the same bytes
+again, whatever `--jobs` is.
 
 ## Checking against the supervisor's backtest
 
