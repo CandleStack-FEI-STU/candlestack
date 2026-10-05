@@ -251,6 +251,17 @@ def test_without_a_losing_day_sortino_is_none() -> None:
     assert result["sortino"] is None
 
 
+def test_when_every_day_loses_sortino_is_the_mean_over_its_root_mean_square() -> None:
+    # Returns -0.1 and 0.72 / 0.9 - 1 = -0.2: every day is in the downside, so the downside
+    # deviation is sqrt((0.01 + 0.04) / 2) = sqrt(0.025), and mean / it = -0.15 / sqrt(0.025).
+    series = make_series(("2026-01-05 14:30", 1, 0.9), ("2026-01-06 14:30", 1, 0.72))
+
+    result = stats_of(series)
+
+    assert result["sortino"] == pytest.approx(-math.sqrt(0.9) * math.sqrt(252))
+    assert result["sharpe"] == pytest.approx(-0.15 / (0.1 / math.sqrt(2)) * math.sqrt(252))
+
+
 def test_after_equity_reaches_zero_there_are_no_daily_returns() -> None:
     series = make_series(
         ("2026-01-05 14:30", -1, 0.0), ("2026-01-06 14:30", 0, 0.0), ("2026-01-07 14:30", 0, 0.0)
