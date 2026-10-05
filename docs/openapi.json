@@ -272,7 +272,7 @@
         "type": "object"
       },
       "InstrumentDetailOut": {
-        "description": "An instrument and what a valid `/candles` request for it can ask for.",
+        "description": "An instrument and what a valid candle request for it can ask for.",
         "properties": {
           "available_from": {
             "anyOf": [
@@ -354,7 +354,7 @@
             ]
           },
           "max_candles": {
-            "description": "Most candles one `/candles` response may hold.",
+            "description": "Most candles one candle response may hold.",
             "examples": [
               50000
             ],
@@ -811,22 +811,212 @@
         ]
       }
     },
-    "/api/v1/data/candles": {
+    "/api/v1/data/instruments": {
       "get": {
-        "description": "Closed candles of one instrument and timeframe with `start <= t < end`.\n\nStocks have regular-session candles only (09:30-16:00 New York), aligned to the session\nopen. Missing candles are never filled; `meta.gaps` reports them. Limits: `max_candles`\nexpected candles per request (see the instrument detail) and a per-minute number of\ncandle and instrument requests per client address.",
-        "operationId": "candles_api_v1_data_candles_get",
+        "description": "Searches the instruments of both markets: every Binance spot pair that is trading and\nevery active tradable US stock and ETF at Alpaca (without OTC).\n\nRanking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`\nfirst), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word\nin the name, substring of the symbol, substring of the name; ties go to the shorter symbol,\nthen alphabetically.\n\nWhen the instrument list of one market cannot be loaded, the other market is still\nsearched and `unavailable` names the missing one; 503 when no market can be searched.",
+        "operationId": "search_instruments_api_v1_data_instruments_get",
+        "parameters": [
+          {
+            "description": "Symbol or name, case-insensitive; separators in symbols are ignored (`btc/usdt` finds `BTCUSDT`, `brkb` finds `BRK.B`).",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "Symbol or name, case-insensitive; separators in symbols are ignored (`btc/usdt` finds `BTCUSDT`, `brkb` finds `BRK.B`).",
+              "examples": [
+                "btc"
+              ],
+              "maxLength": 50,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only this market.",
+            "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Market"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this market.",
+              "title": "Market"
+            }
+          },
+          {
+            "description": "Most items to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "Most items to return.",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstrumentSearchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid parameters (`validation`)."
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The source sent data that failed validation (`source-data-invalid`)."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The source is down or our request budget for it is spent (`source-unavailable`); `Retry-After` when waiting helps."
+          }
+        },
+        "summary": "Search instruments",
+        "tags": [
+          "data"
+        ]
+      }
+    },
+    "/api/v1/data/instruments/{instrument_id}": {
+      "get": {
+        "description": "An instrument with its timeframes, available period and the candle limit: what a valid\ncandle request can ask for. Counts against the per-minute limit of requests per client\naddress, like candle requests.",
+        "operationId": "instrument_detail_api_v1_data_instruments__instrument_id__get",
         "parameters": [
           {
             "description": "Instrument id, `<market>:<symbol>`.",
-            "in": "query",
-            "name": "instrument",
+            "in": "path",
+            "name": "instrument_id",
             "required": true,
             "schema": {
               "description": "Instrument id, `<market>:<symbol>`.",
               "examples": [
                 "crypto:BTCUSDT"
               ],
-              "title": "Instrument",
+              "title": "Instrument Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstrumentDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The instrument is not in the catalog (`instrument-not-found`)."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Malformed instrument id (`validation`)."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "More candle and instrument requests from this address than the per-minute limit (`rate-limited`); see `Retry-After`."
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The source sent data that failed validation (`source-data-invalid`)."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The source is down or our request budget for it is spent (`source-unavailable`); `Retry-After` when waiting helps."
+          }
+        },
+        "summary": "Instrument detail",
+        "tags": [
+          "data"
+        ]
+      }
+    },
+    "/api/v1/data/instruments/{instrument_id}/candles": {
+      "get": {
+        "description": "Closed candles of one instrument and timeframe with `start <= t < end`.\n\nStocks have regular-session candles only (09:30-16:00 New York), aligned to the session\nopen. Missing candles are never filled; `meta.gaps` reports them. Limits: `max_candles`\nexpected candles per request (see the instrument detail) and a per-minute number of\ncandle and instrument requests per client address.",
+        "operationId": "candles_api_v1_data_instruments__instrument_id__candles_get",
+        "parameters": [
+          {
+            "description": "Instrument id, `<market>:<symbol>`.",
+            "in": "path",
+            "name": "instrument_id",
+            "required": true,
+            "schema": {
+              "description": "Instrument id, `<market>:<symbol>`.",
+              "examples": [
+                "crypto:BTCUSDT"
+              ],
+              "title": "Instrument Id",
               "type": "string"
             }
           },
@@ -964,196 +1154,6 @@
           }
         },
         "summary": "Candles",
-        "tags": [
-          "data"
-        ]
-      }
-    },
-    "/api/v1/data/instruments": {
-      "get": {
-        "description": "Searches the instruments of both markets: every Binance spot pair that is trading and\nevery active tradable US stock and ETF at Alpaca (without OTC).\n\nRanking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`\nfirst), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word\nin the name, substring of the symbol, substring of the name; ties go to the shorter symbol,\nthen alphabetically.\n\nWhen the instrument list of one market cannot be loaded, the other market is still\nsearched and `unavailable` names the missing one; 503 when no market can be searched.",
-        "operationId": "search_instruments_api_v1_data_instruments_get",
-        "parameters": [
-          {
-            "description": "Symbol or name, case-insensitive; separators in symbols are ignored (`btc/usdt` finds `BTCUSDT`, `brkb` finds `BRK.B`).",
-            "in": "query",
-            "name": "q",
-            "required": true,
-            "schema": {
-              "description": "Symbol or name, case-insensitive; separators in symbols are ignored (`btc/usdt` finds `BTCUSDT`, `brkb` finds `BRK.B`).",
-              "examples": [
-                "btc"
-              ],
-              "maxLength": 50,
-              "minLength": 1,
-              "title": "Q",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Only this market.",
-            "in": "query",
-            "name": "market",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/Market"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Only this market.",
-              "title": "Market"
-            }
-          },
-          {
-            "description": "Most items to return.",
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 20,
-              "description": "Most items to return.",
-              "maximum": 100,
-              "minimum": 1,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InstrumentSearchOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Invalid parameters (`validation`)."
-          },
-          "502": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "The source sent data that failed validation (`source-data-invalid`)."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "The source is down or our request budget for it is spent (`source-unavailable`); `Retry-After` when waiting helps."
-          }
-        },
-        "summary": "Search instruments",
-        "tags": [
-          "data"
-        ]
-      }
-    },
-    "/api/v1/data/instruments/{instrument_id}": {
-      "get": {
-        "description": "An instrument with its timeframes, available period and the candle limit: what a valid\n`/candles` request can ask for. Counts against the per-minute limit of requests per client\naddress, like `/candles`.",
-        "operationId": "instrument_detail_api_v1_data_instruments__instrument_id__get",
-        "parameters": [
-          {
-            "description": "Instrument id, `<market>:<symbol>`.",
-            "in": "path",
-            "name": "instrument_id",
-            "required": true,
-            "schema": {
-              "description": "Instrument id, `<market>:<symbol>`.",
-              "examples": [
-                "crypto:BTCUSDT"
-              ],
-              "title": "Instrument Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InstrumentDetailOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "The instrument is not in the catalog (`instrument-not-found`)."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Malformed instrument id (`validation`)."
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "More candle and instrument requests from this address than the per-minute limit (`rate-limited`); see `Retry-After`."
-          },
-          "502": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "The source sent data that failed validation (`source-data-invalid`)."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "The source is down or our request budget for it is spent (`source-unavailable`); `Retry-After` when waiting helps."
-          }
-        },
-        "summary": "Instrument detail",
         "tags": [
           "data"
         ]

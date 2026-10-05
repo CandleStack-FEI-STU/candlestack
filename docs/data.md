@@ -64,8 +64,8 @@ the missing one in `unavailable` (`["stock"]`). A search that can reach no reque
 503 `source-unavailable`.
 
 `GET /api/v1/data/instruments/{id}` returns the instrument plus what a client needs to build a
-valid `/candles` request (404 `instrument-not-found` if the id is not in the catalog). It counts
-against the client rate limit like `/candles`, because its first-candle lookup can call the
+valid candle request (404 `instrument-not-found` if the id is not in the catalog). It counts
+against the client rate limit like candle requests, because its first-candle lookup can call the
 source:
 
 ```json
@@ -273,7 +273,7 @@ requested timeframe.
 
 | Limit | Counted per | Default | When spent |
 | --- | --- | --- | --- |
-| Clients: `CLIENT_RATE_LIMIT` | client IP (`CF-Connecting-IP`, else the peer address; an IPv6 address counts as its /64 network); every `/candles` and instrument-detail request, cached or not | 60 per minute, `0` disables | 429 `rate-limited` with `Retry-After` |
+| Clients: `CLIENT_RATE_LIMIT` | client IP (`CF-Connecting-IP`, else the peer address; an IPv6 address counts as its /64 network); every candle and instrument-detail request, cached or not | 60 per minute, `0` disables | 429 `rate-limited` with `Retry-After` |
 | Alpaca: `ALPACA_RATE_LIMIT` | environment; each Alpaca request | prod 150, stage 60, `pr-*` 30 | 503 `source-unavailable` with `Retry-After` |
 | Binance REST: `BINANCE_WEIGHT_LIMIT` | environment; request weight of each REST call | 1000 | 503 `source-unavailable` with `Retry-After` |
 | `data.binance.vision` | not limited | | |
@@ -339,16 +339,19 @@ again. Keys:
 
 ## Candles endpoint
 
-`GET /api/v1/data/candles?instrument=<id>&timeframe=<tf>&start=<time>&end=<time>`
+`GET /api/v1/data/instruments/{instrument_id}/candles?timeframe=<tf>&start=<time>&end=<time>`
+
+The instrument id is part of the path; `timeframe`, `start` and `end` are query parameters.
+The former `/api/v1/data/candles?instrument=<id>` endpoint has been removed.
 
 | Parameter | Rule |
 | --- | --- |
-| `instrument` | required, an instrument id |
+| `instrument_id` (path) | required, an instrument id |
 | `timeframe` | required, one of `1m 5m 15m 1h 4h 1d` |
 | `start` | required, inclusive; epoch seconds or ISO 8601 (see [Time](#time)) |
 | `end` | optional, exclusive, same formats; default the request time |
 
-Example: `/api/v1/data/candles?instrument=stock:AAPL&timeframe=1h&start=2024-06-03&end=2024-06-04`
+Example: `/api/v1/data/instruments/stock:AAPL/candles?timeframe=1h&start=2024-06-03&end=2024-06-04`
 returns the 7 candles of that session.
 
 Processing: rate limit, validation, catalog lookup, period and count checks, then each chunk

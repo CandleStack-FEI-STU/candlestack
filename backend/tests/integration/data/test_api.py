@@ -13,7 +13,7 @@ from candlestack.main import create_app
 
 pytestmark = pytest.mark.integration
 
-CANDLES = "/api/v1/data/candles?instrument=crypto:BTCUSDT&timeframe=1h&start=1717372800"
+CANDLES = "/api/v1/data/instruments/crypto:BTCUSDT/candles?timeframe=1h&start=1717372800"
 # 30.5 s into a UTC minute: all requests fall into one window, which resets 30 s later.
 NOW = 1790000010
 

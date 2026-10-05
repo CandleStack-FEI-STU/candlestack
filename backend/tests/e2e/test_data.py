@@ -18,8 +18,8 @@ JUNE_3, JUNE_4 = 1717372800, 1717459200
 JUNE_3_OPEN = JUNE_3 + 13 * 3600 + 1800
 
 
-def candles(http: httpx.Client, **params: Any) -> httpx.Response:
-    return http.get("/api/v1/data/candles", params=params)
+def candles(http: httpx.Client, *, instrument: str, **params: Any) -> httpx.Response:
+    return http.get(f"/api/v1/data/instruments/{instrument}/candles", params=params)
 
 
 def app_ms(response: httpx.Response) -> float:

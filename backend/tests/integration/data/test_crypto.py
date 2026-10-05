@@ -349,7 +349,7 @@ async def test_binance_not_answering_is_unavailable_and_remembered(
     response = await get_api(
         service,
         redis,
-        "/api/v1/data/candles?instrument=crypto:BTCUSDT&timeframe=1h"
+        "/api/v1/data/instruments/crypto:BTCUSDT/candles?timeframe=1h"
         f"&start={utc('2025-02-03')}&end={now}",
     )
 

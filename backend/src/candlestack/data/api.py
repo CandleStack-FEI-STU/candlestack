@@ -308,15 +308,15 @@ async def instrument_detail(
     ],
 ) -> InstrumentDetailOut:
     """An instrument with its timeframes, available period and the candle limit: what a valid
-    `/candles` request can ask for. Counts against the per-minute limit of requests per client
-    address, like `/candles`."""
+    candle request can ask for. Counts against the per-minute limit of requests per client
+    address, like candle requests."""
     with _problems():
         info = await service.instrument(InstrumentId.parse(instrument_id))
     return InstrumentDetailOut.of_info(info)
 
 
 @data.get(
-    "/candles",
+    "/instruments/{instrument_id}/candles",
     summary="Candles",
     response_model=CandlesOut,
     dependencies=[Depends(client_rate_limit)],
@@ -332,9 +332,9 @@ async def instrument_detail(
 )
 async def candles(
     service: DataServiceDep,
-    instrument: Annotated[
+    instrument_id: Annotated[
         InstrumentParam,
-        Query(description="Instrument id, `<market>:<symbol>`.", examples=["crypto:BTCUSDT"]),
+        Path(description="Instrument id, `<market>:<symbol>`.", examples=["crypto:BTCUSDT"]),
     ],
     timeframe: Annotated[Timeframe, Query(examples=["1h"])],
     start: Annotated[
@@ -374,7 +374,7 @@ async def candles(
             ]
         )
     with _problems():
-        found = await service.candles(InstrumentId.parse(instrument), timeframe, start, end)
+        found = await service.candles(InstrumentId.parse(instrument_id), timeframe, start, end)
     return Response(candles_json(found), media_type="application/json")
 
 

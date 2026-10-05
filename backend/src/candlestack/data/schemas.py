@@ -74,7 +74,7 @@ class InstrumentSearchOut(BaseModel):
 
 
 class InstrumentDetailOut(InstrumentOut):
-    """An instrument and what a valid `/candles` request for it can ask for."""
+    """An instrument and what a valid candle request for it can ask for."""
 
     timeframes: list[Timeframe] = Field(examples=[list(Timeframe)])
     available_from: int | None = Field(
@@ -86,7 +86,7 @@ class InstrumentDetailOut(InstrumentOut):
         examples=[1790424000],
     )
     max_candles: int = Field(
-        description="Most candles one `/candles` response may hold.", examples=[50000]
+        description="Most candles one candle response may hold.", examples=[50000]
     )
 
     @classmethod
