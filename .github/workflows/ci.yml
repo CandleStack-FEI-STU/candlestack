@@ -68,6 +68,7 @@ jobs:
     outputs:
       backend: ${{ steps.diff.outputs.backend }}
       infra: ${{ steps.diff.outputs.infra }}
+      frontend: ${{ steps.diff.outputs.frontend }}
       api: ${{ steps.diff.outputs.api }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -88,12 +89,13 @@ jobs:
           fi
           if [[ $base =~ ^0*$ ]] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
             echo "No usable base ($base): running everything."
-            changed=$'backend/\ninfra/'
+            changed=$'backend/\ninfra/\nfrontend/'
           else
             changed=$(git diff --name-only "$base" HEAD)
           fi
           backend=false
           infra=false
+          frontend=false
           api=false
           if grep -qE '^(backend/|docs/openapi\.json$|compose[^/]*\.yaml$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
             backend=true
@@ -102,11 +104,16 @@ jobs:
           if grep -qE '^(infra/|frontend/|\.github/|backend/uv\.lock$)' <<<"$changed"; then
             infra=true
           fi
+          # docs/openapi.json: src/api/schema.d.ts is generated from it.
+          if grep -qE '^(frontend/|docs/openapi\.json$|\.github/workflows/ci\.yml$)' <<<"$changed"; then
+            frontend=true
+          fi
           if grep -qE '^(docs/(openapi\.json|api-breaking-changes\.txt)|\.github/(scripts/api-changes\.sh|actions/oasdiff/.*))$' <<<"$changed"; then
             api=true
           fi
           echo "backend=$backend" | tee -a "$GITHUB_OUTPUT"
           echo "infra=$infra" | tee -a "$GITHUB_OUTPUT"
+          echo "frontend=$frontend" | tee -a "$GITHUB_OUTPUT"
           echo "api=$api" | tee -a "$GITHUB_OUTPUT"
 
   lint:
@@ -269,6 +276,42 @@ jobs:
         if: always()
         run: docker compose -f tests/e2e/compose.yaml down --volumes
 
+  # The frontend app: oxlint, Prettier and knip, the unit tests, the type-checked build, and the
+  # API types in sync with the contract. Its image is built and scanned in `infra`.
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The Node release line of the image's build stage (frontend/Dockerfile).
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+      # src/api/schema.d.ts is generated from docs/openapi.json and committed: regenerated here,
+      # it must come out the same.
+      - name: API types in sync with docs/openapi.json
+        run: |
+          npm run api:types
+          git diff --exit-code src/api/schema.d.ts
+
   # Breaking changes to the API: the pull request's docs/openapi.json against the base branch's
   # (the unit tests keep the snapshot equal to the code). Every change goes to the job summary;
   # a breaking one fails unless docs/api-breaking-changes.txt accepts it.
@@ -369,7 +412,7 @@ jobs:
   ci:
     name: ci
     if: always()
-    needs: [pre-commit, changes, lint, unit, integration, e2e, api, infra]
+    needs: [pre-commit, changes, lint, unit, integration, e2e, frontend, api, infra]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
