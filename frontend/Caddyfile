@@ -7,33 +7,21 @@
 # Everything outside /api/*: the edge Caddy sends /api/* to the backend.
 :8080 {
 	header -Server
+	root * /srv/app
 
-	# prod keeps the placeholder page until the app is released.
-	@placeholder expression {env.APP_ENV} == "prod"
-	handle @placeholder {
-		root * /srv/site
-		templates
+	# Vite's hashed file names: a new build has new URLs, so a file never changes. A missing one
+	# is a 404, not the app's page, and is not cached.
+	handle /assets/* {
+		@built file
+		header @built Cache-Control "public, max-age=31536000, immutable"
 		file_server
 	}
 
-	# Every other environment (stage, pr-<N>, local) serves the app.
+	# index.html and the files under public/ keep their names: checked on every load. Any other
+	# path is a route of the app (/instrument/crypto:BTCUSDT) and gets index.html.
 	handle {
-		root * /srv/app
-
-		# Vite's hashed file names: a new build has new URLs, so a file never changes. A
-		# missing one is a 404, not the app's page, and is not cached.
-		handle /assets/* {
-			@built file
-			header @built Cache-Control "public, max-age=31536000, immutable"
-			file_server
-		}
-
-		# index.html and the files under public/ keep their names: checked on every load. Any
-		# other path is a route of the app (/instrument/crypto:BTCUSDT) and gets index.html.
-		handle {
-			header Cache-Control "no-cache"
-			try_files {path} /index.html
-			file_server
-		}
+		header Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
 	}
 }

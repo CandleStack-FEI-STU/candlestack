@@ -35,7 +35,7 @@ flowchart LR
 | Container | Image | Notes |
 | --- | --- | --- |
 | `backend` | `ghcr.io/candlestack-fei-stu/candlestack/backend` | calls Binance and Alpaca; gets the environment's Alpaca keys at deploy time |
-| `frontend` | `ghcr.io/candlestack-fei-stu/candlestack/frontend` | placeholder page until the real frontend exists |
+| `frontend` | `ghcr.io/candlestack-fei-stu/candlestack/frontend` | the web app, static files served by Caddy |
 | `redis` | `redis:8-alpine` | private network of the environment, no persistence, `allkeys-lru` |
 
 The edge Caddy reaches prod and stage on one Docker network and the previews, which run the
@@ -203,7 +203,6 @@ to check that an error reaches Sentry. The Sentry settings are recorded in
 - Celery (job queue and worker)
 - TensorFlow / Keras
 - admin, roles, audit log
-- the real frontend (the placeholder page stays)
 - user data upload (no CSV import)
 - live data (streaming, websockets)
 - Kubernetes, Terraform

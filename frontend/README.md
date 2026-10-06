@@ -22,5 +22,3 @@ Open http://localhost:5173. The dev server forwards `/api/*` to the prod API
 | `npm run build` | type-check and build into `dist/` |
 | `npm run lint` | oxlint |
 | `npm run api:types` | regenerate `src/api/schema.d.ts` from `docs/openapi.json` after an API change |
-
-`site/` is the placeholder page that prod serves until the app is released.

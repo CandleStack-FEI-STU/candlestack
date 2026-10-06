@@ -26,18 +26,15 @@ frontend, and compresses the responses (zstd or gzip) on the way to Cloudflare.
 | Container | Image | Reached as | Memory limit |
 | --- | --- | --- | --- |
 | `backend` | `ghcr.io/candlestack-fei-stu/candlestack/backend` (built from `backend/`) | `<env>-backend:8000` on the edge network (below) | `320m` |
-| `frontend` | `ghcr.io/candlestack-fei-stu/candlestack/frontend` (built from `frontend/`: the app, or the placeholder page on prod) | `<env>-frontend:8080` on the edge network (below) | `32m` |
+| `frontend` | `ghcr.io/candlestack-fei-stu/candlestack/frontend` (built from `frontend/`: the app) | `<env>-frontend:8080` on the edge network (below) | `32m` |
 | `redis` | `redis:8-alpine`, pinned by digest | `redis:6379` on the environment's own network only | see below |
 
-The frontend image holds the app, built with Node in the image's build stage, and the placeholder
-page; its Caddy (`frontend/Caddyfile`) picks one by `APP_ENV`. prod serves the placeholder until
-the app is released (then that branch of the Caddyfile goes), stage and the previews serve the
-app. A path that is no file gets the app's `index.html`, so a direct link such as
+The frontend image holds the app, built with Node in the image's build stage and served by its
+Caddy (`frontend/Caddyfile`) in every environment. A path that is no file gets the app's `index.html`, so a direct link such as
 `/instrument/crypto:BTCUSDT?tf=1h` opens the app; the hashed files under `/assets/` are cached
 for a year, the rest is revalidated on every load. To run the image locally (no `/api/*` there:
 the edge routes it), `docker build -t candlestack-frontend frontend` and
-`docker run --rm -p 8080:8080 candlestack-frontend` serve the app on http://localhost:8080 (add
-`-e APP_ENV=prod` for the placeholder). For development, the dev server talks to the prod API
+`docker run --rm -p 8080:8080 candlestack-frontend` serve the app on http://localhost:8080. For development, the dev server talks to the prod API
 instead, with no local backend and no Alpaca keys: [frontend/README.md](../frontend/README.md).
 
 Redis is a cache for the backend: no persistence, least recently used keys are evicted at

@@ -1,7 +1,7 @@
 # CLAUDE.md
 
-Monorepo of CandleStack (STU FEI team project): the FastAPI backend in `backend/`, the frontend
-(a placeholder page for now) in `frontend/`, and the VM setup in `infra/`. Before changing code,
+Monorepo of CandleStack (STU FEI team project): the FastAPI backend in `backend/`, the web app
+in `frontend/`, and the VM setup in `infra/`. Before changing code,
 read [CONTRIBUTING.md](CONTRIBUTING.md) (workflow, checks, commands) and
 [docs/architecture.md](docs/architecture.md); [docs/data.md](docs/data.md) is the market data
 contract.

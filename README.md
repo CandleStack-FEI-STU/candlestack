@@ -22,9 +22,8 @@ and post-processing gives the most stable results.
 
 ## Status
 
-In development. The backend foundation and the market data layer (crypto from Binance, US
-stocks from Alpaca) run on prod since v0.2.0, with a placeholder page until the real frontend
-exists.
+In development. The backend foundation, the market data layer (crypto from Binance, US stocks
+from Alpaca) and the web app run on prod.
 
 ## Run locally
 
