@@ -63,6 +63,19 @@ async def test_search_both_markets(service: DataService, upstream):
     assert (catalog.call_count, assets.call_count) == (1, 1)
 
 
+async def test_list_without_a_query(service: DataService, upstream):
+    upstream.exchange_info()
+    upstream.assets()
+
+    listed = ids(await service.search(None, limit=100))
+    stocks = ids(await service.search(None, Market.STOCK, limit=100))
+
+    assert listed == sorted(listed, key=lambda found: (found.split(":")[1], found))
+    assert {"crypto:BTCUSDT", "stock:AAPL"} <= set(listed)
+    assert stocks == [found for found in listed if found.startswith("stock:")]
+    assert ids(await service.search(None, limit=2)) == listed[:2]
+
+
 async def test_search_leaves_out_a_market_that_cannot_be_loaded(service: DataService, upstream):
     upstream.exchange_info()
     assets = upstream.router.get(f"{upstream.ALPACA_API}/v2/assets").respond(503)

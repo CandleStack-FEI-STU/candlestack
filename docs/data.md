@@ -47,7 +47,7 @@ characters.
 
 | Parameter | Rule |
 | --- | --- |
-| `q` | required, 1-50 characters; a query without letters or digits finds nothing. Case-insensitive; separators are ignored in symbols: `btc/usdt`, `btc-usdt` and `BTC USDT` all match `BTCUSDT`, `brkb` matches `BRK.B` |
+| `q` | optional, 1-50 characters; without it, every instrument in symbol order (equal symbols: crypto first). A query without letters or digits finds nothing. Case-insensitive; separators are ignored in symbols: `btc/usdt`, `btc-usdt` and `BTC USDT` all match `BTCUSDT`, `brkb` matches `BRK.B` |
 | `market` | optional, `crypto` or `stock` |
 | `limit` | default 20, max 100 |
 
