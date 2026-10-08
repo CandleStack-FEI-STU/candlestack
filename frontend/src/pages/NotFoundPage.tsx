@@ -1,7 +1,7 @@
-import { Link } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router';
 
-import { PageTitle } from '@/components/PageTitle'
-import { Button } from '@/components/ui/button'
+import { PageTitle } from '@/components/PageTitle';
+import { Button } from '@/components/ui/button';
 
 export function NotFoundPage() {
   return (
@@ -11,5 +11,5 @@ export function NotFoundPage() {
         <Link to="/">Back to instruments</Link>
       </Button>
     </>
-  )
+  );
 }

@@ -20,7 +20,11 @@ Open http://localhost:5173. The dev server forwards `/api/*` to the prod API
 | --- | --- |
 | `npm run dev` | dev server with hot reload |
 | `npm run build` | type-check and build into `dist/` |
-| `npm run lint` | oxlint |
+| `npm test` | unit tests (Vitest) |
+| `npm run lint` | oxlint (type-aware), Prettier check and knip (unused files, exports and dependencies) |
+| `npm run format` | format every file with Prettier |
 | `npm run api:types` | regenerate `src/api/schema.d.ts` from `docs/openapi.json` after an API change |
+
+Run `npm run build`, `npm run lint` and `npm test` before every push.
 
 `site/` is the placeholder page that prod serves until the app is released.

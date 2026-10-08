@@ -2,3 +2,8 @@
 [default.extend-words]
 # "caf\xc3\xa9", café in UTF-8 bytes, in the deploy script's tests.
 caf = "caf"
+
+[default.extend-identifiers]
+# oxlint's max-lines-per-function option in frontend/.oxlintrc.json: immediately invoked
+# function expressions (as in the website repository).
+IIFEs = "IIFEs"

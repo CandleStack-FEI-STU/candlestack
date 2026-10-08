@@ -1,6 +1,6 @@
-import { Outlet } from '@tanstack/react-router'
+import { Outlet } from '@tanstack/react-router';
 
-import { Header } from '@/components/Header'
+import { Header } from '@/components/Header';
 
 // Every page: the header on top, the page itself in a centered column below.
 export function Layout() {
@@ -11,5 +11,5 @@ export function Layout() {
         <Outlet />
       </main>
     </div>
-  )
+  );
 }

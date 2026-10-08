@@ -4,7 +4,7 @@
 // Keep the key in sync with src/theme.ts.
 try {
   if (localStorage.getItem('candlestack-theme') === 'light') {
-    document.documentElement.dataset.theme = 'light'
+    document.documentElement.dataset.theme = 'light';
   }
 } catch {
   // Storage blocked (private mode): stay dark.

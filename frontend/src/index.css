@@ -1,7 +1,7 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "@fontsource-variable/geist";
-@import "@fontsource-variable/geist-mono";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
 
 /* Dark theme: data-theme="dark" on <html>, like on the website. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
@@ -29,7 +29,7 @@
   color-scheme: light;
 }
 
-:root[data-theme="dark"] {
+:root[data-theme='dark'] {
   --bg: #0d0f11;
   --ink: #ecedee;
   --muted: #9ba1a6;
@@ -68,8 +68,8 @@
 }
 
 @theme inline {
-  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -105,8 +105,7 @@
     @apply min-h-screen bg-background text-foreground font-sans antialiased;
     /* The same 40 px grid as the website. */
     background-image:
-      linear-gradient(var(--grid) 1px, transparent 1px),
-      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
     background-size: 40px 40px;
   }
 }

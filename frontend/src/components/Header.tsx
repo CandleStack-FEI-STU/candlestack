@@ -1,8 +1,8 @@
-import { Link } from '@tanstack/react-router'
+import { Link } from '@tanstack/react-router';
 
-import { Logo } from '@/brand/Logo'
-import { ApiStatus } from '@/components/ApiStatus'
-import { ThemeToggle } from '@/components/ThemeToggle'
+import { Logo } from '@/brand/Logo';
+import { ApiStatus } from '@/components/ApiStatus';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export function Header() {
   return (
@@ -17,5 +17,5 @@ export function Header() {
         </div>
       </div>
     </header>
-  )
+  );
 }
