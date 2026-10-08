@@ -228,6 +228,29 @@ def test_assets_skip_symbols_that_are_not_instrument_symbols(
     assert "Skipping Alpaca symbol 'brk.a'" in caplog.text
 
 
+def test_assets_warn_about_exchanges_outside_the_filter(caplog: pytest.LogCaptureFixture) -> None:
+    asset = {"name": "Some Corp", "tradable": True}
+    body = [
+        {**asset, "symbol": "AAPL", "exchange": "NASDAQ"},
+        {**asset, "symbol": "NEWA", "exchange": "NEWX"},
+        {**asset, "symbol": "NEWB", "exchange": "NEWX"},
+        {**asset, "symbol": "IEXA", "exchange": "IEX"},
+    ]
+
+    with caplog.at_level(logging.WARNING):
+        instruments = parse_assets(json.dumps(body).encode())
+
+    assert [item.exchange for item in instruments] == ["NASDAQ", "NEWX", "NEWX", "IEX"]
+    assert "exchanges outside Exchange: IEX (1), NEWX (2)" in caplog.text
+
+
+def test_assets_on_known_exchanges_do_not_warn(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.WARNING):
+        parse_assets(fixture_bytes("alpaca/assets.json"))
+
+    assert "outside Exchange" not in caplog.text
+
+
 @pytest.mark.parametrize(
     "body",
     [

@@ -9,6 +9,7 @@ Trading days come from ``GET /v2/calendar``. Every request spends our budget
 import bisect
 import logging
 import time
+from collections import Counter
 from datetime import UTC, datetime
 from typing import Any
 
@@ -29,6 +30,7 @@ from candlestack.data.candles import (
 from candlestack.data.errors import DataError, DataIntegrityError, InvalidRequest, SourceUnavailable
 from candlestack.data.models import (
     CANDLE_SCHEMA,
+    Exchange,
     Feed,
     Instrument,
     InstrumentId,
@@ -87,6 +89,13 @@ def parse_assets(content: bytes) -> list[Instrument]:
         raise DataIntegrityError(
             f"Alpaca assets cannot be read: {type(exc).__name__} {exc}", source=NAME
         ) from None
+    unknown = Counter(exchange for _, _, exchange in assets if exchange not in Exchange)
+    if unknown:
+        # Still listed, but the exchange filter cannot find them until Exchange has the value.
+        logger.warning(
+            "Alpaca lists stocks on exchanges outside Exchange: %s",
+            ", ".join(f"{exchange} ({count})" for exchange, count in sorted(unknown.items())),
+        )
     instruments = []
     for symbol, name, exchange in assets:
         try:
