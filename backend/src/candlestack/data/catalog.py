@@ -6,7 +6,7 @@ that ticker); exact symbol; the other pairs of that base asset, the same way (BT
 BTCTRY); symbol prefix; prefix of a word in the name; substring of the symbol; substring of the
 name. Other ties go to the shorter symbol, then alphabetically. Symbols are compared without
 separators and case (``btc/usdt`` finds ``BTCUSDT``, ``brkb`` finds ``BRK.B``), names word by
-word without case and punctuation.
+word without case and punctuation. Without a query, every instrument comes back in symbol order.
 """
 
 import re
@@ -64,14 +64,19 @@ class Catalog:
     def get(self, instrument_id: InstrumentId) -> Instrument | None:
         return self._by_id.get(instrument_id)
 
-    def search(self, q: str, market: Market | None = None, limit: int = 20) -> list[Instrument]:
-        """Best matches first (see the module docstring); an empty query finds nothing."""
-        key, words = normalise_query(q), _words(q).lstrip()
-        if not key or not words or limit <= 0:
+    def search(
+        self, q: str | None, market: Market | None = None, limit: int = 20
+    ) -> list[Instrument]:
+        """Best matches first (see the module docstring); ``None`` lists every instrument by
+        symbol, an empty query finds nothing."""
+        if limit <= 0:
             return []
-        frame = self._frame
-        if market is not None:
-            frame = frame.filter(pl.col("market") == str(market))
+        frame = self._market(market)
+        if q is None:
+            return self._take(frame.sort("symbol", "market").head(limit))
+        key, words = normalise_query(q), _words(q).lstrip()
+        if not key or not words:
+            return []
         pair = pl.col("base") == key
         top_pair = pair & (pl.col("quote_pairs") == pl.col("quote_pairs").filter(pair).max())
         rank = (
@@ -104,12 +109,20 @@ class Catalog:
             )
             .head(limit)
         )
-        return [self._items[index] for index in found["index"]]
+        return self._take(found)
+
+    def _market(self, market: Market | None) -> pl.DataFrame:
+        if market is None:
+            return self._frame
+        return self._frame.filter(pl.col("market") == str(market))
+
+    def _take(self, frame: pl.DataFrame) -> list[Instrument]:
+        return [self._items[index] for index in frame["index"]]
 
 
 def search(
     instruments: Catalog | Iterable[Instrument],
-    q: str,
+    q: str | None,
     market: Market | None = None,
     limit: int = 20,
 ) -> list[Instrument]:

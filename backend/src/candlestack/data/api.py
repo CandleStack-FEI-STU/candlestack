@@ -255,15 +255,16 @@ _RATE_LIMITED = (
 async def search_instruments(
     service: DataServiceDep,
     q: Annotated[
-        str,
+        str | None,
         Query(
             min_length=1,
             max_length=50,
             description="Symbol or name, case-insensitive; separators in symbols are ignored "
-            "(`btc/usdt` finds `BTCUSDT`, `brkb` finds `BRK.B`).",
+            "(`btc/usdt` finds `BTCUSDT`, `brkb` finds `BRK.B`). Without it, every instrument "
+            "in symbol order.",
             examples=["btc"],
         ),
-    ],
+    ] = None,
     market: Annotated[Market | None, Query(description="Only this market.")] = None,
     limit: Annotated[int, Query(ge=1, le=100, description="Most items to return.")] = 20,
 ) -> InstrumentSearchOut:
@@ -273,7 +274,7 @@ async def search_instruments(
     Ranking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`
     first), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word
     in the name, substring of the symbol, substring of the name; ties go to the shorter symbol,
-    then alphabetically.
+    then alphabetically. Without `q`, every instrument comes back in symbol order.
 
     When the instrument list of one market cannot be loaded, the other market is still
     searched and `unavailable` names the missing one; 503 when no market can be searched.
