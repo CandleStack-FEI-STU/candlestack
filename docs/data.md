@@ -41,7 +41,7 @@ characters.
 | `exchange` | `null` | Alpaca exchange (`NASDAQ`, `NYSE`, `ARCA`, ...) |
 | `base`, `quote` | `BTC`, `USDT` | `null` |
 
-`GET /api/v1/data/instruments?q=&market=&limit=&offset=` searches the cached catalogs of both
+`GET /api/v1/data/instruments?q=&market=&exchange=&limit=&offset=` searches the cached catalogs of both
 markets (no source call per item) and returns one page,
 `{"items": [<instrument>, ...], "count": <n>, "total": <all matches>, "offset": <offset>, "unavailable": []}`.
 
@@ -49,6 +49,7 @@ markets (no source call per item) and returns one page,
 | --- | --- |
 | `q` | optional, 1-50 characters; without it, every instrument in symbol order (equal symbols: crypto first). A query without letters or digits finds nothing. Case-insensitive; separators are ignored in symbols: `btc/usdt`, `btc-usdt` and `BTC USDT` all match `BTCUSDT`, `brkb` matches `BRK.B` |
 | `market` | optional, `crypto` or `stock` |
+| `exchange` | optional, `AMEX`, `ARCA`, `BATS`, `NASDAQ` or `NYSE` (upper case); only stocks listed there. Crypto pairs have no exchange, so with `market=crypto` nothing matches. Works with `q`, `market` and paging |
 | `limit` | default 20, max 100 |
 | `offset` | default 0; matches to skip. Past the end, `items` is empty and `total` still counts all matches |
 

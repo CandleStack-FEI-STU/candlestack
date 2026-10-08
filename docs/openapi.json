@@ -230,6 +230,18 @@
         "title": "CandlesOut",
         "type": "object"
       },
+      "Exchange": {
+        "description": "Listing exchanges of the stocks in the catalog: the values Alpaca reports for tradable US\nequities without OTC (docs/data.md, \"Alpaca\").",
+        "enum": [
+          "AMEX",
+          "ARCA",
+          "BATS",
+          "NASDAQ",
+          "NYSE"
+        ],
+        "title": "Exchange",
+        "type": "string"
+      },
       "Health": {
         "properties": {
           "commit": {
@@ -989,7 +1001,7 @@
     },
     "/api/v1/data/instruments": {
       "get": {
-        "description": "Searches the instruments of both markets: every Binance spot pair that is trading and\nevery active tradable US stock and ETF at Alpaca (without OTC).\n\nRanking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`\nfirst), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word\nin the name, substring of the symbol, substring of the name; ties go to the shorter symbol,\nthen alphabetically. Without `q`, every instrument comes back in symbol order.\n`total` counts all matches: page through them with `offset` and `limit`.\n\nWhen the instrument list of one market cannot be loaded, the other market is still\nsearched and `unavailable` names the missing one; 503 when no market can be searched.",
+        "description": "Searches the instruments of both markets: every Binance spot pair that is trading and\nevery active tradable US stock and ETF at Alpaca (without OTC).\n\nRanking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`\nfirst), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word\nin the name, substring of the symbol, substring of the name; ties go to the shorter symbol,\nthen alphabetically. Without `q`, every instrument comes back in symbol order.\n`exchange` narrows any of these to the stocks listed on it.\n`total` counts all matches: page through them with `offset` and `limit`.\n\nWhen the instrument list of one market cannot be loaded, the other market is still\nsearched and `unavailable` names the missing one; 503 when no market can be searched.",
         "operationId": "search_instruments_api_v1_data_instruments_get",
         "parameters": [
           {
@@ -1031,6 +1043,24 @@
               ],
               "description": "Only this market.",
               "title": "Market"
+            }
+          },
+          {
+            "description": "Only stocks listed on this exchange; crypto pairs have none, so with `market=crypto` nothing matches.",
+            "in": "query",
+            "name": "exchange",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Exchange"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only stocks listed on this exchange; crypto pairs have none, so with `market=crypto` nothing matches.",
+              "title": "Exchange"
             }
           },
           {

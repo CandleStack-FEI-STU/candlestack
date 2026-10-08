@@ -14,6 +14,7 @@ import pytest
 from candlestack.core import Settings
 from candlestack.data import (
     DataService,
+    Exchange,
     Market,
     SearchResult,
     SourceUnavailable,
@@ -88,6 +89,20 @@ async def test_pages_return_every_instrument_once(service: DataService, upstream
     assert everything.total == len(everything.items) < 100
     past_the_end = await service.search("btc", offset=10_000)
     assert (past_the_end.items, past_the_end.total) == ([], (await service.search("btc")).total)
+
+
+async def test_filter_by_exchange_needs_only_the_stocks(service: DataService, upstream):
+    catalog = upstream.router.get(f"{upstream.BINANCE_API}/api/v3/exchangeInfo").respond(503)
+    upstream.assets()
+
+    assert ids(await service.search(None, exchange=Exchange.NYSE)) == ["stock:BRK.B"]
+    assert ids(await service.search("s", exchange=Exchange.ARCA)) == ["stock:SPY"]
+    assert await service.search(None, Market.CRYPTO, exchange=Exchange.NYSE) == SearchResult(
+        [], [], 0
+    )
+    found = await service.search(None, exchange=Exchange.NASDAQ)
+    assert (ids(found), found.unavailable, found.total) == (["stock:AAPL"], [], 1)
+    assert catalog.call_count == 0
 
 
 async def test_search_leaves_out_a_market_that_cannot_be_loaded(service: DataService, upstream):
