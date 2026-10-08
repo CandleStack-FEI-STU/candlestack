@@ -87,7 +87,7 @@ export interface paths {
          *     Ranking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`
          *     first), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word
          *     in the name, substring of the symbol, substring of the name; ties go to the shorter symbol,
-         *     then alphabetically.
+         *     then alphabetically. Without `q`, every instrument comes back in symbol order.
          *
          *     When the instrument list of one market cannot be loaded, the other market is still
          *     searched and `unavailable` names the missing one; 503 when no market can be searched.
@@ -661,9 +661,9 @@ export interface operations {
     };
     search_instruments_api_v1_data_instruments_get: {
         parameters: {
-            query: {
-                /** @description Symbol or name, case-insensitive; separators in symbols are ignored (`btc/usdt` finds `BTCUSDT`, `brkb` finds `BRK.B`). */
-                q: string;
+            query?: {
+                /** @description Symbol or name, case-insensitive; separators in symbols are ignored (`btc/usdt` finds `BTCUSDT`, `brkb` finds `BRK.B`). Without it, every instrument in symbol order. */
+                q?: string | null;
                 /** @description Only this market. */
                 market?: components["schemas"]["Market"] | null;
                 /** @description Most items to return. */
