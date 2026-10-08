@@ -47,8 +47,8 @@ Not modelled in this version:
 
 - position sizing: one position at a time, always the whole capital; a fractional signal is
   refused ("position sizing is not supported yet");
-- leverage, margin and liquidation: a short whose price more than doubles leaves the equity
-  below 0, and the run goes on;
+- leverage, margin and liquidation: the only limit is ruin (rule 8): once a position or a
+  trade has lost the whole capital, the capital is 0 and the run stays flat;
 - volume and liquidity: every order fills in full at its price; `volume` is ignored;
 - borrowing costs, financing, dividends and several instruments in one run.
 
@@ -103,9 +103,10 @@ All numbers are float64 as computed, never rounded.
 | `open_price` | Float64 | entry fill price, slippage included |
 | `close_price` | Float64 | exit fill price, slippage included |
 | `stop_price` | Float64 | the stop level; null without a stop |
-| `exit_reason` | String | `signal`, `stop`, `gap` or `end` (see the rules) |
-| `return` | Float64 | capital after the trade / capital before it - 1, costs included |
+| `exit_reason` | String | `signal`, `stop`, `gap`, `end` or `ruin` (see the rules) |
+| `return` | Float64 | capital after the trade / capital before it - 1, costs included; below -1 only when the trade lost more than the capital, which then becomes 0 (rule 8) |
 | `fees` | Float64 | the fees of both legs, as a fraction of the capital before the trade |
+| `slippage_cost` | Float64 | what slippage cost the trade, as a fraction of the capital before it: the return at the prices before slippage, with the same fees, minus `return`; `fees + slippage_cost` is the full cost |
 
 `series`: one row per input candle.
 
@@ -116,7 +117,7 @@ All numbers are float64 as computed, never rounded.
 | `position` | Float64 | -1, 0 or +1: the side held after the candle's fills |
 | `equity` | Float64 | the capital after the candle's fills, an open position marked at the candle's close; the run starts with 1.0 |
 
-`engine_version` is `ENGINE_VERSION`, now `"0.1.0"` (see [ENGINE_VERSION](#engine_version)).
+`engine_version` is `ENGINE_VERSION`, now `"0.2.0"` (see [ENGINE_VERSION](#engine_version)).
 
 ## Rules
 
@@ -127,9 +128,11 @@ candle the loop does four things, in this order:
 2. The stop of the position held now is checked.
 3. If the signal differs from the previous candle's, the decision is acted on: `signal_close`
    fills it at this candle's close, `next_open` leaves an order for the next open.
-4. The candle's `position` and `equity` are recorded.
+4. A position worth 0 or less at this candle's close is closed there (ruin, rule 8); the
+   candle's `position` and `equity` are recorded.
 
-After the last candle, a position still open is closed at the last close.
+After the last candle, a position still open is closed at the last close. After a ruin the
+loop does nothing more: every later candle is flat with an equity of 0.
 
 The rules, the same for both fills:
 
@@ -157,18 +160,33 @@ The rules, the same for both fills:
      stays at +1 after its long was stopped out does not buy back.
 5. **Costs.** Slippage moves each fill price against the trade; the fee is a commission on each
    leg (see [Fees and slippage](#fees-and-slippage)). A trade's return is capital after /
-   capital before - 1: `side * (exit / entry - 1) - fee * (1 + exit / entry)`.
+   capital before - 1: `side * (exit / entry - 1) - fee * (1 + exit / entry)`. Its
+   `slippage_cost` is the return at the prices before slippage minus that, so
+   `fees + slippage_cost` is the return without costs, `side * (price_exit / price_entry - 1)`,
+   minus the return.
 6. **The last row.** A change on the last row opens nothing: with `signal_close` it may still
    close a position (reason `signal`), with `next_open` its order is never filled. A position
    still open after the last row is closed at the last close (reason `end`), with its exit fee
-   and slippage. A `next_open` order from the row before the last still fills at the last open
-   and ends at the last close.
+   and slippage. A `next_open` order from the row before the last still fills at the last open;
+   its stop is checked on the last row like on any entry candle (only a touch counts there), so
+   it can still exit by `stop`, and otherwise it ends at the last close.
 7. **Equity.** Capital starts at 1.0, is always fully invested and compounds: after each trade
    it is multiplied by `1 + return`. A candle's `equity` is the capital after all its fills,
    with the open position marked at the candle's close:
    `capital * (1 + side * (close / entry - 1) - fee)`, where the entry fee is already paid and
    the exit's fee and slippage are not yet. `position` is the side held after the candle's
    fills, so the last row is always flat.
+8. **Ruin.** The capital cannot go below 0:
+   - when the equity of an open position, marked at a candle's close as in rule 7, is at or
+     below 0, the position closes at that close, with its exit fee and slippage, and reason
+     `ruin`;
+   - when a closing trade's `return` is at or below -1, for example a gap through the stop or a
+     short closed by the signal after its price doubled, nothing is left of the capital.
+
+   Either way the capital becomes 0 (the trade's `return` stays as computed, at or below -1),
+   no position opens again, not even the second leg of a flip or a `next_open` order already
+   decided, and the `equity` of every later row is 0. Without a stop, a short is ruined once
+   its price about doubles.
 
 | `exit_reason` | When | Exit price before slippage |
 | --- | --- | --- |
@@ -176,6 +194,7 @@ The rules, the same for both fills:
 | `stop` | the low (long) or high (short) reached the stop level | the stop level |
 | `gap` | the candle opened at or beyond the stop level | the candle's open |
 | `end` | the position was still open after the last row | the last close |
+| `ruin` | the position was worth 0 or less at a candle's close (rule 8) | that close |
 
 The hand-made examples of each rule are in `backend/tests/unit/engine/test_rules.py`.
 
@@ -233,10 +252,11 @@ The two `trades` rows:
 | `exit_reason` | `end` | `stop` |
 | `return` | -0.031673 | -0.05195 |
 | `fees` | 0.001970 | 0.00195 |
+| `slippage_cost` | 0 | 0 |
 
 `backend/tests/unit/engine/test_doc_example.py` runs this example, the slippage variant, its
-statistics and the command below, and compares them with the numbers printed here. Change both
-together.
+statistics, the `InvalidInput` message under [Input](#input) and the command below with its
+`run.json`, and compares them with what is printed here. Change both together.
 
 ## Fees and slippage
 
@@ -250,8 +270,10 @@ The two costs work differently:
   -1, an entry fills at `price * (1 + side * s)`, an exit (`signal`, `gap` or `end`) at
   `price * (1 - side * s)`, and a stop exit at `level * (1 - side * s)`. The stop level comes
   from the slipped entry price. `open_price` and `close_price` include slippage; `stop_price` is
-  the level before the exit's slippage. Slippage never shows in `fees`; it shows in the prices
-  and the return.
+  the level before the exit's slippage. Slippage never shows in `fees`; it shows in the prices,
+  the return and `slippage_cost`: the return at the prices before slippage (the entry's fill
+  price and the exit's fill price or stop level), with the same fees, minus the return, that is
+  `side * (price_exit / price_entry - exit / entry)`.
 
 The worked example with `fill="next_open"` and 10 bps of slippage as well
 (`Settings(fill="next_open", stop_loss=0.05, fee_bps=10, slippage_bps=10)`):
@@ -263,6 +285,9 @@ The worked example with `fill="next_open"` and 10 bps of slippage as well
   which is -0.05289905;
 - `fees` is 0.00194905: the commission only, a little less than without slippage because the
   exit leg is worth less;
+- `slippage_cost` is 0.0019: before slippage the trade was in at 102 and out at the level,
+  96.9969, so `96.9969 / 102 - 96.8999031 / 102.102 = 0.95095 - 0.94905`. With `fees` that is
+  0.00384905, the return without costs, `96.9969 / 102 - 1 = -0.04905`, minus the return;
 - `equity` is 1, 1, 1.007795, 0.947101, 0.947101.
 
 ## Signals
@@ -280,7 +305,9 @@ The worked example with `fill="next_open"` and 10 bps of slippage as well
   must be integer and unique in both frames (per model for the predictions); the candles must
   not have a `prediction` column yet.
 - `predictions` has `ts` and `prediction`, and `model` when it holds several models; then
-  `model=` picks one and is required. A missing (null) prediction counts as no prediction.
+  `model=` picks one and is required. Each prediction must be a number: a missing (null) or
+  NaN one is refused with their count and the first `ts`, and a row with a missing prediction
+  still counts for the unique `ts`.
 - The rows run from the first to the last prediction that has a candle. Missing candles are
   never filled in.
 - `AlignReport` counts what did not match one to one: `predictions_without_candle` and
@@ -378,7 +405,7 @@ command prints the help).
 
 The steps are the public functions above, so a run from code gives the same numbers: read both
 files, rename their time column to `ts`, `relabel` both with `--labels close`, `align`
-(strict), `threshold` (and `long_only`), `backtest`, `stats`.
+(strict unless `--allow-gaps`), `threshold` (and `long_only`), `backtest`, `stats`.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -387,8 +414,9 @@ files, rename their time column to `ts`, `relabel` both with `--labels close`, `
 | `--out DIR` | required | folder for the four result files, created if needed |
 | `--ts-column NAME` | `ts` | the time column of both files, integer UTC epoch seconds; renamed to `ts` (the supervisor's files use `unix`) |
 | `--labels open\|close` | `open` | whether the time is a candle's open or its close; `close` moves both files back by `--timeframe` |
-| `--timeframe LENGTH` | none | the length of a candle: a number and `m`, `h` or `d` (`30m`, `1h`, `1d`); needed with `--labels close` |
+| `--timeframe LENGTH` | none | the length of a candle: a number and `m`, `h` or `d` (`30m`, `1h`, `1d`); needed with `--labels close`, refused with `--labels open` |
 | `--model NAME` | none | backtest only this model's predictions (column `model`); needed when the file holds several models |
+| `--allow-gaps` | off | `align(strict=False)`: a prediction without a candle is dropped and a candle without a prediction repeats the previous one; `run.json` counts both. Off, either stops the run |
 | `--threshold LIMIT` | `0` | long at a prediction of LIMIT or more, short at -LIMIT or less, else flat |
 | `--long-only` | off | flat instead of short |
 | `--fill next_open\|signal_close` | `next_open` | `Settings.fill` |
@@ -405,10 +433,15 @@ What it writes to `--out`:
 | `stats.json` | the statistics, None as `null`, in the order of [Metrics](#metrics) |
 | `run.json` | `engine_version`; `inputs`: path and SHA-256 of both files; `settings`: the time label and signal options and the `Settings` fields; `align`: the `AlignReport` |
 
-Exit codes: 0 after a run. 2 for a wrong option (with the usage), and for a missing or unreadable
-file, a missing column or data a step refuses: then it prints
-`candlestack-bt run: error: <reason>` and writes no file. The same files and options write the
-same bytes again.
+Exit codes:
+
+| Code | When |
+| --- | --- |
+| 0 | the run wrote its four files |
+| 2 | a wrong option or a wrong mix of options (`--labels close` without `--timeframe`, `--timeframe` with `--labels open`): the usage and the reason |
+| 2 | a missing or unreadable file, a missing or mistyped column, a missing or NaN prediction, a prediction without a candle or a candle without a prediction (without `--allow-gaps`), or any other data a step (or Polars) refuses: one line, `candlestack-bt run: error: <reason>`, never a traceback |
+
+On exit code 2 it writes no file. The same files and options write the same bytes again.
 
 The worked example from files (the candles without `signal`, predictions of 0.01, 0.3, 0.2, 0.1
 and 0.4, which the threshold turns into 0, +1, +1, +1, +1):
@@ -432,7 +465,7 @@ Its `run.json` (hashes shortened):
 
 ```json
 {
-  "engine_version": "0.1.0",
+  "engine_version": "0.2.0",
   "inputs": {
     "candles": {"path": "candles.parquet", "sha256": "509ac6b5..."},
     "predictions": {"path": "predictions.parquet", "sha256": "efe0645e..."}
@@ -442,6 +475,7 @@ Its `run.json` (hashes shortened):
     "labels": "open",
     "timeframe_seconds": null,
     "model": null,
+    "allow_gaps": false,
     "threshold": 0.05,
     "long_only": false,
     "fill": "signal_close",
@@ -455,6 +489,77 @@ Its `run.json` (hashes shortened):
 
 Files labelled by the candle's close in a `unix` column, with several models:
 `--ts-column unix --labels close --timeframe 30m --model <name>`.
+
+### Every stock, model and setting: `run-all`
+
+`candlestack-bt run-all` runs every stock × model × threshold × stop loss of a data folder in
+one command, like the supervisor's `all_stats`. Each combination runs the steps of `run` with
+the same functions, so it gives the trades and statistics `run` gives with the same options. A
+stock's files are read and relabelled once and aligned once per model (`align` strict unless
+`--allow-gaps`).
+
+```text
+<--data>/
+  AAPL/
+    candles.parquet       the time column, open, high, low, close
+    predictions.parquet   the time column, model, prediction
+  <another stock>/
+    ...
+  _raw/                   a folder whose name starts with _ or . is no stock
+```
+
+```sh
+uv run candlestack-bt run-all --data <folder> --ts-column unix --labels close --timeframe 30m \
+  --allow-gaps --models all --thresholds 0,0.01,0.05,0.1 --stop-losses 0.05,0.07,0.1 \
+  --fill signal_close --jobs 4 --out runs/all
+```
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--data DIR` | required | folder with one folder per stock holding `candles.parquet` and `predictions.parquet` |
+| `--out DIR` | required | folder for the three result files, created if needed |
+| `--ts-column`, `--labels`, `--timeframe` | as in `run` | the time labels of all files |
+| `--allow-gaps` | off | as in `run`, for every stock and model; `run.json` counts the gaps in each align report |
+| `--models NAMES` | `all` | comma-separated models (column `model`), or `all`: every model of each stock, by name |
+| `--thresholds LIMITS` | `0` | comma-separated thresholds, each as `run`'s `--threshold` |
+| `--long-only` | off | flat instead of short, for every combination |
+| `--fill next_open\|signal_close` | `next_open` | `Settings.fill`, for every combination |
+| `--stop-losses FRACTIONS` | `none` | comma-separated stop losses, each as `run`'s `--stop-loss`, or `none` for no stop |
+| `--fee-bps BPS` | `0` | `Settings.fee_bps`, for every combination |
+| `--slippage-bps BPS` | `0` | `Settings.slippage_bps`, for every combination |
+| `--jobs N` | `1` | run N stocks at a time in their own processes; the output does not depend on N |
+
+A value may not repeat within a list. The combinations of a stock are the models (in the order
+of `--models`, or by name) × the thresholds × the stop losses, each in the order given.
+
+What it writes to `--out`:
+
+| File | Content |
+| --- | --- |
+| `stats.parquet` | one row per stock × model × threshold × stop loss, stocks by folder name: the keys `stock`, `model`, `threshold`, `stop_loss` (null for no stop); the shared settings `long_only`, `fill`, `fee_bps`, `slippage_bps`; then every statistic of [Metrics](#metrics) in its order, null when `run` writes `null` |
+| `trades.parquet` | the engine's `trades` of every combination (all their columns, `slippage_cost` and the exit reason `ruin` included), in the same order, after the four keys |
+| `run.json` | `engine_version`; `data`; `settings`: the options above but `--jobs`; `models`: the models run, by name; `stocks`: for each stock whose files were read, its name, `inputs` (path and SHA-256 of both files) and `align` (the `AlignReport` of each model that ran); `failed`: each failure as `stock`, `model` (null when the whole stock failed) and `error` |
+
+It prints how many stocks ran and failed, how many models ran and failed on a stock, and how
+many runs and trades it wrote.
+
+A failure does not stop the others; it is listed in `run.json` under `failed` and printed on
+one line, never as a traceback:
+
+- A stock fails when its files are refused as `run` refuses them (a missing or unreadable file,
+  a missing or mistyped column, any other data a step or Polars refuses) or when its column
+  `model` names no model: `candlestack-bt run-all: error: <stock>: <reason>`. It is left out of
+  `stocks` and of both Parquet files.
+- A model of a stock fails when the stock lacks a model asked for in `--models`, or when `align`
+  or a run refuses it (a candle without a prediction without `--allow-gaps`, a missing or NaN
+  prediction, a repeated `ts`, an error from Polars):
+  `candlestack-bt run-all: error: <stock> '<model>': <reason>`. Only that model's rows are left
+  out; the stock's other models run.
+
+Exit codes: 0 when everything ran, 1 when a stock or a model of a stock failed, 2 for a wrong
+option or a wrong mix of options (as in `run`), a missing data folder, a data folder without a
+stock folder or an `--out` it cannot write to. The same files and options write the same bytes
+again, whatever `--jobs` is.
 
 ## Checking against the supervisor's backtest
 
@@ -527,16 +632,18 @@ fixed seeds, both fills, with and without a stop and costs):
 
 ## ENGINE_VERSION
 
-`ENGINE_VERSION` (in `candlestack/engine/version.py`, now `"0.1.0"`) names the rules that
+`ENGINE_VERSION` (in `candlestack/engine/version.py`, now `"0.2.0"`) names the rules that
 produced a run: it is in every `Result` and in the command's `run.json`. It goes up with every
 change to the loop that can change a run's trades or equity, so a stored run says which rules
 made it.
 
 `backend/tests/unit/engine/test_version.py` keeps the two together:
 
-- It runs a fixed example of 40 half-hour candles, written out in the file, with both fills, a
-  5% stop, a 5 bps fee and 2 bps of slippage. A guard test checks that the example still has
-  flips, a stop, a gap and an `end` exit, all with fees.
+- It runs a fixed example of 50 half-hour candles, written out in the file, with both fills, a
+  5% stop, a 5 bps fee and 2 bps of slippage. Guard tests check that the example still has
+  flips, a stop, a gap and a change on the last row, all with fees and slippage, and with
+  `next_open` an order that closes a position at an open beyond its stop (rule 2), a stop on
+  an entry candle (rule 4) and an `end` exit.
 - It writes both runs' `trades` and `series` as JSON (column names and types, and the rows with
   each float as its shortest exact `repr`) and hashes it with SHA-256. Not the Parquet bytes:
   they depend on how Polars writes the file, which a Polars update may change while the output
@@ -564,6 +671,7 @@ Parquet bytes, and `uv run pytest -m slow -s` times the engine by hand (CI skips
 | notional | the money value a leg trades: the capital at the entry, the position's value at the exit |
 | stop-loss | a price level that closes a position once it has lost a set fraction of its entry price |
 | gap | a candle that opens at or beyond the stop level, so the position exits at the open, worse than the level |
+| ruin | a loss of the whole capital; the run stays flat at an equity of 0 afterwards |
 | slippage | the difference between the price a fill is assumed at and the worse price it gets |
 | bps | basis point, 0.01%: 10 bps is 0.1% |
 | equity | the capital with any open position at its current value; it starts at 1.0 |

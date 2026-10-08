@@ -2,8 +2,8 @@
 
 The steps are the public functions of the backtest modules, so a run from code gives the same
 numbers: read both Parquet files, name their time column ``ts``, ``relabel`` both when they are
-labelled by the candle's close, ``align`` (strict), ``threshold`` (and ``long_only``),
-``backtest``, ``stats``. The run writes four files to ``--out``:
+labelled by the candle's close, ``align`` (strict unless ``--allow-gaps``), ``threshold`` (and
+``long_only``), ``backtest``, ``stats``. The run writes four files to ``--out``:
 
 - ``trades.parquet``: the engine's trades;
 - ``series.parquet``: the engine's series with its ``drawdown``;
@@ -12,6 +12,9 @@ labelled by the candle's close, ``align`` (strict), ``threshold`` (and ``long_on
   align report;
 
 and prints a short summary of the statistics.
+
+``check_time_labels``, ``read_input`` and ``aligned`` are public in this module so that other
+commands read and align files the same way.
 """
 
 import argparse
@@ -90,7 +93,8 @@ def _add_time_labels(parser: argparse.ArgumentParser) -> None:
         "--timeframe",
         type=_timeframe,
         metavar="LENGTH",
-        help="the length of a candle, like 30m, 1h or 1d; needed with --labels close",
+        help="the length of a candle, like 30m, 1h or 1d; needed with --labels close, refused "
+        "with --labels open",
     )
 
 
@@ -98,6 +102,12 @@ def _add_signals(parser: argparse.ArgumentParser) -> None:
     signals = parser.add_argument_group("signals")
     signals.add_argument(
         "--model", metavar="NAME", help="backtest only this model's predictions (column model)"
+    )
+    signals.add_argument(
+        "--allow-gaps",
+        action="store_true",
+        help="drop predictions without a candle and let candles without a prediction repeat "
+        "the previous one, instead of refusing both; run.json counts them",
     )
     signals.add_argument(
         "--threshold",
@@ -146,15 +156,16 @@ def run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     """Runs one backtest with the options in ``args`` and returns the exit code.
 
     A wrong option stops at ``parser.error`` (exit code 2). A missing or unreadable file, a
-    missing column or data the steps refuse prints the reason and returns 2, without a
-    traceback and without writing any file.
+    missing or mistyped column or data the steps refuse prints the reason on one line and
+    returns 2, without a traceback and without writing any file.
     """
-    if args.labels == "close" and args.timeframe is None:
-        parser.error("--labels close needs --timeframe, the length of a candle (30m, 1h, 1d)")
+    check_time_labels(args, parser)
     try:
         values = _run(args)
-    except (OSError, ValueError) as error:  # the engine's InvalidInput is a ValueError
-        sys.stderr.write(f"{parser.prog}: error: {error}\n")
+    # The engine's InvalidInput is a ValueError; a Polars error is data no step checks for.
+    except (OSError, ValueError, pl.exceptions.PolarsError) as error:
+        reason = " ".join(str(error).split())
+        sys.stderr.write(f"{parser.prog}: error: {reason}\n")
         return 2
     sys.stdout.write(_summary(values, args.out))
     return 0
@@ -167,7 +178,19 @@ def _run(args: argparse.Namespace) -> Stats:
         fee_bps=args.fee_bps,
         slippage_bps=args.slippage_bps,
     )
-    frame, report = _aligned(args)
+    candles = read_input(args.candles, "candles", args.ts_column, _PRICES)
+    model = [] if args.model is None else ["model"]
+    predictions = read_input(
+        args.predictions, "predictions", args.ts_column, ["prediction", *model]
+    )
+    frame, report = aligned(
+        candles,
+        predictions,
+        timeframe=args.timeframe,
+        model=args.model,
+        allow_gaps=args.allow_gaps,
+        source=args.predictions,
+    )
     signal = threshold(frame["prediction"], args.threshold)
     if args.long_only:
         signal = long_only(signal)
@@ -177,34 +200,61 @@ def _run(args: argparse.Namespace) -> Stats:
     return values
 
 
-def _aligned(args: argparse.Namespace) -> tuple[pl.DataFrame, AlignReport]:
-    """The candles from the model's first to its last prediction, with ``prediction``."""
-    candles = _read(args.candles, "candles", args.ts_column, _PRICES)
-    model = [] if args.model is None else ["model"]
-    predictions = _read(args.predictions, "predictions", args.ts_column, ["prediction", *model])
-    models = predictions["model"].n_unique() if "model" in predictions.columns else 1
-    if args.model is None and models > 1:
-        raise ValueError(
-            f"The predictions file {args.predictions} holds {models} models: pick one with --model"
-        )
-    if args.labels == "close":
-        candles = relabel(candles, args.timeframe)
-        predictions = relabel(predictions, args.timeframe)
-    return align(candles, predictions, model=args.model)
+def check_time_labels(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    """Stops at ``parser.error`` unless ``--timeframe`` comes exactly with ``--labels close``."""
+    if args.labels == "close" and args.timeframe is None:
+        parser.error("--labels close needs --timeframe, the length of a candle (30m, 1h, 1d)")
+    if args.labels == "open" and args.timeframe is not None:
+        parser.error("--timeframe goes only with --labels close: open labels are not moved")
 
 
-def _read(path: Path, what: str, ts_column: str, columns: list[str]) -> pl.DataFrame:
-    """The Parquet file at ``path`` with its time column ``ts_column`` renamed to ``ts``.
+def aligned(
+    candles: pl.DataFrame,
+    predictions: pl.DataFrame,
+    *,
+    timeframe: int | None,
+    model: str | None,
+    allow_gaps: bool,
+    source: Path,
+) -> tuple[pl.DataFrame, AlignReport]:
+    """The candles from the model's first to its last prediction, with ``prediction``.
+
+    Both frames have ``ts`` (see ``read_input``). A ``timeframe`` in seconds means both are
+    labelled by the candle's close: ``relabel`` moves them back by it first. ``allow_gaps``
+    aligns with ``strict=False``. ``source`` is the predictions file, for the messages.
 
     Raises:
-        ValueError: there is no such file, it is not Parquet, a column is missing or the time
-            column is not integer epoch seconds.
+        ValueError: the file holds several models and ``model`` is None, or ``relabel`` or
+            ``align`` refuses the data; a refused gap points to ``--allow-gaps``.
+    """
+    models = predictions["model"].n_unique() if "model" in predictions.columns else 1
+    if model is None and models > 1:
+        raise ValueError(
+            f"The predictions file {source} holds {models} models: pick one with --model"
+        )
+    if timeframe is not None:
+        candles = relabel(candles, timeframe)
+        predictions = relabel(predictions, timeframe)
+    try:
+        return align(candles, predictions, model=model, strict=not allow_gaps)
+    except ValueError as error:
+        raise ValueError(str(error).replace("pass strict=False", "pass --allow-gaps")) from None
+
+
+def read_input(path: Path, what: str, ts_column: str, columns: list[str]) -> pl.DataFrame:
+    """The Parquet file at ``path`` with its time column ``ts_column`` renamed to ``ts``.
+
+    ``what`` names the file in the messages (``candles`` or ``predictions``).
+
+    Raises:
+        ValueError: there is no such file, it cannot be read as Parquet, a column is missing or
+            the time column is not integer epoch seconds.
     """
     if not path.is_file():
         raise ValueError(f"No {what} file at {path}")
     try:
         frame = pl.read_parquet(path)
-    except pl.exceptions.PolarsError as error:
+    except (OSError, pl.exceptions.PolarsError) as error:
         raise ValueError(f"Cannot read the {what} file {path} as Parquet: {error}") from error
     missing = [name for name in [ts_column, *columns] if name not in frame.columns]
     if missing:
@@ -239,6 +289,7 @@ def _record(
             "labels": args.labels,
             "timeframe_seconds": args.timeframe,
             "model": args.model,
+            "allow_gaps": args.allow_gaps,
             "threshold": args.threshold,
             "long_only": args.long_only,
             **settings.model_dump(),

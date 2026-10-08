@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 import polars as pl
 
+_INT64 = (-(2**63), 2**63 - 1)
+
 
 @dataclass(frozen=True, slots=True)
 class AlignReport:
@@ -28,14 +30,20 @@ def relabel(frame: pl.DataFrame, timeframe_seconds: int, column: str = "ts") -> 
     of a New York session is 10:00); the engine and ``align`` expect its open (09:30).
 
     Raises:
-        ValueError: ``column`` is missing, not integer epoch seconds or has a missing value, or
-            ``timeframe_seconds`` is not a positive int.
+        ValueError: ``column`` is missing, not integer epoch seconds, has a missing value or
+            leaves the Int64 range once moved, or ``timeframe_seconds`` is not a positive int.
     """
     _check_ts(frame, column, "frame")
     if isinstance(timeframe_seconds, bool) or not isinstance(timeframe_seconds, int):
         raise ValueError(f"timeframe_seconds must be an int, got {timeframe_seconds!r}")
     if timeframe_seconds <= 0:
         raise ValueError(f"timeframe_seconds must be positive, got {timeframe_seconds}")
+    lowest = frame[column].min()
+    if isinstance(lowest, int) and lowest - timeframe_seconds < _INT64[0]:
+        raise ValueError(
+            f"{column!r} of the frame leaves the Int64 range once moved back by "
+            f"{timeframe_seconds} seconds, at {lowest}"
+        )
     return frame.with_columns(pl.col(column).cast(pl.Int64) - timeframe_seconds)
 
 
@@ -48,8 +56,9 @@ def align(
 ) -> tuple[pl.DataFrame, AlignReport]:
     """The candles from the model's first to its last prediction, each with its ``prediction``.
 
-    Joins on ``ts``, which labels the candle's open on both sides (see ``relabel``). A missing
-    (null) prediction counts as no prediction, and missing candles are never filled in.
+    Joins on ``ts``, which labels the candle's open on both sides (see ``relabel``). Each
+    prediction must be a number: a missing (null) or NaN one is refused, not taken as no
+    prediction. Missing candles are never filled in.
 
     Strict mode refuses both kinds of mismatch. Without it, a prediction whose ``ts`` has no
     candle is dropped, and a candle without a prediction of its own (a gap) repeats the previous
@@ -70,14 +79,15 @@ def align(
 
     Raises:
         ValueError: a column is missing, the candles already have ``prediction``, ``ts`` is not
-            integer epoch seconds or repeats, the predictions hold several models and ``model``
-            is not given, no prediction is left to align, or (strict) a prediction has no candle
-            or a candle has no prediction.
+            integer epoch seconds or repeats (a row with a missing prediction counts too), a
+            prediction is missing or NaN, the predictions hold several models and ``model`` is
+            not given or ``model`` is not text, the model has no prediction, or (strict) a
+            prediction has no candle or a candle has no prediction.
     """
     if "prediction" in candles.columns:
         raise ValueError("The candles already have a 'prediction' column: drop it first")
     candles = _unique_ts(candles, "candles")
-    own = _unique_ts(_model_predictions(predictions, model), "predictions")
+    own = _numbers(_unique_ts(_model_predictions(predictions, model), "predictions"))
     landed = own.join(candles.select("ts"), on="ts", how="semi")
     without_candle = own.height - landed.height
     if strict and without_candle:
@@ -107,19 +117,39 @@ def align(
 
 
 def _model_predictions(predictions: pl.DataFrame, model: str | None) -> pl.DataFrame:
-    """``ts`` and ``prediction`` of one model, without missing predictions."""
+    """``ts`` and ``prediction`` of one model, missing predictions included."""
     _require(predictions, ["ts", "prediction"], "predictions")
     if model is not None:
         _require(predictions, ["model"], "predictions")
+        dtype = predictions.schema["model"]
+        if not isinstance(dtype, pl.String | pl.Categorical):
+            raise ValueError(f"'model' of the predictions must be text, not {dtype}")
         predictions = predictions.filter(pl.col("model") == model)
     elif "model" in predictions.columns and predictions["model"].n_unique() > 1:
         models = predictions["model"].n_unique()
         raise ValueError(f"The predictions hold {models} models: pass model= to pick one")
-    own = predictions.select("ts", "prediction").drop_nulls("prediction")
+    own = predictions.select("ts", "prediction")
     if own.is_empty():
         of = "" if model is None else f" of model {model!r}"
         raise ValueError(f"There are no predictions{of} to align")
     return own
+
+
+def _numbers(predictions: pl.DataFrame) -> pl.DataFrame:
+    """The predictions (sorted by ``ts``) as given; raises ``ValueError`` when one is missing or
+    NaN, naming the first."""
+    value = pl.col("prediction")
+    bad = value.is_null()
+    if predictions.schema["prediction"].is_float():
+        bad = bad | value.is_nan()
+    refused = predictions.filter(bad)["ts"]
+    if refused.len():
+        are = "prediction is" if refused.len() == 1 else "predictions are"
+        raise ValueError(
+            f"{refused.len()} {are} missing or NaN, first at ts {refused[0]}: each prediction "
+            "must be a number"
+        )
+    return predictions
 
 
 def _unique_ts(frame: pl.DataFrame, what: str) -> pl.DataFrame:
@@ -140,6 +170,9 @@ def _check_ts(frame: pl.DataFrame, column: str, what: str) -> None:
         raise ValueError(f"{column!r} of the {what} must be integer epoch seconds, not {dtype}")
     if frame[column].null_count():
         raise ValueError(f"{column!r} of the {what} has a missing value")
+    highest = frame[column].max()
+    if isinstance(highest, int) and highest > _INT64[1]:
+        raise ValueError(f"{column!r} of the {what} leaves the Int64 range, at {highest}")
 
 
 def _require(frame: pl.DataFrame, columns: list[str], what: str) -> None:
