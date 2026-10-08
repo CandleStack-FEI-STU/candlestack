@@ -157,11 +157,13 @@ class CandleSet:
 
 @dataclass(frozen=True)
 class SearchResult:
-    """Instruments found, best first, and the searched markets that were left out because
-    their catalog cannot be loaded right now (their source is down)."""
+    """A page of the instruments found, best first, the number of all of them, and the
+    searched markets that were left out because their catalog cannot be loaded right now
+    (their source is down)."""
 
     items: list[Instrument]
     unavailable: list[Market]
+    total: int
 
 
 @dataclass(frozen=True)

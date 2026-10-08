@@ -95,10 +95,11 @@ class FakeDataService:
     unavailable: list[Market] = field(default_factory=list)
 
     async def search(
-        self, q: str | None, market: Market | None = None, limit: int = 20
+        self, q: str | None, market: Market | None = None, limit: int = 20, offset: int = 0
     ) -> SearchResult:
-        self._called("search", q, market, limit)
-        return SearchResult([BTCUSDT, AAPL][:limit], self.unavailable)
+        self._called("search", q, market, limit, offset)
+        found = [BTCUSDT, AAPL]
+        return SearchResult(found[offset : offset + limit], self.unavailable, len(found))
 
     async def instrument(self, instrument_id: InstrumentId) -> InstrumentInfo:
         self._called("instrument", instrument_id)
@@ -188,9 +189,11 @@ def test_search(client: TestClient, service: FakeDataService) -> None:
             },
         ],
         "count": 2,
+        "total": 2,
+        "offset": 0,
         "unavailable": [],
     }
-    assert service.calls == [("search", ("btc", None, 20))]
+    assert service.calls == [("search", ("btc", None, 20, 0))]
 
 
 def test_search_names_a_market_that_cannot_be_searched(
@@ -208,7 +211,7 @@ def test_search_passes_market_and_limit(client: TestClient, service: FakeDataSer
     response = client.get("/api/v1/data/instruments?q=apple&market=stock&limit=1")
 
     assert response.json()["count"] == 1
-    assert service.calls == [("search", ("apple", Market.STOCK, 1))]
+    assert service.calls == [("search", ("apple", Market.STOCK, 1, 0))]
 
 
 def test_search_without_a_query(client: TestClient, service: FakeDataService) -> None:
@@ -216,7 +219,24 @@ def test_search_without_a_query(client: TestClient, service: FakeDataService) ->
 
     assert response.status_code == 200
     assert response.json()["count"] == 2
-    assert service.calls == [("search", (None, Market.STOCK, 20))]
+    assert service.calls == [("search", (None, Market.STOCK, 20, 0))]
+
+
+def test_search_pages(client: TestClient, service: FakeDataService) -> None:
+    response = client.get("/api/v1/data/instruments?market=stock&offset=1&limit=50")
+
+    body = response.json()
+    assert [item["id"] for item in body["items"]] == ["stock:AAPL"]
+    assert (body["count"], body["total"], body["offset"]) == (1, 2, 1)
+    assert service.calls == [("search", (None, Market.STOCK, 50, 1))]
+
+
+def test_search_offset_past_the_end(client: TestClient) -> None:
+    response = client.get("/api/v1/data/instruments?q=btc&offset=1000")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["items"], body["count"], body["total"], body["offset"]) == ([], 0, 2, 1000)
 
 
 @pytest.mark.parametrize(
@@ -226,6 +246,7 @@ def test_search_without_a_query(client: TestClient, service: FakeDataService) ->
         (f"q={'a' * 51}", "query parameter 'q': String should have at most 50 characters"),
         ("q=btc&limit=0", "query parameter 'limit': Input should be greater than or equal to 1"),
         ("q=btc&limit=101", "query parameter 'limit': Input should be less than or equal to 100"),
+        ("q=btc&offset=-1", "query parameter 'offset': Input should be greater than or equal to 0"),
         ("q=btc&market=forex", "query parameter 'market': Input should be 'crypto' or 'stock'"),
     ],
 )

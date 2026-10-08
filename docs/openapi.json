@@ -573,6 +573,22 @@
             "title": "Items",
             "type": "array"
           },
+          "offset": {
+            "description": "Number of matches before the first item.",
+            "examples": [
+              0
+            ],
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Number of all matches; page with `offset` while `offset + count` is less.",
+            "examples": [
+              1
+            ],
+            "title": "Total",
+            "type": "integer"
+          },
           "unavailable": {
             "description": "Markets left out of this search because their instrument list cannot be loaded right now (the source is down); search again later. Empty normally.",
             "examples": [
@@ -588,6 +604,8 @@
         "required": [
           "items",
           "count",
+          "total",
+          "offset",
           "unavailable"
         ],
         "title": "InstrumentSearchOut",
@@ -971,7 +989,7 @@
     },
     "/api/v1/data/instruments": {
       "get": {
-        "description": "Searches the instruments of both markets: every Binance spot pair that is trading and\nevery active tradable US stock and ETF at Alpaca (without OTC).\n\nRanking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`\nfirst), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word\nin the name, substring of the symbol, substring of the name; ties go to the shorter symbol,\nthen alphabetically. Without `q`, every instrument comes back in symbol order.\n\nWhen the instrument list of one market cannot be loaded, the other market is still\nsearched and `unavailable` names the missing one; 503 when no market can be searched.",
+        "description": "Searches the instruments of both markets: every Binance spot pair that is trading and\nevery active tradable US stock and ETF at Alpaca (without OTC).\n\nRanking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`\nfirst), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word\nin the name, substring of the symbol, substring of the name; ties go to the shorter symbol,\nthen alphabetically. Without `q`, every instrument comes back in symbol order.\n`total` counts all matches: page through them with `offset` and `limit`.\n\nWhen the instrument list of one market cannot be loaded, the other market is still\nsearched and `unavailable` names the missing one; 503 when no market can be searched.",
         "operationId": "search_instruments_api_v1_data_instruments_get",
         "parameters": [
           {
@@ -1026,6 +1044,19 @@
               "maximum": 100,
               "minimum": 1,
               "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Matches to skip; past the end, `items` is empty.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Matches to skip; past the end, `items` is empty.",
+              "minimum": 0,
+              "title": "Offset",
               "type": "integer"
             }
           }

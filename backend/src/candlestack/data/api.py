@@ -267,6 +267,9 @@ async def search_instruments(
     ] = None,
     market: Annotated[Market | None, Query(description="Only this market.")] = None,
     limit: Annotated[int, Query(ge=1, le=100, description="Most items to return.")] = 20,
+    offset: Annotated[
+        int, Query(ge=0, description="Matches to skip; past the end, `items` is empty.")
+    ] = 0,
 ) -> InstrumentSearchOut:
     """Searches the instruments of both markets: every Binance spot pair that is trading and
     every active tradable US stock and ETF at Alpaca (without OTC).
@@ -275,15 +278,18 @@ async def search_instruments(
     first), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word
     in the name, substring of the symbol, substring of the name; ties go to the shorter symbol,
     then alphabetically. Without `q`, every instrument comes back in symbol order.
+    `total` counts all matches: page through them with `offset` and `limit`.
 
     When the instrument list of one market cannot be loaded, the other market is still
     searched and `unavailable` names the missing one; 503 when no market can be searched.
     """
     with _problems():
-        found = await service.search(q, market, limit)
+        found = await service.search(q, market, limit, offset)
     return InstrumentSearchOut(
         items=[InstrumentOut.of(item) for item in found.items],
         count=len(found.items),
+        total=found.total,
+        offset=offset,
         unavailable=found.unavailable,
     )
 

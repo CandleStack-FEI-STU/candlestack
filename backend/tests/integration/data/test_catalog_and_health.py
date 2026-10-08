@@ -58,7 +58,7 @@ async def test_search_both_markets(service: DataService, upstream):
     assert ids(await service.search("币安")) == ["crypto:币安人生USDT"]
     assert ids(await service.search("eth", Market.CRYPTO)) == ["crypto:ETHUSDT", "crypto:ETHBTC"]
     assert ids(await service.search("eth", Market.STOCK)) == []
-    assert await service.search("  ") == SearchResult([], [])
+    assert await service.search("  ") == SearchResult([], [], 0)
     assert (await service.search("btc")).unavailable == []
     assert (catalog.call_count, assets.call_count) == (1, 1)
 
@@ -76,13 +76,27 @@ async def test_list_without_a_query(service: DataService, upstream):
     assert ids(await service.search(None, limit=2)) == listed[:2]
 
 
+async def test_pages_return_every_instrument_once(service: DataService, upstream):
+    upstream.exchange_info()
+    upstream.assets()
+    everything = await service.search(None, limit=100)
+
+    pages = [await service.search(None, limit=3, offset=offset) for offset in range(0, 100, 3)]
+
+    assert [found for page in pages for found in ids(page)] == ids(everything)
+    assert {page.total for page in pages} == {everything.total}
+    assert everything.total == len(everything.items) < 100
+    past_the_end = await service.search("btc", offset=10_000)
+    assert (past_the_end.items, past_the_end.total) == ([], (await service.search("btc")).total)
+
+
 async def test_search_leaves_out_a_market_that_cannot_be_loaded(service: DataService, upstream):
     upstream.exchange_info()
     assets = upstream.router.get(f"{upstream.ALPACA_API}/v2/assets").respond(503)
 
     found = await service.search("btcusdt")
     assert (ids(found), found.unavailable) == (["crypto:BTCUSDT"], [Market.STOCK])
-    assert (await service.search("apple")) == SearchResult([], [Market.STOCK])
+    assert (await service.search("apple")) == SearchResult([], [Market.STOCK], 0)
     with pytest.raises(SourceUnavailable, match="Alpaca failed with HTTP 503"):
         await service.search("apple", Market.STOCK)
 
