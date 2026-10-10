@@ -21,9 +21,9 @@
   --down: #b42318;
   --grid: rgb(28 25 23 / 0.045);
 
-  /* Candles: on purpose not the teal accent (#113). */
-  --candle-up: #2563eb;
-  --candle-down: #ea580c;
+  /* Candles: TradingView's green and red, the same in both themes. */
+  --candle-up: #089981;
+  --candle-down: #f23645;
 
   --radius: 0.5rem;
   color-scheme: light;
@@ -39,8 +39,8 @@
   --down: #f0616d;
   --grid: rgb(230 232 234 / 0.045);
 
-  --candle-up: #60a5fa;
-  --candle-down: #fb923c;
+  --candle-up: #089981;
+  --candle-down: #f23645;
 
   color-scheme: dark;
 }
