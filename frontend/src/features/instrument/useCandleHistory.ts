@@ -16,8 +16,11 @@ export type CandleHistory = {
   error: Error | null;
   // When that error came: a new one restarts the Retry-After countdown.
   errorAt: number;
+  // Retries started by the page itself since the last time everything loaded.
+  autoRetries: number;
   loadOlder: () => void;
   retry: () => void;
+  autoRetry: () => void;
 };
 
 type Pages = {
@@ -28,13 +31,15 @@ type Pages = {
   olderBusy: boolean;
   latestPending: boolean;
   failed: UseQueryResult<Candles> | undefined;
+  // When a page last arrived; automatic retries count from there.
+  lastSuccess: number;
 };
 
 // Called by useQueries only when a page changes, so `bars` keeps its identity in between and
 // the chart is not redrawn on every render.
-function summarize(pages: UseQueryResult<Candles>[]): Pages {
+function summarize(pages: UseQueryResult<Candles>[], since: number | undefined): Pages {
   const loaded = pages.flatMap((page) => (page.data ? [page.data] : []));
-  const history = mergePages(loaded);
+  const history = mergePages(loaded, since);
   return {
     history,
     nextEnd: loaded.length === pages.length ? history.nextEnd : undefined,
@@ -42,7 +47,21 @@ function summarize(pages: UseQueryResult<Candles>[]): Pages {
     olderBusy: pages.slice(1).some((page) => page.isFetching),
     latestPending: pages[0]?.isPending ?? true,
     failed: pages.find((page) => page.error),
+    lastSuccess: Math.max(0, ...pages.map((page) => page.dataUpdatedAt)),
   };
+}
+
+// Retries the page starts itself, counted since the last page that arrived. A retry clears the
+// error of a page without data, so the count cannot live in the error message; tying it to
+// `lastSuccess` starts it again after a success without an effect.
+function useAutoRetries(lastSuccess: number, retry: () => void) {
+  const [retries, setRetries] = useState({ after: 0, count: 0 });
+  const count = retries.after === lastSuccess ? retries.count : 0;
+  const autoRetry = useCallback(() => {
+    setRetries((current) => ({ after: lastSuccess, count: (current.after === lastSuccess ? current.count : 0) + 1 }));
+    retry();
+  }, [lastSuccess, retry]);
+  return { count, autoRetry };
 }
 
 // The candles of one instrument and timeframe: the latest page, plus one older page each time
@@ -51,10 +70,16 @@ function summarize(pages: UseQueryResult<Candles>[]): Pages {
 // instrument or timeframe (a React key), which starts again from the latest page.
 export function useCandleHistory(instrument: InstrumentDetail, timeframe: Timeframe): CandleHistory {
   const [olderEnds, setOlderEnds] = useState<number[]>([]);
+  // The latest page always reaches down to where the first older page ends.
+  const since = olderEnds[0];
   const base = { instrument: instrument.id, market: instrument.market, timeframe };
+  const combine = useCallback((pages: UseQueryResult<Candles>[]) => summarize(pages, since), [since]);
   const pages = useQueries({
-    queries: [undefined, ...olderEnds].map((end) => candlePageQueryOptions({ ...base, end })),
-    combine: summarize,
+    queries: [
+      candlePageQueryOptions({ ...base, since }),
+      ...olderEnds.map((end) => candlePageQueryOptions({ ...base, end })),
+    ],
+    combine,
   });
 
   const more = hasOlder(pages.history.nextEnd, instrument.available_from);
@@ -65,6 +90,7 @@ export function useCandleHistory(instrument: InstrumentDetail, timeframe: Timefr
   }, [busy, failed, more, nextEnd]);
 
   const retry = useCallback(() => void failed?.refetch(), [failed]);
+  const auto = useAutoRetries(pages.lastSuccess, retry);
 
   return {
     bars: pages.history.bars,
@@ -74,7 +100,9 @@ export function useCandleHistory(instrument: InstrumentDetail, timeframe: Timefr
     hasOlder: more,
     error: failed?.error ?? null,
     errorAt: failed?.errorUpdatedAt ?? 0,
+    autoRetries: auto.count,
     loadOlder,
     retry,
+    autoRetry: auto.autoRetry,
   };
 }

@@ -55,6 +55,24 @@ describe('mergePages', () => {
     expect(history.nextEnd).toBe(100);
   });
 
+  it('keeps the refreshed latest page down to the history, so no hole opens after idle time', () => {
+    // History below: an older page that ended at 100. Meanwhile the latest page was refreshed
+    // after a long idle time and now holds PAGE_SIZE + 300 candles from 100 on.
+    const latest = Array.from({ length: PAGE_SIZE + 300 }, (_, i) => 100 + i);
+    const history = mergePages([page(latest), page([40, 70, 100])], 100);
+    const times = history.bars.map((bar) => bar.time);
+    expect(times.slice(0, 4)).toEqual([40, 70, 100, 101]);
+    expect(times).toHaveLength(PAGE_SIZE + 300 + 2);
+    expect(history.nextEnd).toBe(40);
+  });
+
+  it('ends history at an older page that only repeats the candle it overlaps with', () => {
+    const history = mergePages([page([30, 40, 50]), page([30], 0)], 30);
+    expect(history.bars.map((bar) => bar.time)).toEqual([30, 40, 50]);
+    expect(history.nextEnd).toBeUndefined();
+    expect(hasOlder(history.nextEnd, 0)).toBe(false);
+  });
+
   it('adds up the gaps of every page and is empty without pages', () => {
     expect(mergePages([page([1], 0, 2), page([0], -10, 3)]).gapsTotal).toBe(5);
     expect(mergePages([])).toEqual({ bars: [], nextEnd: undefined, gapsTotal: 0 });

@@ -31,9 +31,15 @@ function Status({
   return <p className="mt-2 text-xs text-muted-foreground">{notes.join(' ')}</p>;
 }
 
-// The chart of one instrument at one timeframe, with its loading and error states.
+function Placeholder({ children }: { children: string }) {
+  return <p className="py-24 text-center text-sm text-muted-foreground">{children}</p>;
+}
+
+// The chart of one instrument at one timeframe, with its loading and error states. Without any
+// candles there is no chart and no status line: a failed first load shows only its error.
 export function InstrumentCandles({ instrument, timeframe }: { instrument: InstrumentDetail; timeframe: Timeframe }) {
   const history = useCandleHistory(instrument, timeframe);
+  const hasBars = history.bars.length > 0;
 
   return (
     <section
@@ -42,22 +48,28 @@ export function InstrumentCandles({ instrument, timeframe }: { instrument: Instr
     >
       {history.error && (
         <div className="mb-3">
-          <CandlesError error={history.error} errorAt={history.errorAt} onRetry={history.retry} />
+          <CandlesError
+            error={history.error}
+            errorAt={history.errorAt}
+            autoRetries={history.autoRetries}
+            onRetry={history.retry}
+            onAutoRetry={history.autoRetry}
+          />
         </div>
       )}
-      {history.isPending ? (
-        <p className="py-24 text-center text-sm text-muted-foreground">Loading candles…</p>
-      ) : history.bars.length === 0 && !history.error ? (
-        <p className="py-24 text-center text-sm text-muted-foreground">No candles in this period.</p>
-      ) : (
-        <CandleChart bars={history.bars} market={instrument.market} onNearLeftEdge={history.loadOlder} />
+      {history.isPending && <Placeholder>Loading candles…</Placeholder>}
+      {!history.isPending && !hasBars && !history.error && <Placeholder>No candles in this period.</Placeholder>}
+      {hasBars && (
+        <>
+          <CandleChart bars={history.bars} market={instrument.market} onNearLeftEdge={history.loadOlder} />
+          <Status
+            market={instrument.market}
+            isLoadingOlder={history.isLoadingOlder}
+            hasOlder={history.hasOlder}
+            gapsTotal={history.gapsTotal}
+          />
+        </>
       )}
-      <Status
-        market={instrument.market}
-        isLoadingOlder={history.isLoadingOlder}
-        hasOlder={history.hasOlder}
-        gapsTotal={history.gapsTotal}
-      />
     </section>
   );
 }

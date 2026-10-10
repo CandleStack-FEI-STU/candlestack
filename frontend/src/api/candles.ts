@@ -52,15 +52,35 @@ export function getCandles(
   return get<Candles>(`/v1/data/candles?${query.toString()}`, signal);
 }
 
-export type CandlePageKey = { instrument: string; market: Market; timeframe: Timeframe; end?: number };
+export type CandlePage = {
+  instrument: string;
+  market: Market;
+  timeframe: Timeframe;
+  // History: the page ends here. Without it, the latest page, which ends now.
+  end?: number;
+  // Latest page only: reach down at least to here, where the older pages begin.
+  since?: number;
+};
+
+// The window of the latest page, refreshed: the usual page up to now, stretched down to `since`
+// so it still touches the history below it however long the tab sat idle.
+export function latestWindow(market: Market, timeframe: Timeframe, now: number, since?: number): CandleWindow {
+  const window = candleWindow(market, timeframe, now);
+  return since === undefined ? window : { start: Math.min(window.start, since), end: now };
+}
 
 // One page of candles. Without `end` it is the latest page: it refreshes at most once a minute.
 // With `end` it is history, which never changes: it stays cached for the whole visit.
-export function candlePageQueryOptions({ instrument, market, timeframe, end }: CandlePageKey) {
+// `since` is left out of the key on purpose: when it is first set it is the oldest candle of
+// the cached latest page, so that page is already right; it only widens later refreshes.
+export function candlePageQueryOptions({ instrument, market, timeframe, end, since }: CandlePage) {
   return queryOptions({
     queryKey: ['candles', instrument, timeframe, end ?? 'latest'],
     queryFn: ({ signal }) => {
-      const window = candleWindow(market, timeframe, end ?? Math.floor(Date.now() / 1000));
+      const window =
+        end === undefined
+          ? latestWindow(market, timeframe, Math.floor(Date.now() / 1000), since)
+          : candleWindow(market, timeframe, end);
       return getCandles(instrument, timeframe, window, signal);
     },
     staleTime: end === undefined ? 60_000 : Infinity,
