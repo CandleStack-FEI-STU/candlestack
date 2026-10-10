@@ -124,8 +124,13 @@ function useCandleChart(market: Market, bars: readonly Bar[], onNearLeftEdge: ()
   const [awayFromLatest, setAwayFromLatest] = useState(false);
   const { theme } = useTheme();
 
+  // loadOlder changes when a fetch ends or a page arrives. It skips while a page is loading, so
+  // if the view still sits at the left edge, ask again now: a user who stopped there gets the
+  // older page without moving the chart.
   useEffect(() => {
     nearEdge.current = onNearLeftEdge;
+    const range = chart.current?.chart.timeScale().getVisibleLogicalRange();
+    if (range && range.from < PRELOAD_BARS) onNearLeftEdge();
   }, [onNearLeftEdge]);
 
   // One chart per market (the time zone of the axis); the bars only get replaced.
