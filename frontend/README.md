@@ -16,6 +16,14 @@ npm run dev
 Open http://localhost:5173. The dev server forwards `/api/*` to the prod API
 (https://app.candlestack.tech), so no local backend and no Alpaca keys are needed.
 
+When `main` uses API changes that prod does not have yet, point the dev server at a backend
+that has them with `API_TARGET`, for example the local one from the repository root
+(`docker compose up`, see the root README):
+
+```sh
+API_TARGET=http://localhost:8000 npm run dev
+```
+
 | Command | What |
 | --- | --- |
 | `npm run dev` | dev server with hot reload |

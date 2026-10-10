@@ -10,9 +10,10 @@ export default defineConfig({
   },
   server: {
     // The prod API sends no CORS headers: the dev server forwards /api/* to it, so the app
-    // calls /api/v1/... on its own origin, like in prod.
+    // calls /api/v1/... on its own origin, like in prod. API_TARGET points it elsewhere while
+    // main is ahead of prod: API_TARGET=http://localhost:8000 npm run dev (docker compose up).
     proxy: {
-      '/api': { target: 'https://app.candlestack.tech', changeOrigin: true },
+      '/api': { target: process.env.API_TARGET ?? 'https://app.candlestack.tech', changeOrigin: true },
     },
   },
 });
