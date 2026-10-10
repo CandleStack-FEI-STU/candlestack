@@ -1,11 +1,6 @@
 import { Link } from '@tanstack/react-router';
 
-import type { Instrument } from '@/api';
-
-// Crypto pairs have no exchange in the API: they all come from Binance, which is the exchange.
-function exchangeOf(instrument: Instrument): string {
-  return instrument.exchange ?? (instrument.source === 'binance' ? 'Binance' : '—');
-}
+import { exchangeName, type Instrument } from '@/api';
 
 const HEAD = 'px-3 py-2 text-left text-xs font-medium text-muted-foreground';
 const CELL = 'px-3 py-2.5';
@@ -26,11 +21,11 @@ function Row({ instrument }: { instrument: Instrument }) {
         <span className="block truncate">{instrument.name}</span>
         {/* On a phone the market and exchange columns are hidden: show them under the name. */}
         <span className="block text-xs capitalize sm:hidden">
-          {instrument.market} · {exchangeOf(instrument)}
+          {instrument.market} · {exchangeName(instrument)}
         </span>
       </td>
       <td className={`${CELL} hidden capitalize sm:table-cell`}>{instrument.market}</td>
-      <td className={`${CELL} hidden sm:table-cell`}>{exchangeOf(instrument)}</td>
+      <td className={`${CELL} hidden sm:table-cell`}>{exchangeName(instrument)}</td>
     </tr>
   );
 }
