@@ -6,19 +6,26 @@ import {
   type IChartApi,
   type ISeriesApi,
   type LogicalRange,
+  type MouseEventParams,
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
-import { useEffect, useRef } from 'react';
+import { ChevronsRight } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { Market } from '@/api';
+import { Button } from '@/components/ui/button';
 import { useTheme } from '@/theme';
 
 import type { Bar } from './bars';
+import { ChartLegend } from './ChartLegend';
+import { legendFor, priceDecimals } from './legend';
 import { chartTimeZone, crosshairFormatter, tickFormatter } from './time';
 
 // Start loading the older page this many bars before the left edge, so it is there in time.
 const PRELOAD_BARS = 30;
+// Further than this from the newest candle, the "go to the latest candle" button shows.
+const AWAY_BARS = 3;
 
 type Series = { candles: ISeriesApi<'Candlestick'>; volume: ISeriesApi<'Histogram'> };
 
@@ -81,13 +88,40 @@ function setBars(series: Series, bars: readonly Bar[], colors: { up: string; dow
   );
 }
 
-type Props = { bars: readonly Bar[]; market: Market; onNearLeftEdge: () => void };
+type Instance = { chart: IChartApi; series: Series };
 
-export function CandleChart({ bars, market, onNearLeftEdge }: Props) {
+// The candle under the cursor, by its index in the bars; null when the cursor is off the chart.
+function hoveredIndex(event: MouseEventParams): number | null {
+  return event.point && event.logical !== undefined ? Math.round(event.logical) : null;
+}
+
+// Puts the bars into the chart, in the theme's colors and with enough decimals for the price.
+// Older bars added on the left shift the view by as many, so it does not jump. Returns the time
+// of the first bar, to compare with on the next call.
+function showBars(instance: Instance, bars: readonly Bar[], firstTime: number | undefined) {
+  const colors = applyTheme(instance.chart, instance.series);
+  const decimals = priceDecimals(bars.at(-1)?.close ?? 0);
+  instance.series.candles.applyOptions({
+    priceFormat: { type: 'price', precision: decimals, minMove: 10 ** -decimals },
+  });
+  const timeScale = instance.chart.timeScale();
+  const range = timeScale.getVisibleLogicalRange();
+  const added = firstTime === undefined ? 0 : bars.findIndex((bar) => bar.time === firstTime);
+  setBars(instance.series, bars, colors);
+  if (range && added > 0) timeScale.setVisibleLogicalRange({ from: range.from + added, to: range.to + added });
+  return bars[0]?.time;
+}
+
+// Creates the chart and follows it: loads older pages near the left edge, tracks the candle under
+// the cursor for the legend, and whether the newest candle is out of view.
+function useCandleChart(market: Market, bars: readonly Bar[], onNearLeftEdge: () => void) {
   const container = useRef<HTMLDivElement>(null);
-  const chart = useRef<{ chart: IChartApi; series: Series } | null>(null);
+  const chart = useRef<Instance | null>(null);
+  const lastIndex = useRef(-1);
   const firstTime = useRef<number | undefined>(undefined);
   const nearEdge = useRef(onNearLeftEdge);
+  const [hovered, setHovered] = useState<number | null>(null);
+  const [awayFromLatest, setAwayFromLatest] = useState(false);
   const { theme } = useTheme();
 
   useEffect(() => {
@@ -99,10 +133,12 @@ export function CandleChart({ bars, market, onNearLeftEdge }: Props) {
     if (!container.current) return;
     const created = create(container.current, market);
     chart.current = created;
-    const onRange = (range: LogicalRange | null) => {
-      if (range && range.from < PRELOAD_BARS) nearEdge.current();
-    };
-    created.chart.timeScale().subscribeVisibleLogicalRangeChange(onRange);
+    created.chart.timeScale().subscribeVisibleLogicalRangeChange((range: LogicalRange | null) => {
+      if (!range) return;
+      if (range.from < PRELOAD_BARS) nearEdge.current();
+      setAwayFromLatest(Math.abs(range.to - lastIndex.current) > AWAY_BARS);
+    });
+    created.chart.subscribeCrosshairMove((event) => setHovered(hoveredIndex(event)));
     return () => {
       created.chart.remove();
       chart.current = null;
@@ -111,19 +147,39 @@ export function CandleChart({ bars, market, onNearLeftEdge }: Props) {
   }, [market]);
 
   useEffect(() => {
-    const current = chart.current;
-    if (!current) return;
-    const colors = applyTheme(current.chart, current.series);
-    const timeScale = current.chart.timeScale();
-    const range = timeScale.getVisibleLogicalRange();
-    // Older bars were added on the left: shift the view by as many, so it does not jump.
-    const added = firstTime.current === undefined ? 0 : bars.findIndex((bar) => bar.time === firstTime.current);
-    setBars(current.series, bars, colors);
-    if (range && added > 0) timeScale.setVisibleLogicalRange({ from: range.from + added, to: range.to + added });
-    firstTime.current = bars[0]?.time;
+    if (!chart.current) return;
+    lastIndex.current = bars.length - 1;
+    firstTime.current = showBars(chart.current, bars, firstTime.current);
   }, [bars, theme, market]);
+
+  const scrollToLatest = useCallback(() => chart.current?.chart.timeScale().scrollToRealTime(), []);
+  return { container, hovered, awayFromLatest, scrollToLatest };
+}
+
+type Props = { bars: readonly Bar[]; market: Market; onNearLeftEdge: () => void };
+
+export function CandleChart({ bars, market, onNearLeftEdge }: Props) {
+  const { container, hovered, awayFromLatest, scrollToLatest } = useCandleChart(market, bars, onNearLeftEdge);
+  const legend = legendFor(bars, hovered, priceDecimals(bars.at(-1)?.close ?? 0));
 
   // As tall as the screen leaves room for: the header, the instrument info and the switch take
   // about 23rem. Never under 20rem (phones in landscape), never over 60rem (tall monitors).
-  return <div ref={container} className="h-[clamp(20rem,calc(100dvh-23rem),60rem)] w-full" />;
+  return (
+    <div className="relative">
+      <div ref={container} className="h-[clamp(20rem,calc(100dvh-23rem),60rem)] w-full" />
+      {legend && <ChartLegend legend={legend} />}
+      {awayFromLatest && (
+        <Button
+          variant="outline"
+          size="icon-sm"
+          className="absolute right-20 bottom-10 z-10"
+          aria-label="Go to the latest candle"
+          title="Go to the latest candle"
+          onClick={scrollToLatest}
+        >
+          <ChevronsRight />
+        </Button>
+      )}
+    </div>
+  );
 }
