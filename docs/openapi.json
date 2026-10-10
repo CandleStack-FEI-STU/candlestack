@@ -230,6 +230,18 @@
         "title": "CandlesOut",
         "type": "object"
       },
+      "Exchange": {
+        "description": "Listing exchanges of the stocks in the catalog: the values Alpaca reports for tradable US\nequities without OTC (docs/data.md, \"Alpaca\").",
+        "enum": [
+          "AMEX",
+          "ARCA",
+          "BATS",
+          "NASDAQ",
+          "NYSE"
+        ],
+        "title": "Exchange",
+        "type": "string"
+      },
       "Health": {
         "properties": {
           "commit": {
@@ -573,6 +585,22 @@
             "title": "Items",
             "type": "array"
           },
+          "offset": {
+            "description": "Number of matches before the first item.",
+            "examples": [
+              0
+            ],
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Number of all matches; page with `offset` while `offset + count` is less.",
+            "examples": [
+              1
+            ],
+            "title": "Total",
+            "type": "integer"
+          },
           "unavailable": {
             "description": "Markets left out of this search because their instrument list cannot be loaded right now (the source is down); search again later. Empty normally.",
             "examples": [
@@ -588,6 +616,8 @@
         "required": [
           "items",
           "count",
+          "total",
+          "offset",
           "unavailable"
         ],
         "title": "InstrumentSearchOut",
@@ -813,23 +843,30 @@
     },
     "/api/v1/data/instruments": {
       "get": {
-        "description": "Searches the instruments of both markets: every Binance spot pair that is trading and\nevery active tradable US stock and ETF at Alpaca (without OTC).\n\nRanking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`\nfirst), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word\nin the name, substring of the symbol, substring of the name; ties go to the shorter symbol,\nthen alphabetically.\n\nWhen the instrument list of one market cannot be loaded, the other market is still\nsearched and `unavailable` names the missing one; 503 when no market can be searched.",
+        "description": "Searches the instruments of both markets: every Binance spot pair that is trading and\nevery active tradable US stock and ETF at Alpaca (without OTC).\n\nRanking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`\nfirst), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word\nin the name, substring of the symbol, substring of the name; ties go to the shorter symbol,\nthen alphabetically. Without `q`, every instrument comes back in symbol order.\n`exchange` narrows any of these to the stocks listed on it.\n`total` counts all matches: page through them with `offset` and `limit`.\n\nWhen the instrument list of one market cannot be loaded, the other market is still\nsearched and `unavailable` names the missing one; 503 when no market can be searched.",
         "operationId": "search_instruments_api_v1_data_instruments_get",
         "parameters": [
           {
-            "description": "Symbol or name, case-insensitive; separators in symbols are ignored (`btc/usdt` finds `BTCUSDT`, `brkb` finds `BRK.B`).",
+            "description": "Symbol or name, case-insensitive; separators in symbols are ignored (`btc/usdt` finds `BTCUSDT`, `brkb` finds `BRK.B`). Without it, every instrument in symbol order.",
             "in": "query",
             "name": "q",
-            "required": true,
+            "required": false,
             "schema": {
-              "description": "Symbol or name, case-insensitive; separators in symbols are ignored (`btc/usdt` finds `BTCUSDT`, `brkb` finds `BRK.B`).",
+              "anyOf": [
+                {
+                  "maxLength": 50,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Symbol or name, case-insensitive; separators in symbols are ignored (`btc/usdt` finds `BTCUSDT`, `brkb` finds `BRK.B`). Without it, every instrument in symbol order.",
               "examples": [
                 "btc"
               ],
-              "maxLength": 50,
-              "minLength": 1,
-              "title": "Q",
-              "type": "string"
+              "title": "Q"
             }
           },
           {
@@ -851,6 +888,24 @@
             }
           },
           {
+            "description": "Only stocks listed on this exchange; crypto pairs have none, so with `market=crypto` nothing matches.",
+            "in": "query",
+            "name": "exchange",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Exchange"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only stocks listed on this exchange; crypto pairs have none, so with `market=crypto` nothing matches.",
+              "title": "Exchange"
+            }
+          },
+          {
             "description": "Most items to return.",
             "in": "query",
             "name": "limit",
@@ -861,6 +916,19 @@
               "maximum": 100,
               "minimum": 1,
               "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Matches to skip; past the end, `items` is empty.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Matches to skip; past the end, `items` is empty.",
+              "minimum": 0,
+              "title": "Offset",
               "type": "integer"
             }
           }

@@ -16,7 +16,7 @@ trim_trailing_whitespace = false
 indent_style = space
 indent_size = 4
 
-[{*.yaml,*.yml,*.json,*.md,*.sh,*.html,*.css,*.js,infra/vm/candlestack-deploy}]
+[{*.yaml,*.yml,*.json,*.jsonc,*.md,*.sh,*.html,*.css,*.js,*.ts,*.tsx,infra/vm/candlestack-deploy}]
 indent_style = space
 indent_size = 2
 

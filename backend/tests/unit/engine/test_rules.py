@@ -40,6 +40,7 @@ def trade(
     *,
     stop=None,
     fees=0.0,
+    slippage_cost=0.0,
 ) -> dict[str, Any]:
     return {
         "signal_ts": signal_ts,
@@ -52,6 +53,7 @@ def trade(
         "exit_reason": reason,
         "return": result,
         "fees": fees,
+        "slippage_cost": slippage_cost,
     }
 
 
@@ -211,10 +213,11 @@ def test_slippage_moves_both_fills_of_a_short_against_it() -> None:
     )
     fees = 0.001 * (1 + 90.45 / 99.5)
     result = 1 - 90.45 / 99.5 - fees
+    slippage_cost = 90.45 / 99.5 - 90 / 100  # the return at 100 and 90, minus the actual one
 
     check(
         backtest(frame, NEXT.model_copy(update={"fee_bps": 10, "slippage_bps": 50})),
-        [trade(1, 2, 4, -1, 99.5, 90.45, "signal", result, fees=fees)],
+        [trade(1, 2, 4, -1, 99.5, 90.45, "signal", result, fees=fees, slippage_cost=slippage_cost)],
         position=[0, 0, -1, -1, 0, 0],
         equity=[
             1,
@@ -238,7 +241,8 @@ def test_slippage_moves_the_stop_level_with_the_entry_price() -> None:
 
     check(
         backtest(frame, CLOSE.model_copy(update={"stop_loss": 0.25, "slippage_bps": 100})),
-        [trade(1, 1, 2, 1, 101, 74.9925, "stop", -0.2575, stop=75.75)],
+        # Without slippage: in at 100, out at the level, 75.75, -0.2425; so slippage cost 0.015.
+        [trade(1, 1, 2, 1, 101, 74.9925, "stop", -0.2575, stop=75.75, slippage_cost=0.015)],
         position=[0, 1, 0, 0, 0],
         equity=[1, 100 / 101, 0.7425, 0.7425, 0.7425],
     )
@@ -385,4 +389,140 @@ def test_an_open_position_closes_at_the_last_close() -> None:
         [trade(1, 2, 4, -1, 10, 8, "end", 0.2)],
         position=[0, 0, -1, -1, 0],
         equity=[1, 1, 1.1, 1.2, 1.2],
+    )
+
+
+def test_fees_and_slippage_cost_are_the_return_without_costs_minus_the_return() -> None:
+    frame = candles(
+        (100, 100, 100, 100, 0),
+        (100, 100, 100, 100, 1),  # long at 100 x 1.002 = 100.2
+        (110, 111, 109, 110, 1),
+        (110, 111, 109, 110, 1),  # still long at the end: out at 110 x 0.998 = 109.78
+    )
+
+    [row] = backtest(
+        frame, CLOSE.model_copy(update={"fee_bps": 5, "slippage_bps": 20})
+    ).trades.rows(named=True)
+
+    assert row["fees"] == pytest.approx(0.0005 * (1 + 109.78 / 100.2), rel=1e-12)
+    assert row["slippage_cost"] == pytest.approx(1.1 - 109.78 / 100.2, rel=1e-12)
+    assert row["fees"] + row["slippage_cost"] == pytest.approx(0.1 - row["return"], rel=1e-12)
+
+
+def test_the_end_leg_pays_its_fee() -> None:
+    frame = candles(
+        (10, 10, 10, 10, 0),
+        (10, 11, 9, 10, 1),  # go long
+        (10, 11, 9, 11, 1),  # long at 10: fee 0.001 of the capital
+        (11, 12, 10, 12, 1),  # out at the last close, 12: fee 0.001 x 1.2
+    )
+
+    check(
+        backtest(frame, NEXT.model_copy(update={"fee_bps": 10})),
+        [trade(1, 2, 3, 1, 10, 12, "end", 0.2 - 0.0022, fees=0.0022)],
+        position=[0, 0, 1, 0],
+        equity=[1, 1, 1 + 0.1 - 0.001, 1 + 0.2 - 0.0022],
+    )
+
+
+@pytest.mark.parametrize(("low", "stopped"), [(75, True), (75.5, False)], ids=["75", "75.5"])
+def test_a_next_open_entry_candle_whose_low_only_touches_the_stop_exits(
+    low: float, stopped: bool
+) -> None:
+    frame = candles(
+        (100, 100, 100, 100, 0),
+        (100, 100, 100, 100, 1),  # go long
+        (100, 101, low, 90, 1),  # long at the open, 100, stop 75
+        (90, 91, 89, 90, 1),
+    )
+
+    result = backtest(frame, NEXT.model_copy(update={"stop_loss": 0.25}))
+
+    if stopped:
+        check(
+            result,
+            [trade(1, 2, 2, 1, 100, 75, "stop", -0.25, stop=75)],
+            position=[0, 0, 0, 0],
+            equity=[1, 1, 0.75, 0.75],
+        )
+    else:
+        check(
+            result,
+            [trade(1, 2, 3, 1, 100, 90, "end", -0.1, stop=75)],
+            position=[0, 0, 1, 0],
+            equity=[1, 1, 0.9, 0.9],
+        )
+
+
+def test_a_next_open_order_from_the_row_before_the_last_can_stop_out_on_the_last_row() -> None:
+    frame = candles(
+        (10, 10, 10, 10, 0),
+        (10, 10, 10, 10, 0),
+        (10, 10, 10, 10, 1),  # go long on the row before the last
+        (10, 11, 7, 9, 1),  # long at the open, 10, stop 7.5: the low reaches it
+    )
+
+    check(
+        backtest(frame, NEXT.model_copy(update={"stop_loss": 0.25})),
+        [trade(2, 3, 3, 1, 10, 7.5, "stop", -0.25, stop=7.5)],
+        position=[0, 0, 0, 0],
+        equity=[1, 1, 1, 0.75],
+    )
+
+
+@pytest.mark.parametrize("close", [20, 21])
+def test_a_position_worth_nothing_at_a_close_is_ruined_and_nothing_opens_again(
+    close: float,
+) -> None:
+    frame = candles(
+        (10, 10, 10, 10, 0),
+        (10, 10, 10, 10, -1),  # go short
+        (10, 16, 10, 15, -1),  # short at 10: worth 0.5 at the close
+        (15, 22, 15, close, -1),  # the price doubles: worth 0 (or less) at the close
+        (21, 21, 20, 20, 1),  # go long: the order would fill on the next open
+        (20, 21, 19, 21, 1),
+        (21, 22, 20, 22, 1),
+    )
+
+    check(
+        backtest(frame, NEXT),
+        [trade(1, 2, 3, -1, 10, close, "ruin", 1 - close / 10)],
+        position=[0, 0, -1, 0, 0, 0, 0],
+        equity=[1, 1, 0.5, 0, 0, 0, 0],
+    )
+
+
+def test_a_gap_that_loses_more_than_the_capital_leaves_nothing() -> None:
+    frame = candles(
+        (10, 10, 10, 10, 0),
+        (10, 10, 10, 10, -1),  # short at 10, stop 15
+        (25, 26, 24, 25, -1),  # opens at 25: out at the open, a return of -1.5
+        (25, 26, 24, 25, 0),
+        (25, 26, 24, 25, -1),  # go short again: nothing opens
+        (25, 26, 24, 24, -1),
+    )
+
+    check(
+        backtest(frame, CLOSE.model_copy(update={"stop_loss": 0.5})),
+        [trade(1, 1, 2, -1, 10, 25, "gap", -1.5, stop=15)],
+        position=[0, -1, 0, 0, 0, 0],
+        equity=[1, 1, 0, 0, 0, 0],
+    )
+
+
+def test_a_flip_whose_close_loses_the_whole_capital_opens_nothing() -> None:
+    frame = candles(
+        (10, 10, 10, 10, 0),
+        (10, 10, 10, 10, -1),  # short at 10
+        (12, 13, 11, 12, -1),
+        (12, 20, 12, 20, 1),  # flip at the close, 20: the short returns -1
+        (20, 21, 19, 21, 1),
+        (21, 22, 20, 22, 0),
+    )
+
+    check(
+        backtest(frame, CLOSE),
+        [trade(1, 1, 3, -1, 10, 20, "signal", -1.0)],
+        position=[0, -1, -1, 0, 0, 0],
+        equity=[1, 1, 0.8, 0, 0, 0],
     )

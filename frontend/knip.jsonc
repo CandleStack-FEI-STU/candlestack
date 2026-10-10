@@ -1,0 +1,6 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  // Generated from docs/openapi.json: it exports the whole API, used or not.
+  "ignore": ["src/api/schema.d.ts"],
+  "ignoreExportsUsedInFile": true,
+}

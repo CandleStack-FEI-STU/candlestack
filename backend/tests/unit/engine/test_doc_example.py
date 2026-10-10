@@ -2,6 +2,8 @@
 engine, the metrics, the signals and the command give. A change here goes into the document
 too, and the other way round. Values are compared to the decimals the document prints."""
 
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +11,7 @@ import polars as pl
 import pytest
 
 from candlestack.cli import main
-from candlestack.engine import Result, Settings, backtest
+from candlestack.engine import InvalidInput, Result, Settings, backtest
 from candlestack.metrics import stats
 from candlestack.signals import long_only, threshold
 
@@ -31,7 +33,16 @@ COSTS = {"stop_loss": 0.05, "fee_bps": 10}
 
 
 def trade(
-    signal_row, open_row, close_row, open_price, close_price, stop, reason, result, fees
+    signal_row,
+    open_row,
+    close_row,
+    open_price,
+    close_price,
+    stop,
+    reason,
+    result,
+    fees,
+    slippage_cost=0.0,
 ) -> dict[str, Any]:
     return {
         "signal_ts": TS[signal_row],
@@ -44,6 +55,7 @@ def trade(
         "exit_reason": reason,
         "return": result,
         "fees": fees,
+        "slippage_cost": slippage_cost,
     }
 
 
@@ -76,9 +88,33 @@ def test_next_open_is_stopped_out_on_the_low() -> None:
 def test_slippage_moves_the_prices_and_the_stop_level() -> None:
     check(
         backtest(EXAMPLE, Settings(fill="next_open", slippage_bps=10, **COSTS)),
-        [trade(1, 2, 3, 102.102, 96.8999031, 96.9969, "stop", -0.05289905, 0.00194905)],
+        [trade(1, 2, 3, 102.102, 96.8999031, 96.9969, "stop", -0.05289905, 0.00194905, 0.0019)],
         position=[0, 0, 1, 0, 0],
         equity=[1, 1, 1.007795, 0.947101, 0.947101],
+    )
+
+
+def test_fees_and_slippage_cost_are_the_return_without_costs_minus_the_return() -> None:
+    [row] = backtest(EXAMPLE, Settings(fill="next_open", slippage_bps=10, **COSTS)).trades.rows(
+        named=True
+    )
+
+    assert row["fees"] + row["slippage_cost"] == pytest.approx(0.00384905, abs=PRINTED)
+    assert 96.9969 / 102 - 1 - row["return"] == pytest.approx(0.00384905, abs=PRINTED)
+
+
+def test_the_invalid_input_message() -> None:
+    frame = EXAMPLE.with_columns(
+        ts=pl.Series([TS[0], TS[1], TS[1], TS[3], TS[4]]),
+        signal=pl.Series([0.0, 0.5, 1.0, 1.0, 1.0]),
+    )
+
+    with pytest.raises(InvalidInput) as error:
+        backtest(frame, Settings())
+
+    assert str(error.value) == (
+        "Invalid backtest input: 1 row has a ts not after the previous row, first at row 2; "
+        "1 row has a fractional signal (position sizing is not supported yet), first at row 1."
     )
 
 
@@ -111,20 +147,23 @@ def test_threshold_and_long_only() -> None:
     assert long_only(signal).to_list() == [0.0, 1.0, 0.0, 0.0, 1.0]
 
 
-def test_the_command_runs_the_example(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    CANDLES.write_parquet(tmp_path / "candles.parquet")
-    pl.DataFrame({"ts": TS, "prediction": [0.01, 0.3, 0.2, 0.1, 0.4]}).write_parquet(
-        tmp_path / "predictions.parquet"
-    )
-    out = tmp_path / "runs" / "example"
+OUT = Path("runs", "example")
 
-    code = main(
+
+def run_the_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> int:
+    """Writes the example's files and runs the command of the document on them."""
+    monkeypatch.chdir(tmp_path)  # the document's paths are relative
+    CANDLES.write_parquet("candles.parquet")
+    pl.DataFrame({"ts": TS, "prediction": [0.01, 0.3, 0.2, 0.1, 0.4]}).write_parquet(
+        "predictions.parquet"
+    )
+    return main(
         [
             "run",
             "--candles",
-            str(tmp_path / "candles.parquet"),
+            "candles.parquet",
             "--predictions",
-            str(tmp_path / "predictions.parquet"),
+            "predictions.parquet",
             "--threshold",
             "0.05",
             "--fill",
@@ -134,13 +173,19 @@ def test_the_command_runs_the_example(tmp_path: Path, capsys: pytest.CaptureFixt
             "--fee-bps",
             "10",
             "--out",
-            str(out),
+            str(OUT),
         ]
     )
 
+
+def test_the_command_runs_the_example(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = run_the_command(tmp_path, monkeypatch)
+
     assert code == 0
     assert capsys.readouterr().out == (
-        f"Wrote trades.parquet, series.parquet, stats.json and run.json to {out}\n"
+        f"Wrote trades.parquet, series.parquet, stats.json and run.json to {OUT}\n"
         "  trades        1\n"
         "  win rate      0.00%\n"
         "  total return  -3.17%\n"
@@ -148,3 +193,38 @@ def test_the_command_runs_the_example(tmp_path: Path, capsys: pytest.CaptureFixt
         "  sharpe        n/a\n"
         "  buy and hold  -2.00%\n"
     )
+
+
+def test_the_command_writes_the_run_json_of_the_document(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_the_command(tmp_path, monkeypatch)
+
+    record = json.loads((OUT / "run.json").read_text(encoding="utf-8"))
+    hashes = {name: record["inputs"][name].pop("sha256") for name in record["inputs"]}
+    assert record == {
+        "engine_version": "0.2.0",
+        "inputs": {
+            "candles": {"path": "candles.parquet"},
+            "predictions": {"path": "predictions.parquet"},
+        },
+        "settings": {
+            "ts_column": "ts",
+            "labels": "open",
+            "timeframe_seconds": None,
+            "model": None,
+            "allow_gaps": False,
+            "threshold": 0.05,
+            "long_only": False,
+            "fill": "signal_close",
+            "stop_loss": 0.05,
+            "fee_bps": 10.0,
+            "slippage_bps": 0.0,
+        },
+        "align": {"predictions_without_candle": 0, "candles_without_prediction": 0},
+    }
+    # The document shortens the hashes to their first 8 digits. They hash the bytes Polars
+    # writes, so a Polars update that writes the files differently changes them there too.
+    for name, prefix in [("candles", "509ac6b5"), ("predictions", "efe0645e")]:
+        assert hashes[name] == hashlib.sha256(Path(f"{name}.parquet").read_bytes()).hexdigest()
+        assert hashes[name].startswith(prefix)

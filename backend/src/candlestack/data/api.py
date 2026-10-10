@@ -29,7 +29,7 @@ from candlestack.data.errors import (
     SourceUnavailable,
     TooManyCandles,
 )
-from candlestack.data.models import InstrumentId, Market, Timeframe
+from candlestack.data.models import Exchange, InstrumentId, Market, Timeframe
 from candlestack.data.schemas import (
     CandlesOut,
     InstrumentDetailOut,
@@ -255,17 +255,29 @@ _RATE_LIMITED = (
 async def search_instruments(
     service: DataServiceDep,
     q: Annotated[
-        str,
+        str | None,
         Query(
             min_length=1,
             max_length=50,
             description="Symbol or name, case-insensitive; separators in symbols are ignored "
-            "(`btc/usdt` finds `BTCUSDT`, `brkb` finds `BRK.B`).",
+            "(`btc/usdt` finds `BTCUSDT`, `brkb` finds `BRK.B`). Without it, every instrument "
+            "in symbol order.",
             examples=["btc"],
         ),
-    ],
+    ] = None,
     market: Annotated[Market | None, Query(description="Only this market.")] = None,
+    *,
+    exchange: Annotated[
+        Exchange | None,
+        Query(
+            description="Only stocks listed on this exchange; crypto pairs have none, so with "
+            "`market=crypto` nothing matches.",
+        ),
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=100, description="Most items to return.")] = 20,
+    offset: Annotated[
+        int, Query(ge=0, description="Matches to skip; past the end, `items` is empty.")
+    ] = 0,
 ) -> InstrumentSearchOut:
     """Searches the instruments of both markets: every Binance spot pair that is trading and
     every active tradable US stock and ETF at Alpaca (without OTC).
@@ -273,16 +285,20 @@ async def search_instruments(
     Ranking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`
     first), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word
     in the name, substring of the symbol, substring of the name; ties go to the shorter symbol,
-    then alphabetically.
+    then alphabetically. Without `q`, every instrument comes back in symbol order.
+    `exchange` narrows any of these to the stocks listed on it.
+    `total` counts all matches: page through them with `offset` and `limit`.
 
     When the instrument list of one market cannot be loaded, the other market is still
     searched and `unavailable` names the missing one; 503 when no market can be searched.
     """
     with _problems():
-        found = await service.search(q, market, limit)
+        found = await service.search(q, market, limit, offset, exchange=exchange)
     return InstrumentSearchOut(
         items=[InstrumentOut.of(item) for item in found.items],
         count=len(found.items),
+        total=found.total,
+        offset=offset,
         unavailable=found.unavailable,
     )
 

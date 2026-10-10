@@ -53,3 +53,12 @@ vulnerabilities:
   - id: GHSA-hrxh-6v49-42gf
     paths: [usr/bin/caddy]
     expired_at: 2026-10-27
+  - id: CVE-2026-78667
+    paths: [usr/bin/caddy]
+    expired_at: 2026-10-27
+  - id: CVE-2026-78669
+    paths: [usr/bin/caddy]
+    expired_at: 2026-10-27
+  - id: CVE-2026-97031
+    paths: [usr/bin/caddy]
+    expired_at: 2026-10-27

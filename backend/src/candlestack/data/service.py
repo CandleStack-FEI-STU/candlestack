@@ -45,6 +45,7 @@ from candlestack.data.errors import (
 )
 from candlestack.data.models import (
     CandleSet,
+    Exchange,
     Instrument,
     InstrumentId,
     InstrumentInfo,
@@ -97,14 +98,30 @@ class DataService:
         self._catalogs = catalogs
         self._candles_max = candles_max
 
-    async def search(self, q: str, market: Market | None = None, limit: int = 20) -> SearchResult:
-        """Instruments matching ``q``, best first (ranking in ``candlestack.data.catalog``), in
-        the markets whose catalog can be loaded; ``unavailable`` names the others. Raises the
-        source's error when none can be loaded."""
-        if limit <= 0 or not normalise_query(q):
-            return SearchResult([], [])
+    async def search(
+        self,
+        q: str | None,
+        market: Market | None = None,
+        limit: int = 20,
+        offset: int = 0,
+        *,
+        exchange: Exchange | None = None,
+    ) -> SearchResult:
+        """``limit`` instruments from ``offset`` on that match ``q``, best first (ranking in
+        ``candlestack.data.catalog``), or of every instrument by symbol without ``q``, in the
+        markets whose catalog can be loaded; ``unavailable`` names the others. Raises the
+        source's error when none can be loaded. ``exchange`` keeps only the stocks listed on
+        it."""
+        if q is not None and not normalise_query(q):
+            return SearchResult([], [], 0)
+        if exchange is not None:
+            # Only stocks have an exchange: the crypto catalog is not needed.
+            if market is Market.CRYPTO:
+                return SearchResult([], [], 0)
+            market = Market.STOCK
         catalog = await self._catalogs.catalog(market)
-        return SearchResult(catalog.search(q, market, limit), self._catalogs.missing(market))
+        items, total = catalog.page(q, market, limit, offset, exchange=exchange)
+        return SearchResult(items, self._catalogs.missing(market), total)
 
     async def instrument(self, instrument_id: InstrumentId) -> InstrumentInfo:
         """The instrument and its available period. ``available_from`` is ``None`` when the

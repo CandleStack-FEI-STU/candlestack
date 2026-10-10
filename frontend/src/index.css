@@ -1,0 +1,112 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
+
+/* Dark theme: data-theme="dark" on <html>, like on the website. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+ * All colors of the app, in one place.
+ * The first group is the website palette (website/src/styles/global.css), kept 1:1.
+ * Everything below it is derived from that palette.
+ */
+:root {
+  --bg: #fafaf9;
+  --ink: #141414;
+  --muted: #686868;
+  --rule: #e7e5e2;
+  --accent: #0f766e;
+  --warn: #a15c07;
+  --down: #b42318;
+  --grid: rgb(28 25 23 / 0.045);
+
+  /* Candles: green and red like TradingView, but a grass green, not the teal accent (#113).
+     src/candleColors.test.ts checks the distance. */
+  --candle-up: #2e9e44;
+  --candle-down: #f23645;
+
+  --radius: 0.5rem;
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  --bg: #0d0f11;
+  --ink: #ecedee;
+  --muted: #9ba1a6;
+  --rule: #23272b;
+  --accent: #3cc7a6;
+  --warn: #e8b45a;
+  --down: #f0616d;
+  --grid: rgb(230 232 234 / 0.045);
+
+  --candle-up: #43b049;
+  --candle-down: #f23645;
+
+  color-scheme: dark;
+}
+
+/* The names shadcn/ui components use, mapped onto the palette above. */
+:root {
+  --surface: color-mix(in srgb, var(--ink) 5%, var(--bg));
+  --background: var(--bg);
+  --foreground: var(--ink);
+  --card: var(--bg);
+  --card-foreground: var(--ink);
+  --popover: var(--bg);
+  --popover-foreground: var(--ink);
+  --primary: var(--accent);
+  --primary-foreground: var(--bg);
+  --secondary: var(--surface);
+  --secondary-foreground: var(--ink);
+  --muted-foreground: var(--muted);
+  --hover: var(--surface);
+  --hover-foreground: var(--ink);
+  --destructive: var(--down);
+  --border: var(--rule);
+  --input: var(--rule);
+  --ring: var(--accent);
+}
+
+@theme inline {
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--surface);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--hover);
+  --color-accent-foreground: var(--hover-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-warn: var(--warn);
+  --color-candle-up: var(--candle-up);
+  --color-candle-down: var(--candle-down);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply min-h-screen bg-background text-foreground font-sans antialiased;
+    /* The same 40 px grid as the website. */
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+}

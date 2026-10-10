@@ -36,6 +36,7 @@ def test_the_result_follows_the_contract_schemas() -> None:
             "exit_reason": pl.String,
             "return": pl.Float64,
             "fees": pl.Float64,
+            "slippage_cost": pl.Float64,
         }
     )
     assert result.series.schema == pl.Schema(

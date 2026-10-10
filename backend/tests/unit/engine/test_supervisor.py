@@ -12,16 +12,35 @@ Never commit that data. Without the variable the tests are skipped, as in CI. Fr
     CANDLESTACK_SUPERVISOR_DATA=/path/to/data uv run pytest tests/unit/engine/test_supervisor.py -v
 
 Every stock folder found is checked (one without all three files is skipped, the reason says
-which), and each stock, model, threshold and stop loss is a test of its own (10 models x 4
-thresholds x 3 stop losses = 120 for AAPL).
+which; a folder whose name starts with ``_`` holds no stock and is ignored), and each stock,
+model, threshold and stop loss is a test of its own (10 models x 4 thresholds x 3 stop losses =
+120 per stock).
 
 What only his data needs stays here, not in the engine or signals: his candles and predictions
 label a 30-minute candle by its close in ``unix`` seconds, his trades by its close in New York
-time, and he leaves out the trade still open at the end of the data.
+time, and his candles mark the last candle of a session with ``end_bar`` 1.
+
+His backtest leaves out two trades at the end of the data, and the check leaves them out of
+ours too: the trade still open at the end, and the last trade when a stop or a gap closed it
+and the signal did not change on its candle or later. Both are trades that no signal closed
+before the data ran out.
+
+Two more conventions of his make trades the engine does not copy. A combination whose first
+different trade comes from one of them is marked xfail, with the convention, the stock, the
+candle and the prices in the reason; any other difference fails:
+
+- An intraday gap: a candle that opens beyond the stop level while the candle before it is of
+  the same session. The engine exits at that open (``gap``); he exits at the stop level
+  (``stop``). At the first candle of a session (an overnight gap) both exit at the open.
+- A touch to the cent: the low (long) or high (short) of a candle equals the stop level within
+  floating point, and the rounding decides whether it touched, so one side stops there and
+  the other does not; or its open does, and one side exits at the open (``gap``), the other
+  at the level (``stop``).
 """
 
 import functools
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 
 import polars as pl
@@ -39,6 +58,7 @@ STOP_LOSSES = (0.05, 0.07, 0.1)
 EXIT_REASONS = {0: "signal", 1: "stop", 2: "gap"}  # his operation_end_type
 SIDES = {"LONG": 1, "SHORT": -1}  # his action_open
 KEYS = ["open_ts", "close_ts", "side", "exit_reason"]
+TOUCH = 1e-9  # how close, relative to the stop level, a low or high counts as touching it
 
 pytestmark = pytest.mark.skipif(
     not DATA, reason="CANDLESTACK_SUPERVISOR_DATA does not name the supervisor's data"
@@ -48,7 +68,9 @@ pytestmark = pytest.mark.skipif(
 def stock_folders() -> list[str]:
     if not DATA or not ROOT.is_dir():
         return []
-    return sorted(path.name for path in ROOT.iterdir() if path.is_dir())
+    return sorted(
+        path.name for path in ROOT.iterdir() if path.is_dir() and not path.name.startswith("_")
+    )
 
 
 def missing_files(stock: str) -> list[str]:
@@ -77,7 +99,7 @@ COMBINATIONS = [
 @functools.lru_cache(maxsize=1)
 def candles(stock: str) -> pl.DataFrame:
     frame = pl.read_parquet(ROOT / stock / "candles.parquet").rename({"unix": "ts"})
-    return relabel(frame, HALF_HOUR).select("ts", "open", "high", "low", "close")
+    return relabel(frame, HALF_HOUR).select("ts", "open", "high", "low", "close", "end_bar")
 
 
 @functools.lru_cache(maxsize=1)
@@ -136,6 +158,87 @@ def test_every_trade_of_his_is_checked(stock: str) -> None:
     assert his - checked == set()
 
 
+def as_he_lists(trades: pl.DataFrame, frame: pl.DataFrame) -> pl.DataFrame:
+    """Our trades without the two he leaves out at the end of the data (see the module
+    docstring)."""
+    closed = trades.filter(pl.col("exit_reason") != "end")
+    if closed.is_empty() or closed["exit_reason"][-1] not in ("stop", "gap"):
+        return closed
+    exit_row = frame["ts"].search_sorted(closed["close_ts"][-1])
+    # The signals from the row before the exit on: a change among them followed the exit.
+    if (frame["signal"][exit_row - 1 :].diff().drop_nulls() != 0).any():
+        return closed
+    return closed.head(-1)
+
+
+def when(ts: int) -> str:
+    return datetime.fromtimestamp(ts, UTC).strftime("%Y-%m-%d %H:%M UTC")
+
+
+def known_difference(ours: pl.DataFrame, his: pl.DataFrame, frame: pl.DataFrame) -> str | None:
+    """Names the convention of his that makes the first different trade, or ``None`` when
+    neither does."""
+    pairs = zip(ours.select(KEYS).rows(), his.select(KEYS).rows(), strict=False)
+    first = next((i for i, (a, b) in enumerate(pairs) if a != b), None)
+    if first is None:
+        return None  # the same trades, one list longer: no convention explains that
+    our, its = ours.row(first, named=True), his.row(first, named=True)
+    if (our["open_ts"], our["side"]) != (its["open_ts"], its["side"]):
+        return None
+    # The candle where the first of the two trades ends; it is never the first row, as both
+    # trades opened before it.
+    row = frame["ts"].search_sorted(min(our["close_ts"], its["close_ts"]))
+    exits = {
+        who: trade["exit_reason"]
+        for who, trade in (("we", our), ("he", its))
+        if trade["close_ts"] == frame["ts"][row]
+    }
+    if not exits:
+        return None  # his trade ends on a candle we do not have
+    level, side = our["stop_price"], our["side"]
+    return intraday_gap(exits, frame, row, level, side) or touch(exits, frame, row, level, side)
+
+
+def intraday_gap(
+    exits: dict[str, str], frame: pl.DataFrame, row: int, level: float, side: int
+) -> str | None:
+    """We exit at an open beyond the stop level inside a session, he at the level."""
+    candle = frame.row(row, named=True)
+    beyond = candle["open"] <= level if side > 0 else candle["open"] >= level
+    if exits == {"we": "gap", "he": "stop"} and beyond and frame["end_bar"][row - 1] == 0:
+        return (
+            f"his intraday gap convention: on {when(candle['ts'])} the candle opens at "
+            f"{candle['open']} beyond the stop level {level} inside the session; we exit at the "
+            "open (gap), he at the level (stop)"
+        )
+    return None
+
+
+def touch(
+    exits: dict[str, str], frame: pl.DataFrame, row: int, level: float, side: int
+) -> str | None:
+    """A touch to the cent makes one side stop where the other does not, or stop at the level
+    where the other exits at the open."""
+    candle = frame.row(row, named=True)
+    reasons = sorted(exits.values())
+    if reasons == ["gap", "stop"]:
+        name = "open"
+        gaps = "we exit" if exits["we"] == "gap" else "he exits"
+        how = f"{gaps} at the open (gap), the other at the level (stop)"
+    elif reasons in (["stop"], ["signal", "stop"]):
+        name = "low" if side > 0 else "high"
+        stops = "we stop" if exits.get("we") == "stop" else "he stops"
+        how = f"{stops} there, the other does not"
+    else:
+        return None
+    if abs(candle[name] - level) > TOUCH * level:
+        return None
+    return (
+        f"a touch to the cent: on {when(candle['ts'])} the {name} {candle[name]} equals the "
+        f"stop level {level} within floating point; {how}"
+    )
+
+
 @pytest.mark.parametrize(("stock", "model", "limit", "stop_loss"), COMBINATIONS)
 def test_the_engine_makes_his_trades(
     stock: str, model: str, limit: float, stop_loss: float
@@ -143,10 +246,12 @@ def test_the_engine_makes_his_trades(
     rows = aligned(stock, model)
     frame = rows.with_columns(threshold(rows["prediction"], limit))
     result = backtest(frame, Settings(fill="signal_close", stop_loss=stop_loss))
-    ours = result.trades.filter(pl.col("exit_reason") != "end")  # he leaves it out
+    ours = as_he_lists(result.trades, frame)
     his = his_trades(stock).filter(
         (pl.col("model") == model) & (pl.col("limit") == limit) & (pl.col("stop_loss") == stop_loss)
     )
+    if reason := known_difference(ours, his, frame):
+        pytest.xfail(f"{stock}: {reason}")
 
     # The same number of trades, each with his times, side and exit reason, and his return.
     assert ours.select(KEYS).rows() == his.select(KEYS).rows()

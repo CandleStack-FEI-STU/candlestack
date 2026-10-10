@@ -16,20 +16,26 @@ The rules, the same for both fills:
    an exit to ``price * (1 - side * s)``, a stop exit from its level. The fee is ``fee_bps``
    of each leg's notional: the capital on entry, the position's value on exit. A trade's
    return is capital after / capital before - 1, so
-   ``side * (exit / entry - 1) - fee * (1 + exit / entry)``.
+   ``side * (exit / entry - 1) - fee * (1 + exit / entry)``. Its slippage cost is the return
+   with the prices before slippage minus that return, the same fees in both:
+   ``side * (price_exit / price_entry - exit / entry)``.
 6. A change on the last row opens nothing (with ``signal_close`` it may still close); a
-   position still open is closed at the last close (``end``).
+   ``next_open`` order from the row before still fills at the last open, and the stop is
+   checked on the last row. A position still open is closed at the last close (``end``).
 7. Capital starts at 1.0 and compounds. A candle's equity is the capital after all its fills
    with the open position marked at its close (its exit costs not paid yet); its position is
    the side held after them, so the last row is flat.
+8. Ruin: a position whose equity, marked at a candle's close, is at or below 0 closes at that
+   close (``ruin``), and a trade whose return is at or below -1 leaves nothing. Either way the
+   capital becomes 0, no position opens again and every later equity is 0.
 """
 
 from candlestack.engine.inputs import Candles
 from candlestack.engine.settings import Settings
 
 # signal_ts, open_ts, close_ts, side, open_price, close_price, stop_price, exit_reason, return,
-# fees: the columns of Result.trades.
-TradeRow = tuple[int, int, int, int, float, float, float | None, str, float, float]
+# fees, slippage_cost: the columns of Result.trades.
+TradeRow = tuple[int, int, int, int, float, float, float | None, str, float, float, float]
 
 _BPS = 1e-4
 
@@ -45,10 +51,12 @@ class Loop:
         self.fee = settings.fee_bps * _BPS
         self.slippage = settings.slippage_bps * _BPS
         self.capital = 1.0  # after the closed trades
+        self.ruined = False  # rule 8: the capital is 0 and nothing opens again
         self.side = 0
         self.signal_row = 0
         self.entry_row = 0
-        self.entry_price = 0.0
+        self.entry_quote = 0.0  # the entry's fill price before slippage
+        self.entry_price = 0.0  # and with it
         self.stop: float | None = None  # the level, set while a position with a stop is open
         self.trades: list[TradeRow] = []
         self.position: list[float] = []
@@ -61,6 +69,10 @@ class Loop:
         # Starting from the first signal makes the first row a warm-up: it cannot be a change.
         previous = candles.signals[0] if candles.signals else 0
         for row, signal in enumerate(candles.signals):
+            if self.ruined:
+                self.position.append(0.0)
+                self.equity.append(0.0)
+                continue
             if pending is not None:
                 self._fill(row, row - 1, candles.opens[row], pending)
                 pending = None
@@ -87,10 +99,10 @@ class Loop:
         self, row: int, signal_row: int, price: float, signal: int, *, may_open: bool = True
     ) -> None:
         """Moves the position to ``signal`` at ``price``: closes one on the other side or
-        flat, then opens one on the signal's side."""
+        flat, then opens one on the signal's side unless the close ruined the capital."""
         if self.side and self.side != signal:
             self._close(row, price, "signal")
-        if signal and not self.side and may_open:
+        if signal and not self.side and may_open and not self.ruined:
             self._open(row, signal_row, price, signal)
 
     def _check_stop(self, row: int, level: float) -> None:
@@ -108,6 +120,7 @@ class Loop:
         self.side = side
         self.signal_row = signal_row
         self.entry_row = row
+        self.entry_quote = price
         self.entry_price = price * (1.0 + side * self.slippage)
         if self.stop_loss is not None:
             self.stop = self.entry_price * (1.0 - side * self.stop_loss)
@@ -118,6 +131,8 @@ class Loop:
         growth = exit_price / self.entry_price  # exit notional per unit of entry notional
         fees = self.fee * (1.0 + growth)
         result = side * (growth - 1.0) - fees
+        # + 0.0: a short without slippage costs 0.0, not -0.0, in the stored trades.
+        slippage_cost = side * (price / self.entry_quote - growth) + 0.0
         ts = self.candles.ts
         self.trades.append(
             (
@@ -131,16 +146,30 @@ class Loop:
                 reason,
                 result,
                 fees,
+                slippage_cost,
             )
         )
-        self.capital *= 1.0 + result
         self.side = 0
         self.stop = None
+        if result <= -1.0:
+            self._ruin()
+        else:
+            self.capital *= 1.0 + result
+
+    def _ruin(self) -> None:
+        self.capital = 0.0
+        self.ruined = True
 
     def _mark(self, row: int) -> None:
         equity = self.capital
         if self.side:
-            change = self.candles.closes[row] / self.entry_price - 1.0
-            equity *= 1.0 + self.side * change - self.fee
+            close = self.candles.closes[row]
+            equity *= 1.0 + self.side * (close / self.entry_price - 1.0) - self.fee
+            if equity <= 0.0:
+                # Closing costs at least as much as the mark, so the return is at most -1;
+                # the capital is set to 0 here too, whatever the rounding of the return.
+                self._close(row, close, "ruin")
+                self._ruin()
+                equity = 0.0
         self.position.append(float(self.side))
         self.equity.append(equity)

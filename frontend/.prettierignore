@@ -1,0 +1,11 @@
+# Generated
+dist/
+package-lock.json
+# Generated from docs/openapi.json (npm run api:types); CI regenerates it and checks it is unchanged.
+src/api/schema.d.ts
+
+# The prod placeholder page; it goes away when the app is released to prod.
+site/
+
+# Prose, not code: Markdown keeps its hand-written tables (markdownlint checks it).
+*.md

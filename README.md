@@ -45,6 +45,19 @@ test request panel to try it, for example:
 
 The local stack runs no frontend, so `/` and the logo in the API reference answer 404 there.
 
+### Frontend
+
+The frontend runs on its own and talks to the prod API, so it needs no local backend and no
+Alpaca keys. Node.js 20.19 or newer:
+
+```sh
+cd frontend
+npm install
+npm run dev
+```
+
+Then open http://localhost:5173. More in [frontend/README.md](frontend/README.md).
+
 ### Alpaca keys for US stocks
 
 Crypto needs no keys. US stocks (`stock:AAPL`) need the keys of an Alpaca paper account:
@@ -60,5 +73,5 @@ the feed CandleStack uses. Without keys, `/api/health/sources` answers 503 with 
 503 `source-unavailable`.
 
 More: [architecture](docs/architecture.md), [market data](docs/data.md),
-[backtest engine](docs/engine.md), [contributing](CONTRIBUTING.md),
+[backtest engine](docs/engine.md), [frontend](frontend/README.md), [contributing](CONTRIBUTING.md),
 [infrastructure](infra/README.md).
