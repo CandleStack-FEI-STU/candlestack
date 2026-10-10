@@ -160,7 +160,7 @@ check_instruments() {
 
 # candles <instrument> <timeframe> <start> <end> <count>: expects exactly count candles.
 candles() {
-  get "/api/v1/data/candles?instrument=$1&timeframe=$2&start=$3&end=$4"
+  get "/api/v1/data/instruments/$1/candles?timeframe=$2&start=$3&end=$4"
   expect 200 application/json
   jq -e --argjson n "$5" '.meta.count == $n and (.t | length) == $n' <<<"$body" >/dev/null ||
     fail "expected $5 candles of $1 $2 from $3 to $4: ${body:0:300}"
@@ -181,7 +181,7 @@ check_stock_candles() {
 # warning, not a failure.
 check_timings() {
   local year=$((2018 + RANDOM % 8)) path first first_ms
-  path="/api/v1/data/candles?instrument=crypto:BTCUSDT&timeframe=1h&start=$year-01-01&end=$((year + 1))-01-01"
+  path="/api/v1/data/instruments/crypto:BTCUSDT/candles?timeframe=1h&start=$year-01-01&end=$((year + 1))-01-01"
   get "$path"
   expect 200 application/json
   first="$seconds s (app ${app_ms:-?} ms)"

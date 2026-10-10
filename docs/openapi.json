@@ -284,7 +284,7 @@
         "type": "object"
       },
       "InstrumentDetailOut": {
-        "description": "An instrument and what a valid `/candles` request for it can ask for.",
+        "description": "An instrument and what a valid candle request for it can ask for.",
         "properties": {
           "available_from": {
             "anyOf": [
@@ -366,7 +366,7 @@
             ]
           },
           "max_candles": {
-            "description": "Most candles one `/candles` response may hold.",
+            "description": "Most candles one candle response may hold.",
             "examples": [
               50000
             ],
@@ -841,164 +841,6 @@
         ]
       }
     },
-    "/api/v1/data/candles": {
-      "get": {
-        "description": "Closed candles of one instrument and timeframe with `start <= t < end`.\n\nStocks have regular-session candles only (09:30-16:00 New York), aligned to the session\nopen. Missing candles are never filled; `meta.gaps` reports them. Limits: `max_candles`\nexpected candles per request (see the instrument detail) and a per-minute number of\ncandle and instrument requests per client address.",
-        "operationId": "candles_api_v1_data_candles_get",
-        "parameters": [
-          {
-            "description": "Instrument id, `<market>:<symbol>`.",
-            "in": "query",
-            "name": "instrument",
-            "required": true,
-            "schema": {
-              "description": "Instrument id, `<market>:<symbol>`.",
-              "examples": [
-                "crypto:BTCUSDT"
-              ],
-              "title": "Instrument",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "timeframe",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/Timeframe",
-              "examples": [
-                "1h"
-              ]
-            }
-          },
-          {
-            "description": "Start of the period, inclusive: UTC epoch seconds or ISO 8601 (`2024-06-03`, `2024-06-03T13:30:00Z`; without an offset it is UTC).",
-            "in": "query",
-            "name": "start",
-            "required": true,
-            "schema": {
-              "anyOf": [
-                {
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                {
-                  "format": "date-time",
-                  "type": "string"
-                }
-              ],
-              "examples": [
-                "2024-06-03",
-                "2024-06-03T13:30:00Z",
-                1717421400
-              ],
-              "title": "Start"
-            }
-          },
-          {
-            "description": "End of the period, exclusive, in the same formats; default now.",
-            "in": "query",
-            "name": "end",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "anyOf": [
-                    {
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    {
-                      "format": "date-time",
-                      "type": "string"
-                    }
-                  ],
-                  "examples": [
-                    "2024-06-03",
-                    "2024-06-03T13:30:00Z",
-                    1717421400
-                  ]
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "End of the period, exclusive, in the same formats; default now.",
-              "examples": [
-                "2024-06-04"
-              ],
-              "title": "End"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CandlesOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "The instrument is not in the catalog (`instrument-not-found`)."
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Invalid parameters (`validation`), a period outside the available data (`period-out-of-range`) or more candles than `max_candles` (`too-many-candles`)."
-          },
-          "429": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "More candle and instrument requests from this address than the per-minute limit (`rate-limited`); see `Retry-After`."
-          },
-          "502": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "The source sent data that failed validation (`source-data-invalid`)."
-          },
-          "503": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "The source is down or our request budget for it is spent (`source-unavailable`); `Retry-After` when waiting helps."
-          }
-        },
-        "summary": "Candles",
-        "tags": [
-          "data"
-        ]
-      }
-    },
     "/api/v1/data/instruments": {
       "get": {
         "description": "Searches the instruments of both markets: every Binance spot pair that is trading and\nevery active tradable US stock and ETF at Alpaca (without OTC).\n\nRanking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`\nfirst), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word\nin the name, substring of the symbol, substring of the name; ties go to the shorter symbol,\nthen alphabetically. Without `q`, every instrument comes back in symbol order.\n`exchange` narrows any of these to the stocks listed on it.\n`total` counts all matches: page through them with `offset` and `limit`.\n\nWhen the instrument list of one market cannot be loaded, the other market is still\nsearched and `unavailable` names the missing one; 503 when no market can be searched.",
@@ -1141,7 +983,7 @@
     },
     "/api/v1/data/instruments/{instrument_id}": {
       "get": {
-        "description": "An instrument with its timeframes, available period and the candle limit: what a valid\n`/candles` request can ask for. Counts against the per-minute limit of requests per client\naddress, like `/candles`.",
+        "description": "An instrument with its timeframes, available period and the candle limit: what a valid\ncandle request can ask for. Counts against the per-minute limit of requests per client\naddress, like candle requests.",
         "operationId": "instrument_detail_api_v1_data_instruments__instrument_id__get",
         "parameters": [
           {
@@ -1222,6 +1064,164 @@
           }
         },
         "summary": "Instrument detail",
+        "tags": [
+          "data"
+        ]
+      }
+    },
+    "/api/v1/data/instruments/{instrument_id}/candles": {
+      "get": {
+        "description": "Closed candles of one instrument and timeframe with `start <= t < end`.\n\nStocks have regular-session candles only (09:30-16:00 New York), aligned to the session\nopen. Missing candles are never filled; `meta.gaps` reports them. Limits: `max_candles`\nexpected candles per request (see the instrument detail) and a per-minute number of\ncandle and instrument requests per client address.",
+        "operationId": "candles_api_v1_data_instruments__instrument_id__candles_get",
+        "parameters": [
+          {
+            "description": "Instrument id, `<market>:<symbol>`.",
+            "in": "path",
+            "name": "instrument_id",
+            "required": true,
+            "schema": {
+              "description": "Instrument id, `<market>:<symbol>`.",
+              "examples": [
+                "crypto:BTCUSDT"
+              ],
+              "title": "Instrument Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "timeframe",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Timeframe",
+              "examples": [
+                "1h"
+              ]
+            }
+          },
+          {
+            "description": "Start of the period, inclusive: UTC epoch seconds or ISO 8601 (`2024-06-03`, `2024-06-03T13:30:00Z`; without an offset it is UTC).",
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "format": "date-time",
+                  "type": "string"
+                }
+              ],
+              "examples": [
+                "2024-06-03",
+                "2024-06-03T13:30:00Z",
+                1717421400
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "description": "End of the period, exclusive, in the same formats; default now.",
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "anyOf": [
+                    {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  ],
+                  "examples": [
+                    "2024-06-03",
+                    "2024-06-03T13:30:00Z",
+                    1717421400
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "End of the period, exclusive, in the same formats; default now.",
+              "examples": [
+                "2024-06-04"
+              ],
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandlesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The instrument is not in the catalog (`instrument-not-found`)."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid parameters (`validation`), a period outside the available data (`period-out-of-range`) or more candles than `max_candles` (`too-many-candles`)."
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "More candle and instrument requests from this address than the per-minute limit (`rate-limited`); see `Retry-After`."
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The source sent data that failed validation (`source-data-invalid`)."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The source is down or our request budget for it is spent (`source-unavailable`); `Retry-After` when waiting helps."
+          }
+        },
+        "summary": "Candles",
         "tags": [
           "data"
         ]

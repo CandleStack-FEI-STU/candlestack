@@ -47,31 +47,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/data/candles": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Candles
-         * @description Closed candles of one instrument and timeframe with `start <= t < end`.
-         *
-         *     Stocks have regular-session candles only (09:30-16:00 New York), aligned to the session
-         *     open. Missing candles are never filled; `meta.gaps` reports them. Limits: `max_candles`
-         *     expected candles per request (see the instrument detail) and a per-minute number of
-         *     candle and instrument requests per client address.
-         */
-        get: operations["candles_api_v1_data_candles_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/data/instruments": {
         parameters: {
             query?: never;
@@ -88,6 +63,7 @@ export interface paths {
          *     first), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word
          *     in the name, substring of the symbol, substring of the name; ties go to the shorter symbol,
          *     then alphabetically. Without `q`, every instrument comes back in symbol order.
+         *     `exchange` narrows any of these to the stocks listed on it.
          *     `total` counts all matches: page through them with `offset` and `limit`.
          *
          *     When the instrument list of one market cannot be loaded, the other market is still
@@ -112,10 +88,35 @@ export interface paths {
         /**
          * Instrument detail
          * @description An instrument with its timeframes, available period and the candle limit: what a valid
-         *     `/candles` request can ask for. Counts against the per-minute limit of requests per client
-         *     address, like `/candles`.
+         *     candle request can ask for. Counts against the per-minute limit of requests per client
+         *     address, like candle requests.
          */
         get: operations["instrument_detail_api_v1_data_instruments__instrument_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/data/instruments/{instrument_id}/candles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Candles
+         * @description Closed candles of one instrument and timeframe with `start <= t < end`.
+         *
+         *     Stocks have regular-session candles only (09:30-16:00 New York), aligned to the session
+         *     open. Missing candles are never filled; `meta.gaps` reports them. Limits: `max_candles`
+         *     expected candles per request (see the instrument detail) and a per-minute number of
+         *     candle and instrument requests per client address.
+         */
+        get: operations["candles_api_v1_data_instruments__instrument_id__candles_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -262,6 +263,13 @@ export interface components {
              */
             v: number[];
         };
+        /**
+         * Exchange
+         * @description Listing exchanges of the stocks in the catalog: the values Alpaca reports for tradable US
+         *     equities without OTC (docs/data.md, "Alpaca").
+         * @enum {string}
+         */
+        Exchange: "AMEX" | "ARCA" | "BATS" | "NASDAQ" | "NYSE";
         /** Health */
         Health: {
             /** Commit */
@@ -283,7 +291,7 @@ export interface components {
         };
         /**
          * InstrumentDetailOut
-         * @description An instrument and what a valid `/candles` request for it can ask for.
+         * @description An instrument and what a valid candle request for it can ask for.
          */
         InstrumentDetailOut: {
             /**
@@ -327,7 +335,7 @@ export interface components {
             market: components["schemas"]["Market"];
             /**
              * Max Candles
-             * @description Most candles one `/candles` response may hold.
+             * @description Most candles one candle response may hold.
              * @example 50000
              */
             max_candles: number;
@@ -599,79 +607,6 @@ export interface operations {
             };
         };
     };
-    candles_api_v1_data_candles_get: {
-        parameters: {
-            query: {
-                /** @description Instrument id, `<market>:<symbol>`. */
-                instrument: string;
-                timeframe: components["schemas"]["Timeframe"];
-                /** @description Start of the period, inclusive: UTC epoch seconds or ISO 8601 (`2024-06-03`, `2024-06-03T13:30:00Z`; without an offset it is UTC). */
-                start: number | string;
-                /** @description End of the period, exclusive, in the same formats; default now. */
-                end?: (number | string) | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CandlesOut"];
-                };
-            };
-            /** @description The instrument is not in the catalog (`instrument-not-found`). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Invalid parameters (`validation`), a period outside the available data (`period-out-of-range`) or more candles than `max_candles` (`too-many-candles`). */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description More candle and instrument requests from this address than the per-minute limit (`rate-limited`); see `Retry-After`. */
-            429: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description The source sent data that failed validation (`source-data-invalid`). */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description The source is down or our request budget for it is spent (`source-unavailable`); `Retry-After` when waiting helps. */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
-    };
     search_instruments_api_v1_data_instruments_get: {
         parameters: {
             query?: {
@@ -679,6 +614,8 @@ export interface operations {
                 q?: string | null;
                 /** @description Only this market. */
                 market?: components["schemas"]["Market"] | null;
+                /** @description Only stocks listed on this exchange; crypto pairs have none, so with `market=crypto` nothing matches. */
+                exchange?: components["schemas"]["Exchange"] | null;
                 /** @description Most items to return. */
                 limit?: number;
                 /** @description Matches to skip; past the end, `items` is empty. */
@@ -759,6 +696,80 @@ export interface operations {
                 };
             };
             /** @description Malformed instrument id (`validation`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description More candle and instrument requests from this address than the per-minute limit (`rate-limited`); see `Retry-After`. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The source sent data that failed validation (`source-data-invalid`). */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The source is down or our request budget for it is spent (`source-unavailable`); `Retry-After` when waiting helps. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    candles_api_v1_data_instruments__instrument_id__candles_get: {
+        parameters: {
+            query: {
+                timeframe: components["schemas"]["Timeframe"];
+                /** @description Start of the period, inclusive: UTC epoch seconds or ISO 8601 (`2024-06-03`, `2024-06-03T13:30:00Z`; without an offset it is UTC). */
+                start: number | string;
+                /** @description End of the period, exclusive, in the same formats; default now. */
+                end?: (number | string) | null;
+            };
+            header?: never;
+            path: {
+                /** @description Instrument id, `<market>:<symbol>`. */
+                instrument_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CandlesOut"];
+                };
+            };
+            /** @description The instrument is not in the catalog (`instrument-not-found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid parameters (`validation`), a period outside the available data (`period-out-of-range`) or more candles than `max_candles` (`too-many-candles`). */
             422: {
                 headers: {
                     [name: string]: unknown;

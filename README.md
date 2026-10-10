@@ -40,7 +40,7 @@ test request panel to try it, for example:
 | --- | --- |
 | search instruments | `GET /api/v1/data/instruments?q=btc` |
 | instrument detail | `GET /api/v1/data/instruments/crypto:BTCUSDT` |
-| candles | `GET /api/v1/data/candles?instrument=crypto:BTCUSDT&timeframe=1h&start=2024-06-03&end=2024-06-04` |
+| candles | `GET /api/v1/data/instruments/crypto:BTCUSDT/candles?timeframe=1h&start=2024-06-03&end=2024-06-04` |
 | sources reachable | `GET /api/health/sources` |
 
 The local stack runs no frontend, so `/` and the logo in the API reference answer 404 there.

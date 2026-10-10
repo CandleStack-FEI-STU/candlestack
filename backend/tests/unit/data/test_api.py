@@ -361,9 +361,8 @@ def test_instrument_ids_in_other_scripts(client: TestClient, service: FakeDataSe
 
 def test_candles(client: TestClient, service: FakeDataService) -> None:
     response = client.get(
-        "/api/v1/data/candles",
+        "/api/v1/data/instruments/crypto:btcusdt/candles",
         params={
-            "instrument": "crypto:btcusdt",
             "timeframe": "1h",
             "start": DAY_START,
             "end": DAY_END,
@@ -399,12 +398,46 @@ def test_candles(client: TestClient, service: FakeDataService) -> None:
     ]
 
 
+@pytest.mark.parametrize("instrument", ["stock:BRK.B", "crypto:币安人生USDT"])
+def test_candles_instrument_path(
+    client: TestClient, service: FakeDataService, instrument: str
+) -> None:
+    response = client.get(
+        f"/api/v1/data/instruments/{instrument}/candles",
+        params={
+            "instrument": "crypto:BTCUSDT",
+            "timeframe": "1h",
+            "start": DAY_START,
+            "end": DAY_END,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["meta"]["instrument"] == instrument
+    assert service.calls == [
+        ("candles", (InstrumentId.parse(instrument), Timeframe.H1, DAY_START, DAY_END)),
+    ]
+
+
+@pytest.mark.parametrize("path", ["/api/v1/data/candles", "/api/v1/data/instruments//candles"])
+def test_candles_requires_instrument_path(
+    client: TestClient, service: FakeDataService, path: str
+) -> None:
+    response = client.get(
+        path,
+        params={"instrument": "stock:AAPL", "timeframe": "1h", "start": DAY_START},
+    )
+
+    problem(response, 404, "not-found")
+    assert service.calls == []
+
+
 def test_no_candles(client: TestClient, service: FakeDataService) -> None:
     found = candle_set(BTCUSDT.id, Timeframe.H1, DAY_START, DAY_END)
     service.result = replace(found, frame=found.frame.clear(), gaps=[(DAY_START, DAY_END)])
 
     body = client.get(
-        f"/api/v1/data/candles?instrument=crypto:BTCUSDT&timeframe=1h&start={DAY_START}"
+        f"/api/v1/data/instruments/crypto:BTCUSDT/candles?timeframe=1h&start={DAY_START}"
         f"&end={DAY_END}"
     ).json()
 
@@ -431,8 +464,8 @@ def test_start_formats(
     client: TestClient, service: FakeDataService, value: str, seconds: int
 ) -> None:
     response = client.get(
-        "/api/v1/data/candles",
-        params={"instrument": "stock:AAPL", "timeframe": "1d", "start": value, "end": DAY_END + 1},
+        "/api/v1/data/instruments/stock:AAPL/candles",
+        params={"timeframe": "1d", "start": value, "end": DAY_END + 1},
     )
 
     assert response.status_code == 200
@@ -443,7 +476,7 @@ def test_end_formats_and_default(
     client: TestClient, service: FakeDataService, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr("candlestack.data.api._time", lambda: DAY_END + 0.7)
-    base = "/api/v1/data/candles?instrument=stock:AAPL&timeframe=1h&start=2024-06-03"
+    base = "/api/v1/data/instruments/stock:AAPL/candles?timeframe=1h&start=2024-06-03"
 
     client.get(f"{base}&end=2024-06-03T20:00:00Z")
     client.get(base)
@@ -452,69 +485,65 @@ def test_end_formats_and_default(
 
 
 @pytest.mark.parametrize(
-    ("query", "detail"),
+    ("path", "detail"),
     [
         (
-            "timeframe=1h&start=2024-06-03",
-            "query parameter 'instrument': Field required",
-        ),
-        (
-            "instrument=AAPL&timeframe=1h&start=2024-06-03",
+            "AAPL/candles?timeframe=1h&start=2024-06-03",
             (
-                "query parameter 'instrument': Instrument id 'AAPL' must be <market>:<symbol>, "
+                "path parameter 'instrument_id': Instrument id 'AAPL' must be <market>:<symbol>, "
                 "for example crypto:BTCUSDT or stock:AAPL."
             ),
         ),
         (
-            "instrument=stock:AAPL&timeframe=2h&start=2024-06-03",
+            "stock:AAPL/candles?timeframe=2h&start=2024-06-03",
             "query parameter 'timeframe': Input should be '1m', '5m', '15m', '1h', '4h' or '1d'",
         ),
         (
-            "instrument=stock:AAPL&timeframe=1h",
+            "stock:AAPL/candles?timeframe=1h",
             "query parameter 'start': Field required",
         ),
         (
-            "instrument=stock:AAPL&timeframe=1h&start=yesterday",
+            "stock:AAPL/candles?timeframe=1h&start=yesterday",
             (
                 "query parameter 'start': 'yesterday' is neither epoch seconds nor an ISO 8601 "
                 "date or date-time"
             ),
         ),
         (
-            "instrument=stock:AAPL&timeframe=1h&start=-1717372800",
+            "stock:AAPL/candles?timeframe=1h&start=-1717372800",
             (
                 "query parameter 'start': '-1717372800' is neither epoch seconds nor an ISO 8601 "
                 "date or date-time"
             ),
         ),
         (
-            "instrument=stock:AAPL&timeframe=1h&start=2024-06-03T00:00:00+02:00",
+            "stock:AAPL/candles?timeframe=1h&start=2024-06-03T00:00:00+02:00",
             (
                 "query parameter 'start': '2024-06-03T00:00:00 02:00' is neither epoch seconds "
                 "nor an ISO 8601 date or date-time (in a URL, write + as %2B)"
             ),
         ),
         (
-            "instrument=stock:AAPL&timeframe=1h&start=1717372800000",
+            "stock:AAPL/candles?timeframe=1h&start=1717372800000",
             (
                 "query parameter 'start': 1717372800000 is after the year 9999: send epoch "
                 "seconds, not milliseconds"
             ),
         ),
         (
-            "instrument=stock:AAPL&timeframe=1h&start=2024-06-04&end=2024-06-03",
+            "stock:AAPL/candles?timeframe=1h&start=2024-06-04&end=2024-06-03",
             f"query parameter 'end': end ({DAY_START}) must be after start ({DAY_END})",
         ),
         (
-            "instrument=stock:AAPL&timeframe=1h&start=2024-06-03&end=2024-06-03",
+            "stock:AAPL/candles?timeframe=1h&start=2024-06-03&end=2024-06-03",
             f"query parameter 'end': end ({DAY_START}) must be after start ({DAY_START})",
         ),
     ],
 )
 def test_candles_validation(
-    client: TestClient, service: FakeDataService, query: str, detail: str
+    client: TestClient, service: FakeDataService, path: str, detail: str
 ) -> None:
-    response = client.get(f"/api/v1/data/candles?{query}")
+    response = client.get(f"/api/v1/data/instruments/{path}")
 
     body = problem(response, 422, "validation")
     assert body["detail"] == detail
@@ -527,7 +556,7 @@ def test_start_in_the_future(
     monkeypatch.setattr("candlestack.data.api._time", lambda: DAY_START)
 
     response = client.get(
-        f"/api/v1/data/candles?instrument=stock:AAPL&timeframe=1h&start={DAY_START}"
+        f"/api/v1/data/instruments/stock:AAPL/candles?timeframe=1h&start={DAY_START}"
     )
 
     assert problem(response, 422, "validation")["detail"] == (
@@ -536,15 +565,15 @@ def test_start_in_the_future(
 
 
 def test_all_parameter_errors_at_once(client: TestClient) -> None:
-    response = client.get("/api/v1/data/candles?instrument=AAPL&timeframe=2h&start=soon")
+    response = client.get("/api/v1/data/instruments/AAPL/candles?timeframe=2h&start=soon")
 
     locs = [error["loc"] for error in problem(response, 422, "validation")["errors"]]
-    assert locs == [["query", "instrument"], ["query", "timeframe"], ["query", "start"]]
+    assert locs == [["path", "instrument_id"], ["query", "timeframe"], ["query", "start"]]
 
 
 # --- error mapping ----------------------------------------------------------------------------
 
-CANDLES = f"/api/v1/data/candles?instrument=crypto:BTCUSDT&timeframe=1m&start={DAY_START}"
+CANDLES = f"/api/v1/data/instruments/crypto:BTCUSDT/candles?timeframe=1m&start={DAY_START}"
 
 
 def test_period_out_of_range(client: TestClient, service: FakeDataService) -> None:
@@ -689,7 +718,7 @@ def test_rate_limited(client: TestClient, service: FakeDataService, limiter: Fak
 def test_rate_limit_comes_before_validation(client: TestClient, limiter: FakeLimiter) -> None:
     limiter.wait = 0.2
 
-    response = client.get("/api/v1/data/candles?instrument=nonsense")
+    response = client.get("/api/v1/data/instruments/nonsense/candles")
 
     problem(response, 429, "rate-limited")
     assert response.headers["retry-after"] == "1"
@@ -785,7 +814,17 @@ def test_openapi_documents_the_data_api(client: TestClient) -> None:
     schema = client.get("/api/v1/openapi.json").json()
     paths = schema["paths"]
 
-    candles = paths["/api/v1/data/candles"]["get"]
+    assert "/api/v1/data/candles" not in paths
+    candles = paths["/api/v1/data/instruments/{instrument_id}/candles"]["get"]
+    assert [
+        (parameter["name"], parameter["in"], parameter["required"])
+        for parameter in candles["parameters"]
+    ] == [
+        ("instrument_id", "path", True),
+        ("timeframe", "query", True),
+        ("start", "query", True),
+        ("end", "query", False),
+    ]
     assert candles["tags"] == ["data"]
     assert candles["responses"]["200"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/CandlesOut"

@@ -31,12 +31,12 @@ describe('candleWindow', () => {
 });
 
 describe('getCandles', () => {
-  it('asks the candles endpoint for the window', async () => {
+  it('asks the candles endpoint of the instrument for the window', async () => {
     const fetch = vi.fn(() => Promise.resolve(new Response('{"t":[]}')));
     vi.stubGlobal('fetch', fetch);
     await getCandles('crypto:BTCUSDT', '1h', { start: 1, end: 2 });
     expect(fetch).toHaveBeenCalledWith(
-      '/api/v1/data/candles?instrument=crypto%3ABTCUSDT&timeframe=1h&start=1&end=2',
+      '/api/v1/data/instruments/crypto%3ABTCUSDT/candles?timeframe=1h&start=1&end=2',
       expect.anything(),
     );
   });

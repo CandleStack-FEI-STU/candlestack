@@ -236,7 +236,7 @@ async def test_alpaca_not_answering_is_unavailable_and_remembered(
     response = await get_api(
         service,
         redis,
-        f"/api/v1/data/candles?instrument=stock:AAPL&timeframe=1h&start={start}&end={end}",
+        f"/api/v1/data/instruments/stock:AAPL/candles?timeframe=1h&start={start}&end={end}",
     )
 
     assert (info.value.source, info.value.detail, info.value.retry_after) == (
@@ -280,7 +280,7 @@ async def test_answer_that_is_not_json_is_invalid_data(
         response = await get_api(
             service,
             redis,
-            f"/api/v1/data/candles?instrument=stock:AAPL&timeframe=1h&start={start}&end={end}",
+            f"/api/v1/data/instruments/stock:AAPL/candles?timeframe=1h&start={start}&end={end}",
         )
 
     assert info.value.source == "alpaca"
