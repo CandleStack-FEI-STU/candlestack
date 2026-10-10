@@ -4,4 +4,5 @@ export { ApiError } from './client';
 export { useHealth, type Health } from './health';
 export { exchangeName, instrumentQueryOptions, type InstrumentDetail, type Market } from './instruments';
 export { queryClient } from './queryClient';
+export { EXCHANGES, hasNextPage, instrumentSearchQueryOptions, type Exchange, type Instrument } from './search';
 export { parseTimeframe, type Timeframe } from './timeframes';
