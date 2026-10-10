@@ -5,6 +5,12 @@ import { CandlesError } from './CandlesError';
 import { timeZoneNote } from './time';
 import { useCandleHistory } from './useCandleHistory';
 
+// "1 candle is missing …" or "3 candles are missing …".
+function gapsNote(count: number): string {
+  const missing = count === 1 ? '1 candle is' : `${count} candles are`;
+  return `${missing} missing in the source data and the chart skips ${count === 1 ? 'it' : 'them'}.`;
+}
+
 function Status({
   market,
   isLoadingOlder,
@@ -21,7 +27,7 @@ function Status({
     timeZoneNote(market),
   ];
   // The chart joins sessions, so a hole in the data would not show. Say so.
-  if (gapsTotal > 0) notes.push(`${gapsTotal} candles are missing in the source data and the chart skips them.`);
+  if (gapsTotal > 0) notes.push(gapsNote(gapsTotal));
   return <p className="mt-2 text-xs text-muted-foreground">{notes.join(' ')}</p>;
 }
 

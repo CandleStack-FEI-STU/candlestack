@@ -40,8 +40,7 @@ function applyTheme(chart: IChartApi, series: Series) {
   const colors = themeColors();
   chart.applyOptions({
     layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: colors.text },
-    // Price levels only: vertical lines on top of the time axis labels add little.
-    grid: { vertLines: { visible: false }, horzLines: { color: colors.grid } },
+    grid: { vertLines: { color: colors.grid }, horzLines: { color: colors.grid } },
     rightPriceScale: { borderColor: colors.grid },
     timeScale: { borderColor: colors.grid },
   });
