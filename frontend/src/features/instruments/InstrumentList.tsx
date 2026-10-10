@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
-import { hasNextPage, instrumentSearchQueryOptions, type Market } from '@/api';
+import { hasNextPage, instrumentSearchQueryOptions, type Exchange, type Market } from '@/api';
 import { Button } from '@/components/ui/button';
 
 import { InstrumentTable } from './InstrumentTable';
@@ -10,7 +10,7 @@ import { Pager } from './Pager';
 // Rows per page. The API allows up to 100; 50 fits a screen or two.
 export const LIST_PAGE_SIZE = 50;
 
-type Props = { query: string; market: Market | undefined; page: number };
+type Props = { query: string; market: Market | undefined; exchange: Exchange | undefined; page: number };
 
 function Note({ children, tone = 'muted' }: { children: string; tone?: 'muted' | 'error' }) {
   const color = tone === 'error' ? 'text-destructive' : 'text-muted-foreground';
@@ -33,9 +33,9 @@ function ErrorState({ error, onRetry }: { error: ListError; onRetry: () => void 
   );
 }
 
-// The search result for the query, market and page in the URL, with its empty and error states.
-export function InstrumentList({ query, market, page }: Props) {
-  const params = { q: query, market, limit: LIST_PAGE_SIZE, offset: (page - 1) * LIST_PAGE_SIZE };
+// The search result for the query, market, exchange and page in the URL, with its empty and error states.
+export function InstrumentList({ query, market, exchange, page }: Props) {
+  const params = { q: query, market, exchange, limit: LIST_PAGE_SIZE, offset: (page - 1) * LIST_PAGE_SIZE };
   const result = useQuery(instrumentSearchQueryOptions(params));
 
   if (result.isPending) return <Note>Loading instruments…</Note>;
@@ -49,7 +49,11 @@ export function InstrumentList({ query, market, page }: Props) {
     <>
       {unavailable && <p className="mb-3 rounded-md border px-3 py-2 text-sm text-warn">{unavailable}</p>}
       <div className={result.isPlaceholderData ? 'rounded-lg border opacity-60' : 'rounded-lg border'}>
-        {data.items.length === 0 ? <Note>{emptyMessage(query, market)}</Note> : <InstrumentTable items={data.items} />}
+        {data.items.length === 0 ? (
+          <Note>{emptyMessage(query, market, exchange)}</Note>
+        ) : (
+          <InstrumentTable items={data.items} />
+        )}
       </div>
       <Pager
         page={page}

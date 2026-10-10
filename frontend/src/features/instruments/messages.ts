@@ -1,10 +1,12 @@
-import { ApiError, type Market } from '@/api';
+import { ApiError, type Exchange, type Market } from '@/api';
 
 const MARKET_NAMES: Record<Market, string> = { stock: 'Stocks', crypto: 'Crypto pairs' };
 
-// What to say when nothing matches: name the query and the market, so the user sees why.
-export function emptyMessage(query: string, market: Market | undefined): string {
-  const where = market === undefined ? '' : ` in ${MARKET_NAMES[market].toLowerCase()}`;
+// What to say when nothing matches: name the query, the market and the exchange, so the user
+// sees why.
+export function emptyMessage(query: string, market: Market | undefined, exchange?: Exchange): string {
+  const inMarket = market === undefined ? '' : ` in ${MARKET_NAMES[market].toLowerCase()}`;
+  const where = exchange === undefined ? inMarket : `${inMarket} on ${exchange}`;
   if (query === '') return `No instruments${where}.`;
   return `No instruments match “${query}”${where}. Try a symbol like btc or a name like apple.`;
 }

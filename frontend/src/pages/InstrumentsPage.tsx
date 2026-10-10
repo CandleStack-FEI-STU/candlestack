@@ -2,13 +2,13 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useCallback, useEffect } from 'react';
 
 import { PageTitle } from '@/components/PageTitle';
-import { InstrumentList, MarketFilter, SearchBox, rememberListSearch } from '@/features/instruments';
+import { ExchangeFilter, InstrumentList, MarketFilter, SearchBox, rememberListSearch } from '@/features/instruments';
 import { usePageTitle } from '@/lib/usePageTitle';
 
-// The start page: every stock and crypto pair, searchable. /?q=btc&market=crypto&page=2
+// The start page: every stock and crypto pair, searchable. /?q=apple&market=stock&exchange=NASDAQ&page=2
 export function InstrumentsPage() {
   const search = useSearch({ from: '/' });
-  const { q = '', market, page = 1 } = search;
+  const { q = '', market, exchange, page = 1 } = search;
   const navigate = useNavigate({ from: '/' });
   // "Instruments" on an instrument page comes back to this search.
   useEffect(() => rememberListSearch(search), [search]);
@@ -26,9 +26,13 @@ export function InstrumentsPage() {
       <PageTitle title="Instruments" description="US stocks and crypto pairs. Open one to see its candles." />
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <SearchBox query={q} onSearch={onSearch} />
-        <MarketFilter current={market} />
+        <div className="flex flex-wrap items-center gap-2">
+          <MarketFilter current={market} />
+          {/* Crypto pairs have no exchange: the filter only shows where stocks are listed. */}
+          {market !== 'crypto' && <ExchangeFilter current={exchange} />}
+        </div>
       </div>
-      <InstrumentList query={q} market={market} page={page} />
+      <InstrumentList query={q} market={market} exchange={exchange} page={page} />
     </>
   );
 }

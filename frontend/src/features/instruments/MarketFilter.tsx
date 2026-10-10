@@ -17,7 +17,12 @@ export function MarketFilter({ current }: { current: Market | undefined }) {
         <Link
           key={label}
           from="/"
-          search={(prev) => ({ q: 'q' in prev ? prev.q : undefined, market })}
+          search={(prev) => ({
+            q: 'q' in prev ? prev.q : undefined,
+            market,
+            // Crypto pairs have no exchange: switching to them drops it.
+            exchange: market !== 'crypto' && 'exchange' in prev ? prev.exchange : undefined,
+          })}
           replace
           aria-current={market === current ? 'page' : undefined}
           className={cn(

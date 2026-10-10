@@ -7,13 +7,27 @@ import type { components } from './schema';
 export type Instrument = components['schemas']['InstrumentOut'];
 export type InstrumentSearchResult = components['schemas']['InstrumentSearchOut'];
 
-export type InstrumentSearchParams = { q: string; market?: Market; limit: number; offset: number };
+export type Exchange = components['schemas']['Exchange'];
+
+// The exchanges the API filters by, in the order the filter shows them. `satisfies` keeps the
+// list in step with the generated type: a value the API drops fails the type check.
+export const EXCHANGES = ['NASDAQ', 'NYSE', 'ARCA', 'AMEX', 'BATS'] as const satisfies readonly Exchange[];
+
+export type InstrumentSearchParams = {
+  q: string;
+  market?: Market;
+  // Only stocks listed there; crypto pairs have no exchange.
+  exchange?: Exchange;
+  limit: number;
+  offset: number;
+};
 
 // GET /api/v1/data/instruments. Search is not rate-limited, and it reads cached catalogs only.
 export function searchInstruments(params: InstrumentSearchParams, signal?: AbortSignal) {
   const query = new URLSearchParams({ limit: String(params.limit), offset: String(params.offset) });
   if (params.q !== '') query.set('q', params.q);
   if (params.market) query.set('market', params.market);
+  if (params.exchange) query.set('exchange', params.exchange);
   return get<InstrumentSearchResult>(`/v1/data/instruments?${query.toString()}`, signal);
 }
 
