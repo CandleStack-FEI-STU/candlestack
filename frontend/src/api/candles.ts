@@ -36,7 +36,7 @@ export function candleWindow(market: Market, timeframe: Timeframe, end: number):
   return { start: end - Math.max(Math.ceil(span * spread), span + LONG_WEEKEND), end };
 }
 
-// GET /api/v1/data/candles. Moves to /instruments/{id}/candles with #104: change it here only.
+// GET /api/v1/data/instruments/{id}/candles.
 export function getCandles(
   instrument: string,
   timeframe: Timeframe,
@@ -44,12 +44,11 @@ export function getCandles(
   signal?: AbortSignal,
 ): Promise<Candles> {
   const query = new URLSearchParams({
-    instrument,
     timeframe,
     start: String(window.start),
     end: String(window.end),
   });
-  return get<Candles>(`/v1/data/candles?${query.toString()}`, signal);
+  return get<Candles>(`/v1/data/instruments/${encodeURIComponent(instrument)}/candles?${query.toString()}`, signal);
 }
 
 export type CandlePage = {
