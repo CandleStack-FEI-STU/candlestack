@@ -1,20 +1,24 @@
-import type { InstrumentDetail, Timeframe } from '@/api';
+import type { InstrumentDetail, Market, Timeframe } from '@/api';
 
 import { CandleChart } from './CandleChart';
 import { CandlesError } from './CandlesError';
+import { timeZoneNote } from './time';
 import { useCandleHistory } from './useCandleHistory';
 
 function Status({
+  market,
   isLoadingOlder,
   hasOlder,
   gapsTotal,
 }: {
+  market: Market;
   isLoadingOlder: boolean;
   hasOlder: boolean;
   gapsTotal: number;
 }) {
   const notes = [
     isLoadingOlder ? 'Loading older candles…' : hasOlder ? 'Scroll left for older candles.' : 'All history is loaded.',
+    timeZoneNote(market),
   ];
   // The chart joins sessions, so a hole in the data would not show. Say so.
   if (gapsTotal > 0) notes.push(`${gapsTotal} candles are missing in the source data and the chart skips them.`);
@@ -42,7 +46,12 @@ export function InstrumentCandles({ instrument, timeframe }: { instrument: Instr
       ) : (
         <CandleChart bars={history.bars} market={instrument.market} onNearLeftEdge={history.loadOlder} />
       )}
-      <Status isLoadingOlder={history.isLoadingOlder} hasOlder={history.hasOlder} gapsTotal={history.gapsTotal} />
+      <Status
+        market={instrument.market}
+        isLoadingOlder={history.isLoadingOlder}
+        hasOlder={history.hasOlder}
+        gapsTotal={history.gapsTotal}
+      />
     </section>
   );
 }

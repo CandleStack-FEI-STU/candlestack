@@ -1,9 +1,20 @@
 import type { Market } from '@/api';
 
-// Stocks trade on New York time (the session opens at 09:30 there); crypto has no home
-// exchange clock, so it shows UTC like the API. The chart gets epoch seconds and would show UTC.
-export function chartTimeZone(market: Market): string {
-  return market === 'stock' ? 'America/New_York' : 'UTC';
+// The viewer's own zone from the browser, e.g. 'Europe/Bratislava'.
+export function viewerTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+}
+
+// Stocks trade on New York time (the session opens at 09:30 there all year). Crypto trades around
+// the clock with no home exchange, so it shows the viewer's own time. The API sends UTC epoch
+// seconds; without a zone the chart would show UTC.
+export function chartTimeZone(market: Market, viewer = viewerTimeZone()): string {
+  return market === 'stock' ? 'America/New_York' : viewer;
+}
+
+// Under the chart, so nobody has to guess which clock the axis uses.
+export function timeZoneNote(market: Market, viewer = viewerTimeZone()): string {
+  return market === 'stock' ? 'Times are New York time.' : `Times are your time (${viewer}).`;
 }
 
 // The kinds of tick marks lightweight-charts asks a label for (its TickMarkType enum).
