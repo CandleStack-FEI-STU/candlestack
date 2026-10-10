@@ -10,6 +10,31 @@ function exchangeOf(instrument: Instrument): string {
 const HEAD = 'px-3 py-2 text-left text-xs font-medium text-muted-foreground';
 const CELL = 'px-3 py-2.5';
 
+function Row({ instrument }: { instrument: Instrument }) {
+  return (
+    <tr className="relative border-b last:border-b-0 hover:bg-accent">
+      <td className={`${CELL} font-mono`}>
+        <Link
+          to="/instrument/$id"
+          params={{ id: instrument.id }}
+          className="outline-none after:absolute after:inset-0 focus-visible:text-primary"
+        >
+          {instrument.symbol}
+        </Link>
+      </td>
+      <td className={`${CELL} max-w-[16rem] text-muted-foreground`}>
+        <span className="block truncate">{instrument.name}</span>
+        {/* On a phone the market and exchange columns are hidden: show them under the name. */}
+        <span className="block text-xs capitalize sm:hidden">
+          {instrument.market} · {exchangeOf(instrument)}
+        </span>
+      </td>
+      <td className={`${CELL} hidden capitalize sm:table-cell`}>{instrument.market}</td>
+      <td className={`${CELL} hidden sm:table-cell`}>{exchangeOf(instrument)}</td>
+    </tr>
+  );
+}
+
 // One row per instrument. The symbol is the row's link, stretched over the whole row, so the
 // row is one click target and one tab stop.
 export function InstrumentTable({ items }: { items: readonly Instrument[] }) {
@@ -33,26 +58,7 @@ export function InstrumentTable({ items }: { items: readonly Instrument[] }) {
       </thead>
       <tbody>
         {items.map((instrument) => (
-          <tr key={instrument.id} className="relative border-b last:border-b-0 hover:bg-accent">
-            <td className={`${CELL} font-mono`}>
-              <Link
-                to="/instrument/$id"
-                params={{ id: instrument.id }}
-                className="outline-none after:absolute after:inset-0 focus-visible:text-primary"
-              >
-                {instrument.symbol}
-              </Link>
-            </td>
-            <td className={`${CELL} max-w-[16rem] text-muted-foreground`}>
-              <span className="block truncate">{instrument.name}</span>
-              {/* On a phone the market and exchange columns are hidden: show them under the name. */}
-              <span className="block text-xs capitalize sm:hidden">
-                {instrument.market} · {exchangeOf(instrument)}
-              </span>
-            </td>
-            <td className={`${CELL} hidden capitalize sm:table-cell`}>{instrument.market}</td>
-            <td className={`${CELL} hidden sm:table-cell`}>{exchangeOf(instrument)}</td>
-          </tr>
+          <Row key={instrument.id} instrument={instrument} />
         ))}
       </tbody>
     </table>

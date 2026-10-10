@@ -3,6 +3,7 @@ import { useParams, useSearch } from '@tanstack/react-router';
 
 import { instrumentQueryOptions } from '@/api';
 import { InstrumentCandles, InstrumentHeader, TimeframeSwitch } from '@/features/instrument';
+import { BackToList } from '@/features/instruments';
 import { usePageTitle } from '@/lib/usePageTitle';
 
 // /instrument/crypto:BTCUSDT?tf=1h. The route loader has already fetched the instrument.
@@ -14,6 +15,7 @@ export function InstrumentPage() {
 
   return (
     <>
+      <BackToList />
       <InstrumentHeader instrument={instrument} />
       <div className="mb-3">
         <TimeframeSwitch timeframes={instrument.timeframes} current={tf} />
