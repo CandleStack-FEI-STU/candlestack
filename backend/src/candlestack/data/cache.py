@@ -108,14 +108,14 @@ class Cache:
             if self._is_down():
                 return (await fetch())[0]
             try:
-                value, failure = await self._redis.mget(key(name), FAIL_PREFIX + name)
+                value = await self._lookup(name)
                 if value is not None:
-                    # redis-py types values as bytes | str; this client never decodes.
-                    return value  # ty: ignore[invalid-return-type]
-                if failure is not None:
-                    raise _decode_failure(failure)
+                    return value
                 if await self._redis.set(lock, token, nx=True, px=LOCK_TTL_MS):
-                    break
+                    value = await self._recheck(name, lock, token)
+                    if value is None:
+                        break
+                    return value
             except _REDIS_ERRORS as exc:
                 self._failed(exc)
                 return (await fetch())[0]
@@ -130,6 +130,29 @@ class Cache:
             return value
         finally:
             await self._release(lock, token)
+
+    async def _lookup(self, name: str) -> bytes | None:
+        """The stored value, or ``None``; raises the error kept by a failed fetch."""
+        value, failure = await self._redis.mget(key(name), FAIL_PREFIX + name)
+        if value is not None:
+            # redis-py types values as bytes | str; this client never decodes.
+            return value  # ty: ignore[invalid-return-type]
+        if failure is not None:
+            raise _decode_failure(failure)
+        return None
+
+    async def _recheck(self, name: str, lock: str, token: str) -> bytes | None:
+        """Looks again right after the lock was taken: the holder may have stored the value and
+        released the lock between the first lookup and the lock, and it would be fetched twice.
+        When it is there (or its error), the lock is given back."""
+        try:
+            value = await self._lookup(name)
+        except (SourceUnavailable, DataIntegrityError):
+            await self._release(lock, token)
+            raise
+        if value is not None:
+            await self._release(lock, token)
+        return value
 
     async def lock(self, name: str) -> str | None:
         """Takes the single-flight lock of ``name`` without waiting: a token to give back with

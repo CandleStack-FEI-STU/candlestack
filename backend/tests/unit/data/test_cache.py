@@ -130,19 +130,21 @@ async def test_a_value_is_fetched_and_not_cached(
 async def test_redis_fails_after_the_lock_was_taken(
     error: Exception, caplog: pytest.LogCaptureFixture
 ) -> None:
-    # Redis answers the lookup and the lock, then goes away before the value is stored.
-    redis = FailingRedis(error, up=2)
+    # Redis answers the lookup, the lock and the second lookup, then goes away before the value
+    # is stored.
+    redis = FailingRedis(error, up=3)
 
     assert await redis.cache().get_or_fetch("calendar", fetch) == b"fetched"
 
-    assert redis.calls == ["mget", "set", "set"]  # lookup, lock, the value; no release
+    # lookup, lock, lookup again, the value; no release
+    assert redis.calls == ["mget", "set", "mget", "set"]
     assert warned(caplog, error) == 1
 
 
 async def test_a_failed_fetch_keeps_its_error_when_redis_fails_too(
     error: Exception, caplog: pytest.LogCaptureFixture
 ) -> None:
-    redis = FailingRedis(error, up=2)
+    redis = FailingRedis(error, up=3)
 
     async def timeout() -> tuple[bytes, int]:
         raise SourceUnavailable("binance", "Binance did not answer in time. Try again in a minute.")
@@ -150,7 +152,8 @@ async def test_a_failed_fetch_keeps_its_error_when_redis_fails_too(
     with pytest.raises(SourceUnavailable, match="Binance did not answer in time"):
         await redis.cache().get_or_fetch("calendar", timeout)
 
-    assert redis.calls == ["mget", "set", "set"]  # lookup, lock, the error; no release
+    # lookup, lock, lookup again, the error; no release
+    assert redis.calls == ["mget", "set", "mget", "set"]
     assert warned(caplog, error) == 1
 
 
@@ -181,3 +184,44 @@ async def test_redis_is_left_alone_for_the_back_off_window(
 
     assert redis.calls == ["get", "get"]
     assert warned(caplog, error) == 2
+
+
+class ScriptedRedis:
+    """Answers each command from a script, in order, and records the commands."""
+
+    def __init__(self, *replies: Any) -> None:
+        self.replies = list(replies)
+        self.calls: list[str] = []
+
+    def __getattr__(self, command: str) -> Any:
+        async def send(*args: Any, **kwargs: Any) -> Any:
+            self.calls.append(command)
+            return self.replies.pop(0)
+
+        return send
+
+
+async def test_a_value_stored_between_the_lookup_and_the_lock_is_not_fetched_again() -> None:
+    # The holder stores the value and releases the lock after our lookup and before our lock:
+    # the lookup finds nothing, the lock is free, and only a second lookup finds the value.
+    redis = ScriptedRedis([None, None], True, [b"stored", None], 1)
+
+    async def never() -> tuple[bytes, int]:
+        raise AssertionError("fetched twice")
+
+    assert await Cache(cast("Redis", redis)).get_or_fetch("calendar", never) == b"stored"
+
+    assert redis.calls == ["mget", "set", "mget", "eval"]  # the lock is released, not kept
+
+
+async def test_an_error_stored_between_the_lookup_and_the_lock_is_raised() -> None:
+    failure = cache_module._encode_failure(SourceUnavailable("binance", "Binance is down."))[0]
+    redis = ScriptedRedis([None, None], True, [None, failure], 1)
+
+    async def never() -> tuple[bytes, int]:
+        raise AssertionError("fetched twice")
+
+    with pytest.raises(SourceUnavailable, match="Binance is down"):
+        await Cache(cast("Redis", redis)).get_or_fetch("calendar", never)
+
+    assert redis.calls == ["mget", "set", "mget", "eval"]
