@@ -1,4 +1,4 @@
-import type { InstrumentDetail } from '@/api';
+import { exchangeName, type InstrumentDetail } from '@/api';
 
 import { chartTimeZone, formatDate } from './time';
 
@@ -24,7 +24,7 @@ export function InstrumentHeader({ instrument }: { instrument: InstrumentDetail 
       <h1 className="mt-1 text-3xl font-semibold tracking-tight">{instrument.name}</h1>
       <dl className="mt-4 flex flex-wrap gap-x-8 gap-y-3">
         <Fact label="Symbol" value={instrument.symbol} />
-        <Fact label="Exchange" value={instrument.exchange ?? '—'} />
+        <Fact label="Exchange" value={exchangeName(instrument)} />
         <Fact label="Source" value={`${instrument.source} (${instrument.feed})`} />
         <Fact label="Data since" value={since} />
       </dl>
