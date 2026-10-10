@@ -29,7 +29,7 @@ const AWAY_BARS = 3;
 
 type Series = { candles: ISeriesApi<'Candlestick'>; volume: ISeriesApi<'Histogram'> };
 
-// '#089981' at 40%: the volume bars are a softer shade of their candle's color.
+// '#43b049' at 40%: the volume bars are a softer shade of their candle's color.
 function withAlpha(hex: string, alpha: number): string {
   const value = Number.parseInt(hex.replace('#', ''), 16);
   if (hex.length !== 7 || Number.isNaN(value)) return hex;
