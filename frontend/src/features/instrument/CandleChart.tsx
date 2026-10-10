@@ -40,7 +40,8 @@ function applyTheme(chart: IChartApi, series: Series) {
   const colors = themeColors();
   chart.applyOptions({
     layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: colors.text },
-    grid: { vertLines: { color: colors.grid }, horzLines: { color: colors.grid } },
+    // Price levels only: vertical lines on top of the time axis labels add little.
+    grid: { vertLines: { visible: false }, horzLines: { color: colors.grid } },
     rightPriceScale: { borderColor: colors.grid },
     timeScale: { borderColor: colors.grid },
   });
@@ -123,5 +124,7 @@ export function CandleChart({ bars, market, onNearLeftEdge }: Props) {
     firstTime.current = bars[0]?.time;
   }, [bars, theme, market]);
 
-  return <div ref={container} className="h-[min(65vh,560px)] w-full" />;
+  // As tall as the screen leaves room for: the header, the instrument info and the switch take
+  // about 23rem. Never under 20rem (phones in landscape), never over 60rem (tall monitors).
+  return <div ref={container} className="h-[clamp(20rem,calc(100dvh-23rem),60rem)] w-full" />;
 }

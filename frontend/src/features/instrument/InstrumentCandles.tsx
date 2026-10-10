@@ -26,7 +26,10 @@ export function InstrumentCandles({ instrument, timeframe }: { instrument: Instr
   const history = useCandleHistory(instrument, timeframe);
 
   return (
-    <section aria-label={`${instrument.symbol} candles, ${timeframe}`} className="rounded-lg border p-2 sm:p-4">
+    <section
+      aria-label={`${instrument.symbol} candles, ${timeframe}`}
+      className="rounded-lg border bg-background p-2 sm:p-4"
+    >
       {history.error && (
         <div className="mb-3">
           <CandlesError error={history.error} errorAt={history.errorAt} onRetry={history.retry} />
