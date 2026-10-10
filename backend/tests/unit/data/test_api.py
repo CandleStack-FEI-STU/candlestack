@@ -16,6 +16,7 @@ from candlestack.data import (
     CandleSet,
     DataError,
     DataIntegrityError,
+    Exchange,
     Instrument,
     InstrumentId,
     InstrumentInfo,
@@ -95,9 +96,15 @@ class FakeDataService:
     unavailable: list[Market] = field(default_factory=list)
 
     async def search(
-        self, q: str | None, market: Market | None = None, limit: int = 20, offset: int = 0
+        self,
+        q: str | None,
+        market: Market | None = None,
+        limit: int = 20,
+        offset: int = 0,
+        *,
+        exchange: Exchange | None = None,
     ) -> SearchResult:
-        self._called("search", q, market, limit, offset)
+        self._called("search", q, market, limit, offset, exchange)
         found = [BTCUSDT, AAPL]
         return SearchResult(found[offset : offset + limit], self.unavailable, len(found))
 
@@ -193,7 +200,7 @@ def test_search(client: TestClient, service: FakeDataService) -> None:
         "offset": 0,
         "unavailable": [],
     }
-    assert service.calls == [("search", ("btc", None, 20, 0))]
+    assert service.calls == [("search", ("btc", None, 20, 0, None))]
 
 
 def test_search_names_a_market_that_cannot_be_searched(
@@ -211,7 +218,7 @@ def test_search_passes_market_and_limit(client: TestClient, service: FakeDataSer
     response = client.get("/api/v1/data/instruments?q=apple&market=stock&limit=1")
 
     assert response.json()["count"] == 1
-    assert service.calls == [("search", ("apple", Market.STOCK, 1, 0))]
+    assert service.calls == [("search", ("apple", Market.STOCK, 1, 0, None))]
 
 
 def test_search_without_a_query(client: TestClient, service: FakeDataService) -> None:
@@ -219,7 +226,7 @@ def test_search_without_a_query(client: TestClient, service: FakeDataService) ->
 
     assert response.status_code == 200
     assert response.json()["count"] == 2
-    assert service.calls == [("search", (None, Market.STOCK, 20, 0))]
+    assert service.calls == [("search", (None, Market.STOCK, 20, 0, None))]
 
 
 def test_search_pages(client: TestClient, service: FakeDataService) -> None:
@@ -228,7 +235,14 @@ def test_search_pages(client: TestClient, service: FakeDataService) -> None:
     body = response.json()
     assert [item["id"] for item in body["items"]] == ["stock:AAPL"]
     assert (body["count"], body["total"], body["offset"]) == (1, 2, 1)
-    assert service.calls == [("search", (None, Market.STOCK, 50, 1))]
+    assert service.calls == [("search", (None, Market.STOCK, 50, 1, None))]
+
+
+def test_search_passes_exchange(client: TestClient, service: FakeDataService) -> None:
+    response = client.get("/api/v1/data/instruments?exchange=NYSE&q=brk")
+
+    assert response.status_code == 200
+    assert service.calls == [("search", ("brk", None, 20, 0, Exchange.NYSE))]
 
 
 def test_search_offset_past_the_end(client: TestClient) -> None:
@@ -248,6 +262,13 @@ def test_search_offset_past_the_end(client: TestClient) -> None:
         ("q=btc&limit=101", "query parameter 'limit': Input should be less than or equal to 100"),
         ("q=btc&offset=-1", "query parameter 'offset': Input should be greater than or equal to 0"),
         ("q=btc&market=forex", "query parameter 'market': Input should be 'crypto' or 'stock'"),
+        (
+            "exchange=LSE",
+            (
+                "query parameter 'exchange': Input should be 'AMEX', 'ARCA', 'BATS', 'NASDAQ' "
+                "or 'NYSE'"
+            ),
+        ),
     ],
 )
 def test_search_validation(

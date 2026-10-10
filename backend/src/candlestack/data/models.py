@@ -27,6 +27,17 @@ class Market(StrEnum):
     STOCK = "stock"
 
 
+class Exchange(StrEnum):
+    """Listing exchanges of the stocks in the catalog: the values Alpaca reports for tradable US
+    equities without OTC (docs/data.md, "Alpaca")."""
+
+    AMEX = "AMEX"
+    ARCA = "ARCA"
+    BATS = "BATS"
+    NASDAQ = "NASDAQ"
+    NYSE = "NYSE"
+
+
 class Timeframe(StrEnum):
     """Candle durations; iteration goes from the shortest to the longest."""
 

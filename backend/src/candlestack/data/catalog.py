@@ -7,6 +7,7 @@ BTCTRY); symbol prefix; prefix of a word in the name; substring of the symbol; s
 name. Other ties go to the shorter symbol, then alphabetically. Symbols are compared without
 separators and case (``btc/usdt`` finds ``BTCUSDT``, ``brkb`` finds ``BRK.B``), names word by
 word without case and punctuation. Without a query, every instrument comes back in symbol order.
+An exchange keeps only the stocks listed on it; crypto pairs have none.
 """
 
 import re
@@ -15,7 +16,7 @@ from collections.abc import Iterable
 
 import polars as pl
 
-from candlestack.data.models import Instrument, InstrumentId, Market
+from candlestack.data.models import Exchange, Instrument, InstrumentId, Market
 
 _WORD = re.compile(r"[^\W_]+")
 
@@ -42,6 +43,7 @@ class Catalog:
         self._frame = pl.DataFrame(
             {
                 "market": [str(instrument.market) for instrument in self._items],
+                "exchange": [instrument.exchange for instrument in self._items],
                 "symbol": [instrument.symbol for instrument in self._items],
                 "key": [normalise_query(instrument.symbol) for instrument in self._items],
                 "base": [normalise_query(instrument.base or "") for instrument in self._items],
@@ -50,6 +52,7 @@ class Catalog:
             },
             schema={
                 "market": pl.String,
+                "exchange": pl.String,
                 "symbol": pl.String,
                 "key": pl.String,
                 "base": pl.String,
@@ -65,18 +68,30 @@ class Catalog:
         return self._by_id.get(instrument_id)
 
     def search(
-        self, q: str | None, market: Market | None = None, limit: int = 20, offset: int = 0
+        self,
+        q: str | None,
+        market: Market | None = None,
+        limit: int = 20,
+        offset: int = 0,
+        *,
+        exchange: Exchange | None = None,
     ) -> list[Instrument]:
         """Best matches first (see the module docstring); ``None`` lists every instrument by
         symbol, an empty query finds nothing."""
-        return self.page(q, market, limit, offset)[0]
+        return self.page(q, market, limit, offset, exchange=exchange)[0]
 
     def page(
-        self, q: str | None, market: Market | None = None, limit: int = 20, offset: int = 0
+        self,
+        q: str | None,
+        market: Market | None = None,
+        limit: int = 20,
+        offset: int = 0,
+        *,
+        exchange: Exchange | None = None,
     ) -> tuple[list[Instrument], int]:
         """``limit`` matches from ``offset`` on, as ``search`` orders them, and the number of
         all matches."""
-        found = self._matches(q, market)
+        found = self._matches(q, market, exchange)
         total = found.height
         if limit <= 0:
             return [], total
@@ -84,9 +99,11 @@ class Catalog:
         page = found.slice(min(offset, total), limit)
         return [self._items[index] for index in page["index"]], total
 
-    def _matches(self, q: str | None, market: Market | None) -> pl.DataFrame:
+    def _matches(
+        self, q: str | None, market: Market | None, exchange: Exchange | None
+    ) -> pl.DataFrame:
         """The ``index`` of every match, in order."""
-        frame = self._market(market)
+        frame = self._filter(market, exchange)
         if q is None:
             return frame.sort("symbol", "market").select("index")
         key, words = normalise_query(q), _words(q).lstrip()
@@ -126,10 +143,13 @@ class Catalog:
             .select("index")
         )
 
-    def _market(self, market: Market | None) -> pl.DataFrame:
-        if market is None:
-            return self._frame
-        return self._frame.filter(pl.col("market") == str(market))
+    def _filter(self, market: Market | None, exchange: Exchange | None) -> pl.DataFrame:
+        frame = self._frame
+        if market is not None:
+            frame = frame.filter(pl.col("market") == str(market))
+        if exchange is not None:
+            frame = frame.filter(pl.col("exchange") == str(exchange))
+        return frame
 
 
 def search(
@@ -138,7 +158,9 @@ def search(
     market: Market | None = None,
     limit: int = 20,
     offset: int = 0,
+    *,
+    exchange: Exchange | None = None,
 ) -> list[Instrument]:
     """``Catalog.search``; pass a ``Catalog`` to reuse its keys across searches."""
     catalog = instruments if isinstance(instruments, Catalog) else Catalog(instruments)
-    return catalog.search(q, market, limit, offset)
+    return catalog.search(q, market, limit, offset, exchange=exchange)

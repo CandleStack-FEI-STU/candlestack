@@ -34,6 +34,7 @@ from candlestack.data.errors import (
 from candlestack.data.models import (
     CANDLE_SCHEMA,
     CandleSet,
+    Exchange,
     Feed,
     Instrument,
     InstrumentId,
@@ -56,6 +57,7 @@ __all__ = [
     "DataError",
     "DataIntegrityError",
     "DataService",
+    "Exchange",
     "Feed",
     "Gaps",
     "Instrument",

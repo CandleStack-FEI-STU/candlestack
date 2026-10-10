@@ -2,6 +2,7 @@ import pytest
 
 from candlestack.data import (
     Catalog,
+    Exchange,
     Instrument,
     InstrumentId,
     Market,
@@ -202,6 +203,18 @@ def test_pages(catalog: Catalog) -> None:
     assert [total for _, total in pages] == [len(INSTRUMENTS)] * 3
     assert ids(catalog.search("btc", limit=2, offset=1)) == ids(catalog.search("btc"))[1:3]
     assert catalog.page("btc", market=Market.STOCK, limit=1) == ([INSTRUMENTS[6]], 2)
+
+
+def test_filter_by_exchange(catalog: Catalog) -> None:
+    assert ids(catalog.search(None, exchange=Exchange.NYSE)) == ["stock:APLE", "stock:BRK.B"]
+    assert ids(catalog.search("btc", exchange=Exchange.ARCA)) == ["stock:BTC"]
+    assert ids(catalog.search("apple", market=Market.STOCK, exchange=Exchange.NASDAQ)) == [
+        "stock:AAPL"
+    ]
+    assert catalog.page(None, market=Market.CRYPTO, exchange=Exchange.NASDAQ) == ([], 0)
+    assert catalog.page(None, exchange=Exchange.BATS) == ([], 0)
+    assert catalog.page(None, limit=1, offset=1, exchange=Exchange.ARCA) == ([INSTRUMENTS[11]], 2)
+    assert ids(search(INSTRUMENTS, "a", exchange=Exchange.NYSE)) == ["stock:APLE", "stock:BRK.B"]
 
 
 @pytest.mark.parametrize("offset", [len(INSTRUMENTS), 10**30])
