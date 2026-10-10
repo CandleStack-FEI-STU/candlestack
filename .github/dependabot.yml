@@ -19,6 +19,17 @@ updates:
       - dependency-name: uv-build
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      npm:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
   # The workflows and the composite actions in .github/actions.
   - package-ecosystem: github-actions
     directories: [/, /.github/actions/*]
@@ -55,6 +66,15 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    groups:
+      docker:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      # The build runs on Node 24, the line of the CI job `frontend` (setup-node in ci.yml);
+      # moving on is a deliberate change of both.
+      - dependency-name: node
+        versions: [">=25"]
 
   - package-ecosystem: docker
     directory: /infra/agent

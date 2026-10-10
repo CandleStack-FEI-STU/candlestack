@@ -88,6 +88,7 @@ export interface paths {
          *     first), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word
          *     in the name, substring of the symbol, substring of the name; ties go to the shorter symbol,
          *     then alphabetically. Without `q`, every instrument comes back in symbol order.
+         *     `total` counts all matches: page through them with `offset` and `limit`.
          *
          *     When the instrument list of one market cannot be loaded, the other market is still
          *     searched and `unavailable` names the missing one; 503 when no market can be searched.
@@ -438,6 +439,18 @@ export interface components {
              */
             items: components["schemas"]["InstrumentOut"][];
             /**
+             * Offset
+             * @description Number of matches before the first item.
+             * @example 0
+             */
+            offset: number;
+            /**
+             * Total
+             * @description Number of all matches; page with `offset` while `offset + count` is less.
+             * @example 1
+             */
+            total: number;
+            /**
              * Unavailable
              * @description Markets left out of this search because their instrument list cannot be loaded right now (the source is down); search again later. Empty normally.
              * @example []
@@ -668,6 +681,8 @@ export interface operations {
                 market?: components["schemas"]["Market"] | null;
                 /** @description Most items to return. */
                 limit?: number;
+                /** @description Matches to skip; past the end, `items` is empty. */
+                offset?: number;
             };
             header?: never;
             path?: never;
