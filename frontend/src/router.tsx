@@ -1,9 +1,9 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { createRootRouteWithContext, createRoute, createRouter } from '@tanstack/react-router';
+import { createRootRouteWithContext, createRoute, createRouter, lazyRouteComponent } from '@tanstack/react-router';
 
-import { queryClient } from '@/api';
+import { instrumentQueryOptions, queryClient } from '@/api';
 import { Layout } from '@/components/Layout';
-import { InstrumentPage } from '@/pages/InstrumentPage';
+import { RouteError, RoutePending } from '@/components/RouteStates';
 import { InstrumentsPage } from '@/pages/InstrumentsPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { validateInstrumentSearch } from '@/routes/instrumentSearch';
@@ -23,11 +23,14 @@ const instrumentsRoute = createRoute({
 });
 
 // /instrument/crypto:BTCUSDT?tf=1h; the search params are checked once, in validateSearch.
+// The page is loaded on demand, so the chart library stays out of the main bundle; the loader
+// fetches the instrument meanwhile, into the same cache entry the page reads.
 const instrumentRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/instrument/$id',
   validateSearch: validateInstrumentSearch,
-  component: InstrumentPage,
+  loader: ({ context, params }) => context.queryClient.ensureQueryData(instrumentQueryOptions(params.id)),
+  component: lazyRouteComponent(() => import('@/pages/InstrumentPage'), 'InstrumentPage'),
 });
 
 const routeTree = rootRoute.addChildren([instrumentsRoute, instrumentRoute]);
@@ -41,6 +44,10 @@ export const router = createRouter({
   defaultPreloadStaleTime: 0,
   // Instrument ids contain ':' (crypto:BTCUSDT); keep it readable instead of %3A.
   pathParamsAllowedCharacters: [':'],
+  defaultPendingComponent: RoutePending,
+  defaultErrorComponent: RouteError,
+  // Back and forward return to where the page was scrolled.
+  scrollRestoration: true,
 });
 
 // Makes routes, params and search params type-checked everywhere (Link, useParams, useSearch).
