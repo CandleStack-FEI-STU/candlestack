@@ -10,6 +10,14 @@ describe('validateInstrumentsSearch', () => {
     expect(validate({ q: ' btc ', market: 'crypto', page: '3' })).toEqual({ q: 'btc', market: 'crypto', page: 3 });
   });
 
+  it('keeps a known exchange, but not with crypto pairs, which have none', () => {
+    expect(validate({ market: 'stock', exchange: 'NYSE' })).toEqual({ market: 'stock', exchange: 'NYSE' });
+    expect(validate({ exchange: 'NASDAQ' })).toEqual({ exchange: 'NASDAQ' });
+    expect(validate({ market: 'crypto', exchange: 'NYSE' })).toEqual({ market: 'crypto' });
+    expect(validate({ exchange: 'LSE' })).toEqual({});
+    expect(validate({ exchange: 'nyse' })).toEqual({});
+  });
+
   it('reads a number as a query (?q=500 arrives as a number)', () => {
     expect(validate({ q: 500 })).toEqual({ q: '500' });
   });

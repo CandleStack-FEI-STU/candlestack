@@ -9,6 +9,8 @@ describe('messages', () => {
     expect(emptyMessage('zzz', undefined)).toMatch(/No instruments match “zzz”\./);
     expect(emptyMessage('zzz', 'stock')).toMatch(/“zzz” in stocks\./);
     expect(emptyMessage('', 'crypto')).toBe('No instruments in crypto pairs.');
+    expect(emptyMessage('zzz', 'stock', 'NYSE')).toMatch(/“zzz” in stocks on NYSE\./);
+    expect(emptyMessage('', undefined, 'BATS')).toBe('No instruments on BATS.');
   });
 
   it('says which market is left out', () => {
