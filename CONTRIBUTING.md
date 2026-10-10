@@ -8,6 +8,9 @@ file adds what is specific to this one.
 
 - `main` is protected. Every change goes through a pull request and is squash-merged once it
   is reviewed and its checks are green.
+- The branch must be up to date with `main` to merge: when `main` moved, use "Update branch" on the
+  pull request and wait for the checks again. Without it, a pull request that was green before
+  another one merged can turn `main` red.
 - Branch from `main` and name the branch `<area>/<topic>`, e.g. `backend/candles`.
   Keep pull requests small and about one thing.
 - The pull request title becomes the commit on `main`: imperative, sentence case, no trailing
