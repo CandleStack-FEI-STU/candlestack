@@ -3,21 +3,24 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '@/api';
 import { Button } from '@/components/ui/button';
 
-import { shouldAutoRetry } from './retries';
+import { countdownStep, shouldAutoRetry } from './retries';
 
-// Counts Retry-After down once a second; reaching 0 retries on its own, once.
+// Counts Retry-After down once a second and retries when it reaches 0. The retry happens in the
+// timer's callback, not in the effect: StrictMode runs effects twice in dev, but a timer that
+// the first run set up is cleared before it fires, so the retry is counted once.
 function useCountdown(seconds: number, onDone: () => void): number {
-  const [left, setLeft] = useState(seconds);
+  const [left, setLeft] = useState(() => Math.max(seconds, 1));
   const done = useRef(onDone);
   useEffect(() => {
     done.current = onDone;
   }, [onDone]);
   useEffect(() => {
-    if (left <= 0) {
-      done.current();
-      return;
-    }
-    const timer = setTimeout(() => setLeft(left - 1), 1000);
+    if (left <= 0) return;
+    const timer = setTimeout(() => {
+      const step = countdownStep(left);
+      if (step.fire) done.current();
+      setLeft(step.next);
+    }, 1000);
     return () => clearTimeout(timer);
   }, [left]);
   return left;
