@@ -28,6 +28,10 @@ describe('messages', () => {
       detail: "Server: query parameter 'q': Field required (HTTP 422)",
     });
     expect(describeListError(old, 'btc').title).toBe('The server did not accept this search.');
+    // A page far past the end is a 422 too, but not about `q`.
+    const pastTheEnd = describeListError(new ApiError(422, "query parameter 'offset': too large"), '');
+    expect(pastTheEnd.title).toBe('The server did not accept this search.');
+    expect(pastTheEnd.hint).toMatch(/^Start again from the plain list/);
   });
 
   it('says how long to wait when the source is down', () => {

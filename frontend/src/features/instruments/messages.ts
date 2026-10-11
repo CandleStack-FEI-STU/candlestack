@@ -29,7 +29,7 @@ function waitHint(seconds: number | undefined): string {
 }
 
 // The API before #105 (still on prod until the next release) cannot list without a query and
-// answers 422. Retrying does not help; typing a query does.
+// answers 422 about `q`. Retrying does not help; typing a query does.
 const OLD_API: Text = {
   title: 'This server cannot show the whole list yet.',
   hint: 'It runs an older version of the API that only searches. Type a symbol or a name above, for example btc or apple.',
@@ -54,6 +54,21 @@ function serverText(error: ApiError): Text {
   };
 }
 
+// A 422 with an empty query is the old API only when it complains about `q`; another one (a
+// page far past the end, say) is about the address.
+function rejectedText(error: ApiError, query: string): Text {
+  if (query === '' && error.message.includes("'q'")) return OLD_API;
+  return {
+    title: 'The server did not accept this search.',
+    hint:
+      query === ''
+        ? 'Start again from the plain list, without filters or a page in the address.'
+        : 'Try a shorter query: a symbol like btc or a name like apple.',
+    canRetry: false,
+    tone: 'warn',
+  };
+}
+
 function apiText(error: ApiError, query: string): Text {
   if (error.status === 0) {
     return {
@@ -63,15 +78,7 @@ function apiText(error: ApiError, query: string): Text {
       tone: 'error',
     };
   }
-  if (error.status === 422 && query === '') return OLD_API;
-  if (error.status === 422) {
-    return {
-      title: 'The server did not accept this search.',
-      hint: 'Try a shorter query: a symbol like btc or a name like apple.',
-      canRetry: false,
-      tone: 'warn',
-    };
-  }
+  if (error.status === 422) return rejectedText(error, query);
   if (error.status === 429) {
     return { title: 'Too many requests.', hint: waitHint(error.retryAfter), canRetry: true, tone: 'warn' };
   }
