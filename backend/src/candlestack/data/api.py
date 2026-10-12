@@ -394,6 +394,55 @@ async def candles(
     return Response(candles_json(found), media_type="application/json")
 
 
+_IMAGE = {"schema": {"type": "string", "format": "binary"}}
+
+
+@data.get(
+    "/instruments/{instrument_id}/icon",
+    summary="Instrument icon",
+    response_class=Response,
+    responses={
+        200: {
+            "description": "The logo (PNG, JPEG or WebP), or the fallback image (SVG).",
+            "content": {
+                "image/png": _IMAGE,
+                "image/jpeg": _IMAGE,
+                "image/webp": _IMAGE,
+                "image/svg+xml": _IMAGE,
+            },
+        },
+        **_errors(
+            {
+                404: "The instrument is not in the catalog (`instrument-not-found`).",
+                422: "Malformed instrument id (`validation`).",
+            }
+        ),
+    },
+)
+async def instrument_icon(
+    service: DataServiceDep,
+    instrument_id: Annotated[
+        InstrumentParam,
+        Path(description="Instrument id, `<market>:<symbol>`.", examples=["stock:AAPL"]),
+    ],
+) -> Response:
+    """The instrument's logo from logo.dev (a stock by its ticker, a crypto pair by its base
+    asset), or one fallback image when there is none, so an `<img>` always gets a picture.
+
+    Logos are fetched once and kept for days: `Cache-Control` lets a browser keep a logo a day,
+    the fallback an hour (a minute when logo.dev could not be asked, so a logo shows up as soon
+    as it answers again). Not counted against the per-minute limit of candle and instrument
+    requests: a page of the list asks for one icon per row.
+    """
+    with _problems():
+        icon = await service.icon(InstrumentId.parse(instrument_id))
+    return Response(
+        icon.content,
+        media_type=icon.media_type,
+        headers={"Cache-Control": f"public, max-age={icon.max_age}"},
+    )
+
+
 @health.get(
     "/api/health/sources",
     summary="Health of the data sources",
