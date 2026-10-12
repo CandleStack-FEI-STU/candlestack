@@ -158,7 +158,7 @@ Environment variables, read by pydantic-settings without a prefix. All are docum
 | `CLIENT_RATE_LIMIT` | `60` | candle and instrument-detail requests per minute per client IP (IPv6: per /64); `0` disables |
 | `ALPACA_RATE_LIMIT` | prod `150`, stage `60`, `pr-*` `30`, else `60` | our Alpaca request budget per minute |
 | `BINANCE_WEIGHT_LIMIT` | `1000` | our Binance REST weight budget per minute per environment |
-| `LOGO_DEV_RATE_LIMIT` | `60` | our logo.dev requests per minute per environment |
+| `LOGO_DEV_RATE_LIMIT` | prod `50`, stage `20`, `pr-*` `5`, else `20` | our logo.dev request budget per minute |
 | `SENTRY_DSN` | empty | Sentry project for errors, traces, profiles and logs; empty sends nothing (set for prod and stage only) |
 | `SENTRY_TRACES_SAMPLE_RATE` | prod `0.2`, else `1.0` | share of requests traced in Sentry |
 

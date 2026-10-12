@@ -19,7 +19,7 @@ from candlestack.core.logging import request_id_var
 from candlestack.core.observability import (
     ErrorBudget,
     _before_send_log,
-    _hide_token,
+    _hide_query_secrets,
     _traces_sampler,
 )
 from candlestack.main import create_app
@@ -174,22 +174,24 @@ def test_a_token_in_an_outgoing_query_is_not_sent(
     ("query", "hidden"),
     [
         ("token=pk_1&fallback=404", "token=[Filtered]&fallback=404"),
-        ("fallback=404&token=pk_1", "fallback=404&token=[Filtered]"),
+        ("fallback=404&Token=pk_1", "fallback=404&Token=[Filtered]"),
+        ("api_key=k&apikey=k&secret=s", "api_key=[Filtered]&apikey=[Filtered]&secret=[Filtered]"),
         ("mytoken=keep&token=", "mytoken=keep&token=[Filtered]"),
-        ("symbol=AAPL", "symbol=AAPL"),
+        ("symbol=AAPL&interval=1m&token", "symbol=AAPL&interval=1m&token"),
+        ("", ""),
     ],
 )
-def test_hide_token(query: str, hidden: str) -> None:
+def test_hide_query_secrets(query: str, hidden: str) -> None:
     data: dict[str, Any] = {"http.query": query}
 
-    _hide_token(data)
+    _hide_query_secrets(data)
 
     assert data == {"http.query": hidden}
 
 
-def test_hide_token_ignores_what_is_no_query() -> None:
+def test_hide_query_secrets_ignores_what_is_no_query() -> None:
     for data in (None, {}, {"http.query": None}):
-        _hide_token(data)
+        _hide_query_secrets(data)
 
 
 @pytest.mark.parametrize("path", ["/api/test/problem", "/api/test/warning", "/api/nothing-here"])

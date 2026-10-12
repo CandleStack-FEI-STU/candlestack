@@ -8,11 +8,11 @@ is not: records from INFO up go to Sentry's logs instead. Every event carries th
 """
 
 import logging
-import re
 import threading
 import time
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import unquote_plus
 
 import sentry_sdk
 from fastapi import APIRouter
@@ -42,12 +42,11 @@ _DENYLIST = [
     "dsn",
     "sentry_dsn",
 ]
-# logo.dev takes its key as the query parameter ``token``, and the httpx integration records
-# the query of every outgoing request in breadcrumbs and spans, where the scrubber cannot see
-# it (it is part of one string).
+# The httpx integration records the query of every outgoing request in breadcrumbs and spans as
+# one string, which the scrubber cannot see into; logo.dev takes its key as ``token`` there.
 _QUERY = "http.query"
-_TOKEN = re.compile(r"(?<![^&])token=[^&]*")
-_FILTERED = "token=[Filtered]"
+_QUERY_DENYLIST = frozenset(name.lower() for name in _DENYLIST)
+_FILTERED = "[Filtered]"
 # Personal data never sent: the client's IP and the Cloudflare Access login of stage.
 _PII_DENYLIST = [
     *DEFAULT_PII_DENYLIST,
@@ -122,14 +121,21 @@ def _before_send(budget: ErrorBudget) -> Callable[[Event, Hint], Event | None]:
     return before_send
 
 
-def _hide_token(data: Any) -> None:
-    """Replaces the value of ``token`` in the recorded query of an outgoing request."""
-    if isinstance(data, dict) and isinstance(query := data.get(_QUERY), str):
-        data[_QUERY] = _TOKEN.sub(_FILTERED, query)
+def _hide_query_secrets(data: Any) -> None:
+    """Replaces the values of the denylisted parameters (any case) in the recorded query of an
+    outgoing request."""
+    if not isinstance(data, dict) or not isinstance(query := data.get(_QUERY), str):
+        return
+    parts = []
+    for part in query.split("&"):
+        name, equals, _ = part.partition("=")
+        secret = equals and unquote_plus(name).lower() in _QUERY_DENYLIST
+        parts.append(f"{name}={_FILTERED}" if secret else part)
+    data[_QUERY] = "&".join(parts)
 
 
 def _before_breadcrumb(crumb: Breadcrumb, _hint: BreadcrumbHint) -> Breadcrumb | None:
-    _hide_token(crumb.get("data"))
+    _hide_query_secrets(crumb.get("data"))
     return crumb
 
 
@@ -137,7 +143,7 @@ def _before_send_transaction(event: Event, _hint: Hint) -> Event | None:
     spans = event.get("spans")
     if isinstance(spans, list):
         for span in spans:
-            _hide_token(span.get("data"))
+            _hide_query_secrets(span.get("data"))
     return event
 
 

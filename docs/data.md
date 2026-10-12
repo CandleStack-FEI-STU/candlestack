@@ -110,7 +110,7 @@ into an `<img>`; the browser never calls logo.dev itself.
 | --- | --- | --- |
 | a logo at logo.dev | that logo, 128x128 PNG (or the JPEG or WebP logo.dev sends) | `public, max-age=86400` |
 | no logo at logo.dev, or no `LOGO_DEV_KEY` | the fallback: Lucide's `chart-candlestick` in white on a dark grey rounded square, SVG | `public, max-age=3600` |
-| logo.dev failing, rate limiting us, our budget spent, or the catalog not loadable | the fallback | `public, max-age=60` |
+| logo.dev failing, rate limiting us or rejecting our key (then it is not asked for 10 minutes), our budget spent, Redis down, or the catalog not loadable | the fallback | `public, max-age=60` |
 
 - Source: [logo.dev](https://www.logo.dev/docs), `GET https://img.logo.dev/ticker/<symbol>` for
   a stock and `GET https://img.logo.dev/crypto/<base asset>` for a crypto pair (all pairs of
@@ -119,11 +119,15 @@ into an `<img>`; the browser never calls logo.dev itself.
 - Only `image/png`, `image/jpeg` and `image/webp` up to 256 KB are passed on; any other answer
   of logo.dev counts as a failure (an SVG from a third party is never served from our origin).
 - A logo is kept 30 days and "no logo" 7 days (see [Cache](#cache)), so the instrument list
-  asks logo.dev at most once per row in that time; a failure is kept a minute.
+  asks logo.dev at most once per row in that time; a failure is kept a minute and a failed
+  request is not repeated before that. Without Redis, logo.dev is not asked at all: neither
+  the logos nor our budget would be kept.
 - Not counted against `CLIENT_RATE_LIMIT`: a page of the list asks for one icon per row. Every
   call of logo.dev counts against `LOGO_DEV_RATE_LIMIT` (see [Limits](#limits)).
-- The free plan of logo.dev allows 500,000 requests a month, 100 a minute and 5 at once (we
-  send at most 5 at once per process), and asks for the attribution "Logos provided by
+- The free plan of logo.dev allows 500,000 requests a month, 100 a minute and 5 at once for
+  the whole account, which all environments share: each environment sends at most 2 at once
+  (an icon waits at most 10 s for one) and `LOGO_DEV_RATE_LIMIT` keeps prod, stage and four
+  previews under 100 a minute together. It asks for the attribution "Logos provided by
   Logo.dev" with a link wherever the logos are shown.
 - Coverage on 2026-10-12: 305 of the 507 base assets of Binance's trading pairs (951 of 1375
   pairs) have a logo; stocks are covered better, e.g. `AAPL` and `BRK.B`.
@@ -308,7 +312,7 @@ requested timeframe.
 | Clients: `CLIENT_RATE_LIMIT` | client IP (`CF-Connecting-IP`, else the peer address; an IPv6 address counts as its /64 network); every candle and instrument-detail request, cached or not | 60 per minute, `0` disables | 429 `rate-limited` with `Retry-After` |
 | Alpaca: `ALPACA_RATE_LIMIT` | environment; each Alpaca request | prod 150, stage 60, `pr-*` 30 | 503 `source-unavailable` with `Retry-After` |
 | Binance REST: `BINANCE_WEIGHT_LIMIT` | environment; request weight of each REST call | 1000 | 503 `source-unavailable` with `Retry-After` |
-| logo.dev: `LOGO_DEV_RATE_LIMIT` | environment; each logo.dev request | 60 | the fallback icon, no waiting |
+| logo.dev: `LOGO_DEV_RATE_LIMIT` | environment; each logo.dev request | prod 50, stage 20, `pr-*` 5 | the fallback icon, no waiting |
 | `data.binance.vision` | not limited | | |
 
 - When our budget at a source is spent, a request waits for the next window if it begins

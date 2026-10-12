@@ -30,7 +30,7 @@ def test_defaults() -> None:
     assert settings.client_rate_limit == 60
     assert settings.alpaca_rate_limit == 60
     assert settings.binance_weight_limit == 1000
-    assert settings.logo_dev_rate_limit == 60
+    assert settings.logo_dev_rate_limit == 20
 
 
 @pytest.mark.parametrize(
@@ -92,6 +92,18 @@ def test_alpaca_keys_are_stripped_and_hidden(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.alpaca_secret_key.get_secret_value() == "secret456"
     assert "PKTEST123" not in repr(settings)
     assert "secret456" not in repr(settings)
+
+
+@pytest.mark.parametrize(
+    ("app_env", "limit"),
+    [("prod", 50), ("stage", 20), ("pr-42", 5), ("local", 20), ("test", 20)],
+)
+def test_logo_dev_rate_limit_default_depends_on_env(
+    monkeypatch: pytest.MonkeyPatch, app_env: str, limit: int
+) -> None:
+    monkeypatch.setenv("APP_ENV", app_env)
+
+    assert Settings().logo_dev_rate_limit == limit
 
 
 def test_logo_dev_key_is_stripped_and_hidden(monkeypatch: pytest.MonkeyPatch) -> None:

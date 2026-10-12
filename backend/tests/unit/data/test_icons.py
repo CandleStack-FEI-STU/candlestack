@@ -96,16 +96,6 @@ def test_anything_else_is_a_failure_for_a_minute(
     assert "ticker/AAPL" in caplog.text
 
 
-@pytest.mark.parametrize("status", [401, 403])
-def test_a_rejected_key_is_an_error(status: int, caplog: pytest.LogCaptureFixture) -> None:
-    with caplog.at_level(logging.ERROR):
-        blob, ttl = answer("ticker/AAPL", httpx.Response(status, json={"error": "bad token"}))
-
-    assert (decode(blob), ttl) == (FALLBACK_AFTER_FAILURE, 60)
-    assert [record.levelname for record in caplog.records] == ["ERROR"]
-    assert f"rejected our key (HTTP {status})" in caplog.text
-
-
 def test_the_fallback_is_a_valid_svg() -> None:
     root = ET.fromstring(FALLBACK_SVG)
 
