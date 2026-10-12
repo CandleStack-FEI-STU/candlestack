@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     alpaca_data_url: str = "https://data.alpaca.markets"
     binance_api_url: str = "https://api.binance.com"
     binance_data_url: str = "https://data.binance.vision"
+    logo_dev_key: SecretStr = SecretStr("")
+    logo_dev_url: str = "https://img.logo.dev"
 
     candles_max: int = Field(default=50_000, gt=0)
     client_rate_limit: int = Field(default=60, ge=0)
@@ -55,6 +57,8 @@ class Settings(BaseSettings):
         gt=0,
     )
     binance_weight_limit: int = Field(default=1000, gt=0)
+    # logo.dev allows 100 requests per minute on the free plan, for all environments together.
+    logo_dev_rate_limit: int = Field(default=60, gt=0)
 
     sentry_dsn: str = ""
     sentry_traces_sample_rate: float = Field(
@@ -68,7 +72,7 @@ class Settings(BaseSettings):
     def _upper_log_level(cls, value: Any) -> Any:
         return value.upper() if isinstance(value, str) else value
 
-    @field_validator("alpaca_key_id", "alpaca_secret_key", mode="before")
+    @field_validator("alpaca_key_id", "alpaca_secret_key", "logo_dev_key", mode="before")
     @classmethod
     def _strip_key(cls, value: Any) -> Any:
         return value.strip() if isinstance(value, str) else value

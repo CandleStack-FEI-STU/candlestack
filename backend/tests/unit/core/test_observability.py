@@ -4,7 +4,9 @@ import time
 from collections.abc import Iterator
 from typing import Any, cast, override
 
+import httpx
 import pytest
+import respx
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -17,6 +19,7 @@ from candlestack.core.logging import request_id_var
 from candlestack.core.observability import (
     ErrorBudget,
     _before_send_log,
+    _hide_token,
     _traces_sampler,
 )
 from candlestack.main import create_app
@@ -84,6 +87,15 @@ def app(sentry: CapturingTransport, app: FastAPI) -> FastAPI:
         logger.warning("Binance answered slowly")
         return {"ok": True}
 
+    @app.get("/api/test/outgoing")
+    async def outgoing() -> None:
+        async with httpx.AsyncClient() as http:
+            await http.get(
+                "https://img.logo.test/ticker/AAPL",
+                params={"token": "pk_SECRET123", "fallback": "404"},
+            )
+        raise RuntimeError("failed after an outgoing request")
+
     @app.get("/api/test/logged-error")
     async def logged_error() -> dict[str, bool]:
         logger.error("Invalid data from %s", "binance")
@@ -135,6 +147,49 @@ def test_secrets_and_personal_data_are_not_sent(
     sent = json.dumps(event)
     for value in ("PKTESTKEY", "s3cr3t-value", "203.0.113.7", "someone@example.com", "zq9-session"):
         assert value not in sent
+
+
+def test_a_token_in_an_outgoing_query_is_not_sent(
+    sentry: CapturingTransport, client: TestClient
+) -> None:
+    with respx.mock:
+        respx.get("https://img.logo.test/ticker/AAPL").respond(404)
+        client.get("/api/test/outgoing")
+
+    [event] = sentry.items("event")
+    [crumb] = [c for c in event["breadcrumbs"]["values"] if c.get("category") == "httplib"]
+    assert crumb["data"]["http.query"] == "token=[Filtered]&fallback=404"
+    [transaction] = sentry.items("transaction")
+    [span] = [s for s in transaction["spans"] if s["op"] == "http.client"]
+    assert span["data"]["http.query"] == "token=[Filtered]&fallback=404"
+    # The source lines around each frame hold the test's own literal.
+    for each in event["exception"]["values"]:
+        for code in each["stacktrace"]["frames"]:
+            for key in ("pre_context", "context_line", "post_context"):
+                code.pop(key, None)
+    assert "pk_SECRET123" not in json.dumps([event, transaction])
+
+
+@pytest.mark.parametrize(
+    ("query", "hidden"),
+    [
+        ("token=pk_1&fallback=404", "token=[Filtered]&fallback=404"),
+        ("fallback=404&token=pk_1", "fallback=404&token=[Filtered]"),
+        ("mytoken=keep&token=", "mytoken=keep&token=[Filtered]"),
+        ("symbol=AAPL", "symbol=AAPL"),
+    ],
+)
+def test_hide_token(query: str, hidden: str) -> None:
+    data: dict[str, Any] = {"http.query": query}
+
+    _hide_token(data)
+
+    assert data == {"http.query": hidden}
+
+
+def test_hide_token_ignores_what_is_no_query() -> None:
+    for data in (None, {}, {"http.query": None}):
+        _hide_token(data)
 
 
 @pytest.mark.parametrize("path", ["/api/test/problem", "/api/test/warning", "/api/nothing-here"])

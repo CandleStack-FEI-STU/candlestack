@@ -1,5 +1,5 @@
 # The backend image with Redis, hardened like the deployed environments, for the e2e tests.
-# Binance and Alpaca are faked by mock_sources.py, which serves the committed fixtures
+# Binance, Alpaca and logo.dev are faked by mock_sources.py, which serves the committed fixtures
 # (tests/fixtures) under the sources' paths, so the tests need no network and no keys.
 # The host port, the project name and the image tag come from E2E_PORT, so several stacks
 # (each built from its own checkout) can run at once:
@@ -24,6 +24,8 @@ services:
       ALPACA_DATA_URL: http://sources:8080
       ALPACA_KEY_ID: e2e-key
       ALPACA_SECRET_KEY: e2e-secret
+      LOGO_DEV_URL: http://sources:8080
+      LOGO_DEV_KEY: e2e-logo-key
     ports:
       - 127.0.0.1:${E2E_PORT:-18000}:8000
     depends_on:
@@ -55,7 +57,7 @@ services:
       timeout: 2s
       retries: 15
 
-  # Fake Binance and Alpaca; each answer takes LATENCY_MS, like a call over the internet.
+  # Fake Binance, Alpaca and logo.dev; each answer takes LATENCY_MS, like a call over the internet.
   sources:
     image: python:3.13-alpine
     command: ["python", "/app/mock_sources.py"]

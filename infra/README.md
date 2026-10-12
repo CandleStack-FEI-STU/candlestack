@@ -206,6 +206,7 @@ of `vm/candlestack-deploy` lists which key may run what.
 | --- | --- | --- |
 | `DEPLOY_SSH_KEY` | environments `production`, `staging`, `preview` | private deploy key of that scope |
 | `ALPACA_KEY_ID`, `ALPACA_SECRET_KEY` | environments `production`, `staging`, `preview` | Alpaca paper account keys for the backend (US stocks); `staging` and `preview` share the stage account, `production` has its own |
+| `LOGO_DEV_KEY` | environments `production`, `staging`, `preview` | logo.dev publishable key for the instrument icons; one free account for all three |
 | `SENTRY_DSN` | environments `production`, `staging` | where the backend sends errors, traces, profiles and logs (Sentry project `backend`) |
 | `SENTRY_AUTH_TOKEN` | environments `production`, `staging` | Sentry organization token (scope `org:ci`) that records each release |
 | `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | environments `production`, `staging`, `preview` | Access service token: `github-actions-deploy` for `production` and `staging`, `github-actions-preview` for `preview` |

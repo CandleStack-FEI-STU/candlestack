@@ -129,6 +129,7 @@ jobs:
           env-secrets: |
             ALPACA_KEY_ID=${{ secrets.ALPACA_KEY_ID }}
             ALPACA_SECRET_KEY=${{ secrets.ALPACA_SECRET_KEY }}
+            LOGO_DEV_KEY=${{ secrets.LOGO_DEV_KEY }}
             SENTRY_DSN=${{ secrets.SENTRY_DSN }}
           health-url: https://stage.candlestack.tech/api/health
           health-expect: ${{ github.sha }}

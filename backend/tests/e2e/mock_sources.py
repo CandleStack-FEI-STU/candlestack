@@ -1,8 +1,9 @@
-"""Fake Binance and Alpaca for the e2e tests, built from the committed fixtures (stdlib only).
+"""Fake Binance, Alpaca and logo.dev for the e2e tests, built from the committed fixtures
+(stdlib only).
 
-One server answers the paths of all four upstreams, which do not overlap, so the backend's
-``BINANCE_API_URL``, ``BINANCE_DATA_URL``, ``ALPACA_API_URL`` and ``ALPACA_DATA_URL`` all point
-at it:
+One server answers the paths of all five upstreams, which do not overlap, so the backend's
+``BINANCE_API_URL``, ``BINANCE_DATA_URL``, ``ALPACA_API_URL``, ``ALPACA_DATA_URL`` and
+``LOGO_DEV_URL`` all point at it:
 
 - ``api.binance.com``: ``/api/v3/ping``, ``/api/v3/exchangeInfo``, ``/api/v3/klines`` (rows of
   the fixture archives; ``startTime=0`` is the first-candle lookup and gets the recorded
@@ -13,6 +14,8 @@ at it:
 - ``data.alpaca.markets``: ``/v2/stocks/bars`` and ``/v2/stocks/{symbol}/bars`` (the bars of
   every ``bars-<SYMBOL>-<timeframe>-*.json`` fixture, filtered by ``start``/``end``, both
   inclusive like Alpaca, and paginated by ``limit``)
+- ``img.logo.dev``: ``/ticker/{symbol}`` and ``/crypto/{base asset}``, a 1x1 PNG for the symbols
+  in ``LOGOS``, 404 for any other, 401 without the key ``e2e-logo-key``
 
 Fixture files are found by name anywhere under ``FIXTURES``. Every answer is delayed by
 ``LATENCY_MS`` to make a source call cost what it costs over the internet.
@@ -48,6 +51,11 @@ ARCHIVE = re.compile(
 ARCHIVE_NAME = re.compile(r"(?P<symbol>.+)-(?P<tf>\d+[mhd])-(?P<label>\d{4}-\d{2}(-\d{2})?)\.zip")
 BARS_NAME = re.compile(r"bars-(?P<symbol>[A-Z.]+)-(?P<tf>\d+(Min|Hour|Day))-(?P<rest>.+)\.json")
 KLINES_MAX = 1000
+LOGO_KEY = "e2e-logo-key"
+LOGOS = {"/ticker/AAPL", "/crypto/BTC"}
+PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+)
 BARS_DEFAULT, BARS_MAX = 1000, 10000
 
 
@@ -228,6 +236,17 @@ def alpaca(path: str, query: dict[str, str], headers: Message) -> None:
     raise Answer(404, {"message": f"no fake for {path}"})
 
 
+# --- logo.dev -------------------------------------------------------------------------------
+
+
+def logo(path: str, query: dict[str, str]) -> None:
+    if query.get("token") != LOGO_KEY:
+        raise Answer(401, {"error": "invalid token"})
+    if query.get("fallback") == "404" and path not in LOGOS:
+        raise Answer(404, {"error": "not found"})
+    raise Answer(200, PNG, "image/png")
+
+
 # --- server ---------------------------------------------------------------------------------
 
 
@@ -245,6 +264,8 @@ class Handler(BaseHTTPRequestHandler):
                 archive(url.path)
             elif url.path.startswith("/v2/"):
                 alpaca(url.path, query, self.headers)
+            elif url.path.startswith(("/ticker/", "/crypto/")):
+                logo(url.path, query)
             raise Answer(404, f"no fake for {url.path}")
         except Answer as answer:
             self._send(answer)

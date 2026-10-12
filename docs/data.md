@@ -21,6 +21,8 @@ and for the code behind them. Architecture and configuration: [architecture.md](
   share of the consolidated volume. `feed=iex` is always sent explicitly.
 - `adjustment=all` applies splits and dividends to the whole history, so past stock candles
   change after a corporate action (see [Fingerprint](#fingerprint)).
+- Instrument icons come from a third source, logo.dev (see [Icons](#icons)); without an icon
+  the instruments and candles work the same.
 
 ## Instruments
 
@@ -97,6 +99,34 @@ source:
 - `max_candles`: `CANDLES_MAX`.
 
 Values in the examples of this document are illustrative.
+
+## Icons
+
+`GET /api/v1/data/instruments/{id}/icon` always answers with an image for an instrument of the
+catalog (404 `instrument-not-found` otherwise, 422 for a malformed id), so it can go straight
+into an `<img>`; the browser never calls logo.dev itself.
+
+| Instrument | Image | `Cache-Control` |
+| --- | --- | --- |
+| a logo at logo.dev | that logo, 128x128 PNG (or the JPEG or WebP logo.dev sends) | `public, max-age=86400` |
+| no logo at logo.dev, or no `LOGO_DEV_KEY` | the fallback: Lucide's `chart-candlestick` in white on a dark grey rounded square, SVG | `public, max-age=3600` |
+| logo.dev failing, rate limiting us, our budget spent, or the catalog not loadable | the fallback | `public, max-age=60` |
+
+- Source: [logo.dev](https://www.logo.dev/docs), `GET https://img.logo.dev/ticker/<symbol>` for
+  a stock and `GET https://img.logo.dev/crypto/<base asset>` for a crypto pair (all pairs of
+  `BTC` share its logo), with `token=<LOGO_DEV_KEY>`, `fallback=404` (without it logo.dev
+  answers 200 with its own monogram), `format=png`, `size=64` and `retina=true`.
+- Only `image/png`, `image/jpeg` and `image/webp` up to 256 KB are passed on; any other answer
+  of logo.dev counts as a failure (an SVG from a third party is never served from our origin).
+- A logo is kept 30 days and "no logo" 7 days (see [Cache](#cache)), so the instrument list
+  asks logo.dev at most once per row in that time; a failure is kept a minute.
+- Not counted against `CLIENT_RATE_LIMIT`: a page of the list asks for one icon per row. Every
+  call of logo.dev counts against `LOGO_DEV_RATE_LIMIT` (see [Limits](#limits)).
+- The free plan of logo.dev allows 500,000 requests a month, 100 a minute and 5 at once (we
+  send at most 5 at once per process), and asks for the attribution "Logos provided by
+  Logo.dev" with a link wherever the logos are shown.
+- Coverage on 2026-10-12: 305 of the 507 base assets of Binance's trading pairs (951 of 1375
+  pairs) have a logo; stocks are covered better, e.g. `AAPL` and `BRK.B`.
 
 ## Timeframes
 
@@ -278,6 +308,7 @@ requested timeframe.
 | Clients: `CLIENT_RATE_LIMIT` | client IP (`CF-Connecting-IP`, else the peer address; an IPv6 address counts as its /64 network); every candle and instrument-detail request, cached or not | 60 per minute, `0` disables | 429 `rate-limited` with `Retry-After` |
 | Alpaca: `ALPACA_RATE_LIMIT` | environment; each Alpaca request | prod 150, stage 60, `pr-*` 30 | 503 `source-unavailable` with `Retry-After` |
 | Binance REST: `BINANCE_WEIGHT_LIMIT` | environment; request weight of each REST call | 1000 | 503 `source-unavailable` with `Retry-After` |
+| logo.dev: `LOGO_DEV_RATE_LIMIT` | environment; each logo.dev request | 60 | the fallback icon, no waiting |
 | `data.binance.vision` | not limited | | |
 
 - When our budget at a source is spent, a request waits for the next window if it begins
@@ -307,9 +338,10 @@ again. Keys:
 | `data:v2:candles:<instrument>:<base timeframe>:<chunk>` | one chunk of validated candles, Arrow IPC + zstd | see below |
 | `data:v1:first:<instrument>` | `available_from` | 7 days; 1 hour while the instrument has no candle |
 | `data:v1:health:<source>` | reachability of the source | 60 s |
+| `data:v1:icon:ticker/<symbol>`, `data:v1:icon:crypto/<base asset>` | the logo (`<media type>` + newline + image), `none` or `failed` | 30 days; `none` 7 days; `failed` 60 s |
 | `data:lock:<key without data:vN:>` | single-flight lock for a key being fetched | 30 s |
 | `data:fail:<key without data:vN:>` | the error of a failed fetch of that key (source unavailable or invalid data) | 10 s, or the error's `Retry-After` when shorter |
-| `data:rl:client:<ip>:<minute>`, `data:rl:alpaca:<minute>`, `data:rl:binance:<minute>` | fixed-window counters; `<ip>` is an IPv4 address or an IPv6 /64 network, `<minute>` is Unix time // 60 | 61 s |
+| `data:rl:client:<ip>:<minute>`, `data:rl:alpaca:<minute>`, `data:rl:binance:<minute>`, `data:rl:logodev:<minute>` | fixed-window counters; `<ip>` is an IPv4 address or an IPv6 /64 network, `<minute>` is Unix time // 60 | 61 s |
 
 | Chunk | `<chunk>` | Crypto | Stock |
 | --- | --- | --- | --- |

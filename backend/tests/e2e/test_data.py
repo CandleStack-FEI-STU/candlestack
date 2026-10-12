@@ -88,6 +88,30 @@ def test_unknown_instrument(http: httpx.Client) -> None:
     assert response.json()["type"] == PROBLEMS + "instrument-not-found"
 
 
+@pytest.mark.parametrize(
+    ("instrument", "media_type"),
+    [
+        ("stock:AAPL", "image/png"),
+        ("crypto:BTCUSDT", "image/png"),
+        ("crypto:ETHUSDT", "image/svg+xml"),
+    ],
+)
+def test_icon(http: httpx.Client, instrument: str, media_type: str) -> None:
+    response = http.get(f"/api/v1/data/instruments/{instrument}/icon")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == media_type
+    assert response.headers["cache-control"].startswith("public, max-age=")
+    assert response.content
+
+
+def test_icon_of_an_unknown_instrument(http: httpx.Client) -> None:
+    response = http.get("/api/v1/data/instruments/crypto:NOPEUSDT/icon")
+
+    assert response.status_code == 404
+    assert response.json()["type"] == PROBLEMS + "instrument-not-found"
+
+
 def test_crypto_1h_of_a_month(http: httpx.Client) -> None:
     response = candles(
         http, instrument="crypto:BTCUSDT", timeframe="1h", start="2024-01-01", end="2024-02-01"
