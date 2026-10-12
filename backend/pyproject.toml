@@ -214,7 +214,7 @@ containers = ["candlestack.data"]
 layers = [
     "api",
     "service",
-    "catalog_store",
+    "catalog_store | icons",
     "sources",
     "cache | candles | catalog | schemas",
     "sessions",

@@ -125,6 +125,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/data/instruments/{instrument_id}/icon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Instrument icon
+         * @description The instrument's logo from logo.dev (a stock by its ticker, a crypto pair by its base
+         *     asset), or one fallback image when there is none, so an `<img>` always gets a picture.
+         *
+         *     Logos are fetched once and kept for days: `Cache-Control` lets a browser keep a logo a day,
+         *     the fallback an hour (a minute when logo.dev could not be asked, so a logo shows up as soon
+         *     as it answers again). Not counted against the per-minute limit of candle and instrument
+         *     requests: a page of the list asks for one icon per row.
+         */
+        get: operations["instrument_icon_api_v1_data_instruments__instrument_id__icon_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -798,6 +824,50 @@ export interface operations {
             };
             /** @description The source is down or our request budget for it is spent (`source-unavailable`); `Retry-After` when waiting helps. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    instrument_icon_api_v1_data_instruments__instrument_id__icon_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Instrument id, `<market>:<symbol>`. */
+                instrument_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The logo (PNG, JPEG or WebP), or the fallback image (SVG). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                    "image/svg+xml": string;
+                    "image/webp": string;
+                };
+            };
+            /** @description The instrument is not in the catalog (`instrument-not-found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Malformed instrument id (`validation`). */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

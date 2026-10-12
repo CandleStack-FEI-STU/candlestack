@@ -12,12 +12,13 @@ import threading
 import time
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import unquote_plus
 
 import sentry_sdk
 from fastapi import APIRouter
 from sentry_sdk.integrations.logging import LoggingIntegration
 from sentry_sdk.scrubber import DEFAULT_DENYLIST, DEFAULT_PII_DENYLIST, EventScrubber
-from sentry_sdk.types import Event, Hint, Log
+from sentry_sdk.types import Breadcrumb, BreadcrumbHint, Event, Hint, Log
 
 from candlestack.core.config import Settings
 from candlestack.core.logging import request_id_var
@@ -28,7 +29,7 @@ from candlestack.core.logging import request_id_var
 ERRORS_PER_HOUR = 100
 
 # Values never sent, on top of Sentry's defaults (passwords, tokens, cookies, authorization):
-# the Alpaca keys as settings, variables and request headers, and the DSN.
+# the Alpaca and logo.dev keys as settings, variables and request headers, and the DSN.
 _DENYLIST = [
     *DEFAULT_DENYLIST,
     "alpaca_key_id",
@@ -37,9 +38,15 @@ _DENYLIST = [
     "apca-api-secret-key",
     "key_id",
     "secret_key",
+    "logo_dev_key",
     "dsn",
     "sentry_dsn",
 ]
+# The httpx integration records the query of every outgoing request in breadcrumbs and spans as
+# one string, which the scrubber cannot see into; logo.dev takes its key as ``token`` there.
+_QUERY = "http.query"
+_QUERY_DENYLIST = frozenset(name.lower() for name in _DENYLIST)
+_FILTERED = "[Filtered]"
 # Personal data never sent: the client's IP and the Cloudflare Access login of stage.
 _PII_DENYLIST = [
     *DEFAULT_PII_DENYLIST,
@@ -114,6 +121,32 @@ def _before_send(budget: ErrorBudget) -> Callable[[Event, Hint], Event | None]:
     return before_send
 
 
+def _hide_query_secrets(data: Any) -> None:
+    """Replaces the values of the denylisted parameters (any case) in the recorded query of an
+    outgoing request."""
+    if not isinstance(data, dict) or not isinstance(query := data.get(_QUERY), str):
+        return
+    parts = []
+    for part in query.split("&"):
+        name, equals, _ = part.partition("=")
+        secret = equals and unquote_plus(name).lower() in _QUERY_DENYLIST
+        parts.append(f"{name}={_FILTERED}" if secret else part)
+    data[_QUERY] = "&".join(parts)
+
+
+def _before_breadcrumb(crumb: Breadcrumb, _hint: BreadcrumbHint) -> Breadcrumb | None:
+    _hide_query_secrets(crumb.get("data"))
+    return crumb
+
+
+def _before_send_transaction(event: Event, _hint: Hint) -> Event | None:
+    spans = event.get("spans")
+    if isinstance(spans, list):
+        for span in spans:
+            _hide_query_secrets(span.get("data"))
+    return event
+
+
 def _before_send_log(log: Log, _hint: Hint) -> Log | None:
     """Drops the access lines of health checks and adds the request id to the other logs."""
     attributes = log["attributes"]
@@ -150,6 +183,8 @@ def setup_sentry(settings: Settings) -> bool:
         profile_lifecycle="trace",
         enable_logs=True,
         before_send=_before_send(ErrorBudget(ERRORS_PER_HOUR, 3600)),
+        before_send_transaction=_before_send_transaction,
+        before_breadcrumb=_before_breadcrumb,
         before_send_log=_before_send_log,
         integrations=[
             LoggingIntegration(

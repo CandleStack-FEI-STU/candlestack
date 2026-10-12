@@ -30,7 +30,7 @@ case $1 in
     if [[ $file != /opt/candlestack/* ]]; then
       echo "  file $(head -n 1 "$file")" >>"$CALLS"
     fi
-    env | grep -E '^(ENV_NAME|APP_VERSION|BACKEND_IMAGE|FRONTEND_IMAGE|IMAGE|EDGE_NETWORK|REDIS_[A-Z_]+|ALPACA_[A-Z_]+|SENTRY_DSN)=' |
+    env | grep -E '^(ENV_NAME|APP_VERSION|BACKEND_IMAGE|FRONTEND_IMAGE|IMAGE|EDGE_NETWORK|REDIS_[A-Z_]+|ALPACA_[A-Z_]+|LOGO_DEV_KEY|SENTRY_DSN)=' |
       sort | sed 's/^/  env /' >>"$CALLS"
     [[ $FAKE_DOCKER != fail-up || $* != *" up "* ]]
     ;;
@@ -91,6 +91,7 @@ SECRET='t3st/Secret+0123=~!'
 SECRETS="ALPACA_KEY_ID=$KEY_ID
 ALPACA_SECRET_KEY=$SECRET"
 DSN=https://0123abcd@o1.ingest.de.sentry.io/2
+LOGO_KEY=pk_test_logo
 
 tests=0
 failures=0
@@ -227,6 +228,9 @@ up_calls() {
   fi
   echo "  env ENV_NAME=$1"
   echo "  env FRONTEND_IMAGE=$FRONTEND"
+  if [[ -n ${7:-} ]]; then
+    echo "  env LOGO_DEV_KEY=$LOGO_KEY"
+  fi
   echo "  env REDIS_MAXMEMORY=$3"
   echo "  env REDIS_MEM_LIMIT=$4"
   if [[ -n ${6:-} ]]; then
@@ -261,6 +265,10 @@ $SECRETS" "$(up_calls stage main-0123abc 128mb 160m with-secrets)"
 allowed "stage: up stage with the Sentry DSN" stage "up stage main-0123abc $IMAGES" "$TOKEN
 $SECRETS
 SENTRY_DSN=$DSN" "$(up_calls stage main-0123abc 128mb 160m with-secrets with-dsn)"
+allowed "stage: up stage with the logo.dev key" stage "up stage main-0123abc $IMAGES" "$TOKEN
+$SECRETS
+LOGO_DEV_KEY=$LOGO_KEY
+SENTRY_DSN=$DSN" "$(up_calls stage main-0123abc 128mb 160m with-secrets with-dsn with-logo)"
 allowed "stage: up stage without secrets" stage "up stage main-0123abc $IMAGES" "$TOKEN" \
   "$(up_calls stage main-0123abc 128mb 160m)"
 allowed "preview: up pr-42" preview "up pr-42 pr-42-0123abc $IMAGES" "$TOKEN
@@ -435,8 +443,8 @@ done
 refused "agent image" stage "agent ${AGENT%@*}:latest" "$TOKEN" \
   "image must be a GHCR digest reference: '${AGENT%@*}:latest'"
 
-echo "# stdin: the token, then only the Alpaca keys and the Sentry DSN, with safe values"
-only_secrets="only ALPACA_KEY_ID, ALPACA_SECRET_KEY and SENTRY_DSN may follow the token on stdin"
+echo "# stdin: the token, then only the Alpaca and logo.dev keys and the Sentry DSN, with safe values"
+only_secrets="only ALPACA_KEY_ID, ALPACA_SECRET_KEY, LOGO_DEV_KEY and SENTRY_DSN may follow the token on stdin"
 refused "up without a token" stage "up stage v1 $IMAGES" "" "expected a GHCR token on stdin"
 refused "agent without a token" stage "agent $AGENT" "" "expected a GHCR token on stdin"
 refused "another variable" stage "up stage v1 $IMAGES" "$TOKEN

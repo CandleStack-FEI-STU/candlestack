@@ -160,8 +160,8 @@ read_secrets() {
     [[ $line == *=* ]] || fail "expected KEY=VALUE lines after the token on stdin"
     key=${line%%=*}
     value=${line#*=}
-    [[ $key =~ ^(ALPACA_KEY_ID|ALPACA_SECRET_KEY|SENTRY_DSN)$ ]] ||
-      fail "only ALPACA_KEY_ID, ALPACA_SECRET_KEY and SENTRY_DSN may follow the token on stdin"
+    [[ $key =~ ^(ALPACA_KEY_ID|ALPACA_SECRET_KEY|LOGO_DEV_KEY|SENTRY_DSN)$ ]] ||
+      fail "only ALPACA_KEY_ID, ALPACA_SECRET_KEY, LOGO_DEV_KEY and SENTRY_DSN may follow the token on stdin"
     [[ $value =~ ^[!-~]{0,256}$ && $value != *[\"\'\`\\]* ]] ||
       fail "$key must be at most 256 printable characters without spaces or quotes"
     export "$key=$value"

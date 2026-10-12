@@ -212,6 +212,7 @@ jobs:
           env-secrets: |
             ALPACA_KEY_ID=${{ secrets.ALPACA_KEY_ID }}
             ALPACA_SECRET_KEY=${{ secrets.ALPACA_SECRET_KEY }}
+            LOGO_DEV_KEY=${{ secrets.LOGO_DEV_KEY }}
           health-url: https://pr-${{ needs.plan.outputs.pr }}-preview.candlestack.tech/api/health
           health-expect: ${{ needs.plan.outputs.commit }}
 

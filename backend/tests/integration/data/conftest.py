@@ -28,6 +28,7 @@ BINANCE_API = "https://api.binance.test"
 BINANCE_DATA = "https://data.binance.test"
 ALPACA_API = "https://api.alpaca.test"
 ALPACA_DATA = "https://data.alpaca.test"
+LOGO_DEV = "https://img.logo.test"
 HOUR_MS = 3_600_000
 
 
@@ -77,6 +78,7 @@ class Upstream:
     BINANCE_DATA = BINANCE_DATA
     ALPACA_API = ALPACA_API
     ALPACA_DATA = ALPACA_DATA
+    LOGO_DEV = LOGO_DEV
     fixture_bytes = staticmethod(fixture_bytes)
     kline = staticmethod(kline)
     make_archive = staticmethod(make_archive)
@@ -160,6 +162,12 @@ class Upstream:
             f"{ALPACA_DATA}/v2/stocks/bars", params={"timeframe": timeframe, "start": start}
         ).respond(200, json={"bars": {"AAPL": bars}, "next_page_token": None})
 
+    # logo.dev
+
+    def logo(self, path: str) -> respx.Route:
+        """The logo at ``path`` (``ticker/AAPL``, ``crypto/BTC``); the caller sets the answer."""
+        return self.router.get(f"{LOGO_DEV}/{path}")
+
     @staticmethod
     def aapl_bars(*paths: str) -> list[dict[str, Any]]:
         return [
@@ -187,6 +195,8 @@ def settings() -> Settings:
         alpaca_data_url=ALPACA_DATA,
         alpaca_key_id="test-key-id",
         alpaca_secret_key="test-secret",
+        logo_dev_url=LOGO_DEV,
+        logo_dev_key="test-logo-key",
     )
 
 
