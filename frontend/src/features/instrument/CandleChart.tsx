@@ -66,6 +66,8 @@ function create(container: HTMLElement, market: Market) {
   const crosshair = crosshairFormatter(zone);
   const chart = createChart(container, {
     autoSize: true,
+    // The TradingView attribution is a line in the footer instead (#166).
+    layout: { attributionLogo: false },
     localization: { timeFormatter: (time: Time) => crosshair(time as number) },
     timeScale: { timeVisible: true, tickMarkFormatter: (time: Time, tick: number) => ticks(time as number, tick) },
   });
