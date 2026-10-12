@@ -169,11 +169,11 @@ export function CandleChart({ bars, market, onNearLeftEdge }: Props) {
   const { container, hovered, awayFromLatest, scrollToLatest } = useCandleChart(market, bars, onNearLeftEdge);
   const legend = legendFor(bars, hovered, priceDecimals(bars.at(-1)?.close ?? 0));
 
-  // As tall as the screen leaves room for: the header, the instrument info and the switch take
-  // about 23rem. Never under 20rem (phones in landscape), never over 60rem (tall monitors).
+  // As tall as the screen leaves room for: the header, the instrument info, the switch and the
+  // footer take about 26rem. Never under 20rem (phones in landscape), never over 60rem (tall monitors).
   return (
     <div className="relative">
-      <div ref={container} className="h-[clamp(20rem,calc(100dvh-23rem),60rem)] w-full" />
+      <div ref={container} className="h-[clamp(20rem,calc(100dvh-26rem),60rem)] w-full" />
       {legend && <ChartLegend legend={legend} />}
       {awayFromLatest && (
         <Button
