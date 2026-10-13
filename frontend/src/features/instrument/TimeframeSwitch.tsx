@@ -15,7 +15,7 @@ export function TimeframeSwitch({ timeframes, current }: { timeframes: readonly 
           replace
           aria-current={tf === current ? 'page' : undefined}
           className={cn(
-            'rounded-md border px-3 py-1 font-mono text-sm text-muted-foreground transition-colors hover:text-foreground',
+            'rounded-md border px-2.5 py-1 font-mono text-sm text-muted-foreground transition-colors hover:text-foreground sm:px-3',
             tf === current && 'border-primary text-primary hover:text-primary',
           )}
         >

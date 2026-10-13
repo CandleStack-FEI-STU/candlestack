@@ -29,7 +29,7 @@ function useCountdown(seconds: number, onDone: () => void): number {
 function Countdown({ seconds, message, onRetry }: { seconds: number; message: string; onRetry: () => void }) {
   const left = useCountdown(seconds, onRetry);
   return (
-    <output>
+    <output className="min-w-0 break-words">
       {message} Try again in {left} s.
     </output>
   );
@@ -39,7 +39,8 @@ type Props = { error: Error; errorAt: number; autoRetries: number; onRetry: () =
 
 // An error of the candle requests. When the server says how long to wait (429, 503), the page
 // waits that long and asks again itself, a few times in a row (see retries.ts); otherwise, and
-// after that, the user decides.
+// after that, the user decides. The message can hold a long path, e.g. "Nothing at
+// /api/v1/data/instruments/crypto:ETHUSDT/candles?…": it wraps inside the box on a phone.
 export function CandlesError({ error, errorAt, autoRetries, onRetry, onAutoRetry }: Props) {
   const wait = error instanceof ApiError ? error.retryAfter : undefined;
   return (
@@ -48,7 +49,9 @@ export function CandlesError({ error, errorAt, autoRetries, onRetry, onAutoRetry
         <Countdown key={errorAt} seconds={wait} message={error.message} onRetry={onAutoRetry} />
       ) : (
         <>
-          <p role="alert">{error.message}</p>
+          <p role="alert" className="min-w-0 break-words">
+            {error.message}
+          </p>
           <Button variant="outline" size="sm" onClick={onRetry}>
             Try again
           </Button>
