@@ -125,9 +125,17 @@ class FakeDataService:
         raise InstrumentNotFound(instrument_id)
 
     async def candles(
-        self, instrument_id: InstrumentId, timeframe: Timeframe, start: int, end: int
+        self,
+        instrument_id: InstrumentId,
+        timeframe: Timeframe,
+        start: int | None,
+        end: int,
+        *,
+        limit: int | None = None,
     ) -> CandleSet:
-        self._called("candles", instrument_id, timeframe, start, end)
+        self._called("candles", instrument_id, timeframe, start, end, limit)
+        if start is None:  # like the service: the last ``limit`` candles end at ``end``
+            start = end - 24 * 3600
         return self.result or candle_set(instrument_id, timeframe, start, end)
 
     async def sources_health(self) -> dict[str, SourceHealth]:
@@ -447,7 +455,7 @@ def test_candles(client: TestClient, service: FakeDataService) -> None:
     # The orjson body is exactly what the documented model describes.
     CandlesOut.model_validate_json(response.content, strict=True)
     assert service.calls == [
-        ("candles", (BTCUSDT.id, Timeframe.H1, DAY_START, DAY_END)),
+        ("candles", (BTCUSDT.id, Timeframe.H1, DAY_START, DAY_END, None)),
     ]
 
 
@@ -468,7 +476,10 @@ def test_candles_instrument_path(
     assert response.status_code == 200
     assert response.json()["meta"]["instrument"] == instrument
     assert service.calls == [
-        ("candles", (InstrumentId.parse(instrument), Timeframe.H1, DAY_START, DAY_END)),
+        (
+            "candles",
+            (InstrumentId.parse(instrument), Timeframe.H1, DAY_START, DAY_END, None),
+        ),
     ]
 
 
@@ -555,8 +566,26 @@ def test_end_formats_and_default(
             ),
         ),
         (
-            "stock:AAPL/candles?timeframe=1h",
-            "query parameter 'start': Field required",
+            "stock:AAPL/candles?timeframe=1h&limit=0",
+            "query parameter 'limit': Input should be greater than or equal to 1",
+        ),
+        (
+            "stock:AAPL/candles?timeframe=1h&limit=5001",
+            "query parameter 'limit': Input should be less than or equal to 5000",
+        ),
+        (
+            "stock:AAPL/candles?timeframe=1h&limit=many",
+            (
+                "query parameter 'limit': Input should be a valid integer, unable to parse "
+                "string as an integer"
+            ),
+        ),
+        (
+            "stock:AAPL/candles?timeframe=1h&start=2024-06-03&limit=10",
+            (
+                "query parameter 'limit': limit cannot be combined with start: send start and "
+                "end, or limit and end"
+            ),
         ),
         (
             "stock:AAPL/candles?timeframe=1h&start=yesterday",
@@ -604,6 +633,29 @@ def test_candles_validation(
     body = problem(response, 422, "validation")
     assert body["detail"] == detail
     assert service.calls == []
+
+
+def test_last_candles_default_limit(
+    client: TestClient, service: FakeDataService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("candlestack.data.api._time", lambda: DAY_END + 0.7)
+
+    response = client.get("/api/v1/data/instruments/crypto:BTCUSDT/candles?timeframe=15m")
+
+    assert response.status_code == 200
+    assert response.json()["meta"]["start"] == DAY_END - 24 * 3600  # what the service picked
+    assert service.calls == [("candles", (BTCUSDT.id, Timeframe.M15, None, DAY_END, 500))]
+
+
+@pytest.mark.parametrize("limit", [1, 5000])
+def test_last_candles_before_end(client: TestClient, service: FakeDataService, limit: int) -> None:
+    response = client.get(
+        "/api/v1/data/instruments/stock:AAPL/candles",
+        params={"timeframe": "1h", "end": "2024-06-03T13:30Z", "limit": limit},
+    )
+
+    assert response.status_code == 200
+    assert service.calls == [("candles", (AAPL.id, Timeframe.H1, None, 1717421400, limit))]
 
 
 def test_start_in_the_future(
@@ -878,8 +930,9 @@ def test_openapi_documents_the_data_api(client: TestClient) -> None:
     ] == [
         ("instrument_id", "path", True),
         ("timeframe", "query", True),
-        ("start", "query", True),
+        ("start", "query", False),
         ("end", "query", False),
+        ("limit", "query", False),
     ]
     assert candles["tags"] == ["data"]
     assert candles["responses"]["200"]["content"]["application/json"]["schema"] == {

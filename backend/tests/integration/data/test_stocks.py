@@ -161,6 +161,52 @@ async def test_early_close_day(service: DataService, upstream):
 
 
 @pytest.mark.usefixtures("stocks")
+async def test_last_candles_skip_weekends_and_holidays(
+    service: DataService, upstream, redis: Redis
+):
+    upstream.bars_json(
+        "1Day",
+        "2024-01-01T00:00:00Z",
+        upstream.aapl_bars("bars-AAPL-1Day-2024-11-25_12-02.json"),
+    )
+
+    candles = await service.candles(AAPL, Timeframe.D1, None, utc("2024-12-03"), limit=3)
+    response = await get_api(
+        service,
+        redis,
+        "/api/v1/data/instruments/stock:AAPL/candles?timeframe=1d&end=2024-12-03&limit=3",
+    )
+
+    # Wednesday, Friday (Thanksgiving, Thursday, has no session), then Monday.
+    assert candles.frame["ts"].to_list() == [
+        utc("2024-11-27T14:30"),
+        utc("2024-11-29T14:30"),
+        utc("2024-12-02T14:30"),
+    ]
+    assert candles.start == utc("2024-11-27T14:30")
+    assert candles.gaps_total == 0
+    assert response.status_code == 200
+    assert response.json()["meta"]["start"] == utc("2024-11-27T14:30")
+    assert response.json()["meta"]["count"] == 3
+
+
+@pytest.mark.usefixtures("stocks")
+async def test_last_candles_over_the_available_history(service: DataService, upstream):
+    upstream.bars_json(
+        "1Day",
+        "2024-01-01T00:00:00Z",
+        upstream.aapl_bars("bars-AAPL-1Day-2024-11-25_12-02.json"),
+    )
+
+    candles = await service.candles(AAPL, Timeframe.D1, None, utc("2024-12-03"), limit=5000)
+    info = await service.instrument(AAPL)
+
+    assert info.available_from is not None
+    assert candles.start == info.available_from
+    assert candles.frame["ts"][-1] == utc("2024-12-02T14:30")
+
+
+@pytest.mark.usefixtures("stocks")
 async def test_unknown_stock_is_not_asked_for_bars(service: DataService, upstream):
     with pytest.raises(InstrumentNotFound):
         await service.candles(

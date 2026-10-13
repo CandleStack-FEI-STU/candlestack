@@ -51,6 +51,7 @@ _SOURCE_TITLES = {"binance": "Binance", "alpaca": "Alpaca"}
 _time = time.time
 # 9999-12-31T23:59:59Z: a larger number is not epoch seconds (most likely milliseconds).
 _MAX_EPOCH = 253402300799
+DEFAULT_LIMIT, MAX_LIMIT = 500, 5000
 _DIGITS = re.compile(r"[0-9]+")
 
 
@@ -353,13 +354,16 @@ async def candles(
         Path(description="Instrument id, `<market>:<symbol>`.", examples=["crypto:BTCUSDT"]),
     ],
     timeframe: Annotated[Timeframe, Query(examples=["1h"])],
+    *,
     start: Annotated[
-        TimeParam,
+        TimeParam | None,
         Query(
             description="Start of the period, inclusive: UTC epoch seconds or ISO 8601 "
-            "(`2024-06-03`, `2024-06-03T13:30:00Z`; without an offset it is UTC).",
+            "(`2024-06-03`, `2024-06-03T13:30:00Z`; without an offset it is UTC). Without it, "
+            "the period starts where the last `limit` candles before `end` begin; "
+            "`meta.start` tells where. Not together with `limit`.",
         ),
-    ],
+    ] = None,
     end: Annotated[
         TimeParam | None,
         Query(
@@ -367,18 +371,42 @@ async def candles(
             examples=["2024-06-04"],
         ),
     ] = None,
+    limit: Annotated[
+        int | None,
+        Query(
+            ge=1,
+            le=MAX_LIMIT,
+            description="Without `start`: how many of the newest candles before `end` to "
+            f"return, default {DEFAULT_LIMIT}. Stocks count only candles of trading sessions "
+            "(nights, weekends and holidays are skipped), crypto counts every candle. Fewer "
+            "come back when the data starts later. Not together with `start`.",
+        ),
+    ] = None,
 ) -> Response:
-    """Closed candles of one instrument and timeframe with `start <= t < end`.
+    """Closed candles of one instrument and timeframe: those with `start <= t < end`, or, without
+    `start`, the last `limit` before `end`.
 
     Stocks have regular-session candles only (09:30-16:00 New York), aligned to the session
     open. Missing candles are never filled; `meta.gaps` reports them. Limits: `max_candles`
     expected candles per request (see the instrument detail) and a per-minute number of
     candle and instrument requests per client address.
     """
+    if start is not None and limit is not None:
+        raise RequestValidationError(
+            [
+                {
+                    "type": "period",
+                    "loc": ("query", "limit"),
+                    "msg": "limit cannot be combined with start: send start and end, or limit "
+                    "and end",
+                    "input": limit,
+                }
+            ]
+        )
     now = end is None
     if end is None:
         end = int(_time())
-    if start >= end:
+    if start is not None and start >= end:
         raise RequestValidationError(
             [
                 {
@@ -390,7 +418,13 @@ async def candles(
             ]
         )
     with _problems():
-        found = await service.candles(InstrumentId.parse(instrument_id), timeframe, start, end)
+        found = await service.candles(
+            InstrumentId.parse(instrument_id),
+            timeframe,
+            start,
+            end,
+            limit=(limit or DEFAULT_LIMIT) if start is None else None,
+        )
     return Response(candles_json(found), media_type="application/json")
 
 

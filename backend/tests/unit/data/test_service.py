@@ -14,7 +14,13 @@ from candlestack.data import (
     slice_range,
 )
 from candlestack.data.cache import decode_chunk, encode_chunk
-from candlestack.data.service import CandleRequest, assemble, bin_open, newest_minute
+from candlestack.data.service import (
+    CandleRequest,
+    _last_start,
+    assemble,
+    bin_open,
+    newest_minute,
+)
 from candlestack.data.sources.base import DAY, DataSource, Period, plan_periods
 
 BTC, AAPL = InstrumentId.parse("crypto:BTCUSDT"), InstrumentId.parse("stock:AAPL")
@@ -29,6 +35,9 @@ class Named:
 
 Binance = cast("DataSource", Named("binance", "spot"))
 Alpaca = cast("DataSource", Named("alpaca", "iex"))
+
+
+HOURS = 3600
 
 
 def utc(text: str) -> int:
@@ -64,6 +73,24 @@ def test_bin_open_of_session_bins(sessions: list[Session]) -> None:
     assert bin_open(first, Timeframe.H4, sessions) == utc("2024-06-03T13:30")
     assert bin_open(first, Timeframe.D1, sessions) == utc("2024-06-03T13:30")
     assert bin_open(utc("2024-06-03T21:00"), Timeframe.H1, sessions) == utc("2024-06-03T21:00")
+
+
+def test_last_start_is_not_before_the_first_candle(sessions: list[Session]) -> None:
+    end, now = utc("2024-06-04 13:30"), utc("2024-07-01")
+    first = utc("2024-06-03 14:30")
+
+    def last(limit: int, available_from: int | None, timeframe: Timeframe = Timeframe.H1) -> int:
+        return _last_start(
+            end, now, timeframe, limit, sessions=sessions, available_from=available_from
+        )
+
+    assert last(3, first) == utc("2024-06-03 17:30")
+    assert last(500, first) == first  # data starts later: what exists
+    assert last(100000, None) == utc("2024-01-02 14:30")  # first candle unknown: no clamp
+    assert last(3, None, Timeframe.D1) == utc("2024-05-30 13:30")
+    # Nothing before ``end``, or all data after it: a one-second period the checks then judge.
+    assert _last_start(5, now, Timeframe.H1, 3, sessions=sessions[:0], available_from=None) == 4
+    assert last(3, end + HOURS) == end - 1
 
 
 def test_chunk_round_trip() -> None:

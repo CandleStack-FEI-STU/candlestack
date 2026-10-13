@@ -109,7 +109,8 @@ export interface paths {
         };
         /**
          * Candles
-         * @description Closed candles of one instrument and timeframe with `start <= t < end`.
+         * @description Closed candles of one instrument and timeframe: those with `start <= t < end`, or, without
+         *     `start`, the last `limit` before `end`.
          *
          *     Stocks have regular-session candles only (09:30-16:00 New York), aligned to the session
          *     open. Missing candles are never filled; `meta.gaps` reports them. Limits: `max_candles`
@@ -764,10 +765,12 @@ export interface operations {
         parameters: {
             query: {
                 timeframe: components["schemas"]["Timeframe"];
-                /** @description Start of the period, inclusive: UTC epoch seconds or ISO 8601 (`2024-06-03`, `2024-06-03T13:30:00Z`; without an offset it is UTC). */
-                start: number | string;
+                /** @description Start of the period, inclusive: UTC epoch seconds or ISO 8601 (`2024-06-03`, `2024-06-03T13:30:00Z`; without an offset it is UTC). Without it, the period starts where the last `limit` candles before `end` begin; `meta.start` tells where. Not together with `limit`. */
+                start?: (number | string) | null;
                 /** @description End of the period, exclusive, in the same formats; default now. */
                 end?: (number | string) | null;
+                /** @description Without `start`: how many of the newest candles before `end` to return, default 500. Stocks count only candles of trading sessions (nights, weekends and holidays are skipped), crypto counts every candle. Fewer come back when the data starts later. Not together with `start`. */
+                limit?: number | null;
             };
             header?: never;
             path: {

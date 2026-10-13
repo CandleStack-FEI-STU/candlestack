@@ -1073,7 +1073,7 @@
     },
     "/api/v1/data/instruments/{instrument_id}/candles": {
       "get": {
-        "description": "Closed candles of one instrument and timeframe with `start <= t < end`.\n\nStocks have regular-session candles only (09:30-16:00 New York), aligned to the session\nopen. Missing candles are never filled; `meta.gaps` reports them. Limits: `max_candles`\nexpected candles per request (see the instrument detail) and a per-minute number of\ncandle and instrument requests per client address.",
+        "description": "Closed candles of one instrument and timeframe: those with `start <= t < end`, or, without\n`start`, the last `limit` before `end`.\n\nStocks have regular-session candles only (09:30-16:00 New York), aligned to the session\nopen. Missing candles are never filled; `meta.gaps` reports them. Limits: `max_candles`\nexpected candles per request (see the instrument detail) and a per-minute number of\ncandle and instrument requests per client address.",
         "operationId": "candles_api_v1_data_instruments__instrument_id__candles_get",
         "parameters": [
           {
@@ -1102,26 +1102,34 @@
             }
           },
           {
-            "description": "Start of the period, inclusive: UTC epoch seconds or ISO 8601 (`2024-06-03`, `2024-06-03T13:30:00Z`; without an offset it is UTC).",
+            "description": "Start of the period, inclusive: UTC epoch seconds or ISO 8601 (`2024-06-03`, `2024-06-03T13:30:00Z`; without an offset it is UTC). Without it, the period starts where the last `limit` candles before `end` begin; `meta.start` tells where. Not together with `limit`.",
             "in": "query",
             "name": "start",
-            "required": true,
+            "required": false,
             "schema": {
               "anyOf": [
                 {
-                  "minimum": 0,
-                  "type": "integer"
+                  "anyOf": [
+                    {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  ],
+                  "examples": [
+                    "2024-06-03",
+                    "2024-06-03T13:30:00Z",
+                    1717421400
+                  ]
                 },
                 {
-                  "format": "date-time",
-                  "type": "string"
+                  "type": "null"
                 }
               ],
-              "examples": [
-                "2024-06-03",
-                "2024-06-03T13:30:00Z",
-                1717421400
-              ],
+              "description": "Start of the period, inclusive: UTC epoch seconds or ISO 8601 (`2024-06-03`, `2024-06-03T13:30:00Z`; without an offset it is UTC). Without it, the period starts where the last `limit` candles before `end` begin; `meta.start` tells where. Not together with `limit`.",
               "title": "Start"
             }
           },
@@ -1158,6 +1166,26 @@
                 "2024-06-04"
               ],
               "title": "End"
+            }
+          },
+          {
+            "description": "Without `start`: how many of the newest candles before `end` to return, default 500. Stocks count only candles of trading sessions (nights, weekends and holidays are skipped), crypto counts every candle. Fewer come back when the data starts later. Not together with `start`.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 5000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Without `start`: how many of the newest candles before `end` to return, default 500. Stocks count only candles of trading sessions (nights, weekends and holidays are skipped), crypto counts every candle. Fewer come back when the data starts later. Not together with `start`.",
+              "title": "Limit"
             }
           }
         ],

@@ -30,6 +30,7 @@ from candlestack.data.candles import (
     expected_bins_sessions,
     find_gaps,
     fingerprint,
+    first_of_last,
     resample_sessions,
     slice_range,
     suggest,
@@ -157,14 +158,26 @@ class DataService:
         return await self._icons.icon(instrument)
 
     async def candles(
-        self, instrument_id: InstrumentId, timeframe: Timeframe, start: int, end: int
+        self,
+        instrument_id: InstrumentId,
+        timeframe: Timeframe,
+        start: int | None,
+        end: int,
+        *,
+        limit: int | None = None,
     ) -> CandleSet:
         """Closed candles of ``[start, end)`` with their gaps and fingerprint.
+
+        Without ``start``, the last ``limit`` candles that opened before ``end``: stocks count
+        only session bins, so nights, weekends and holidays are skipped. The set starts at the
+        earliest of them (or at the first candle the source has, when there are fewer).
 
         Raises ``InvalidRequest``, ``InstrumentNotFound``, ``PeriodOutOfRange``,
         ``TooManyCandles``, ``SourceUnavailable`` and ``DataIntegrityError``.
         """
-        if start >= end:
+        if (start is None) == (limit is None):
+            raise InvalidRequest("Give either start or limit.")
+        if start is not None and start >= end:
             raise InvalidRequest(f"start ({start}) must be before end ({end}).")
         instrument = await self._find(instrument_id)
         source = self._sources[instrument_id.market]
@@ -172,6 +185,10 @@ class DataService:
         sessions = await source.sessions()
         first = await self._first(source, instrument)
         available_from = None if first is None else bin_open(first, timeframe, sessions)
+        if start is None:
+            start = _last_start(
+                end, now, timeframe, limit or 1, sessions=sessions, available_from=available_from
+            )
         if end > now or (available_from is not None and start < available_from):
             raise PeriodOutOfRange(
                 instrument_id, timeframe, available_from, now, start=start, end=end
@@ -274,6 +291,24 @@ def newest_minute(now: int, sessions: Sequence[Session] | None) -> int:
         if latest >= 0:
             minute = min(minute, sessions[latest].close)
     return minute - 60
+
+
+def _last_start(
+    end: int,
+    now: int,
+    timeframe: Timeframe,
+    limit: int,
+    *,
+    sessions: Sequence[Session] | None,
+    available_from: int | None,
+) -> int:
+    """Start of the last ``limit`` candles before ``end``, not before the first candle."""
+    start = first_of_last(end, now, timeframe, limit, sessions)
+    if start is None:
+        return end - 1
+    if available_from is not None:
+        start = max(start, available_from)
+    return min(start, end - 1)
 
 
 def bin_open(ts: int, timeframe: Timeframe, sessions: Sequence[Session] | None) -> int:
