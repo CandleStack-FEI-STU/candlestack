@@ -170,10 +170,14 @@ export function CandleChart({ bars, market, onNearLeftEdge }: Props) {
   const legend = legendFor(bars, hovered, priceDecimals(bars.at(-1)?.close ?? 0));
 
   // As tall as the screen leaves room for: the header, the instrument info, the switch and the
-  // footer take about 26rem. Never under 20rem (phones in landscape), never over 60rem (tall monitors).
+  // footer take about 26rem, and 29.5rem on a phone, where the status line and the footer take two
+  // lines each. Never under 20rem (phones in landscape), never over 60rem (tall monitors).
   return (
     <div className="relative">
-      <div ref={container} className="h-[clamp(20rem,calc(100dvh-26rem),60rem)] w-full" />
+      <div
+        ref={container}
+        className="h-[clamp(20rem,calc(100dvh-29.5rem),60rem)] w-full sm:h-[clamp(20rem,calc(100dvh-26rem),60rem)]"
+      />
       {legend && <ChartLegend legend={legend} />}
       {awayFromLatest && (
         <Button

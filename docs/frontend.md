@@ -103,6 +103,14 @@ minute.
   without candles (one or two are an outage).
 - **Gaps.** When `meta.gaps_total > 0`, the chart shows a small note: it joins sessions, so
   real gaps in the data would be hidden otherwise.
+- **Phones.** Every page fits a 360 px screen without sideways scrolling, in both themes. Long
+  text gives way instead of the layout: names and symbols in the list truncate (on a phone the
+  name takes the width the symbol leaves, and a symbol longer than 8rem is cut short), an
+  instrument's id and name wrap, and error messages break their long paths (`break-words`).
+  Below `sm` the instrument page leaves the symbol out of its facts (it ends the id above the
+  name) and narrows the gaps of the facts and the timeframe switch, so each fits one line, and
+  the chart subtracts 29.5rem instead of 26rem from the screen's height for the rest of the
+  page. From `sm` up nothing changes.
 
 ## Instrument icons
 

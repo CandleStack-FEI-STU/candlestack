@@ -3,16 +3,18 @@ import { InstrumentIcon } from '@/components/InstrumentIcon';
 
 import { chartTimeZone, formatDate } from './time';
 
-function Fact({ label, value }: { label: string; value: string }) {
+function Fact({ label, value, className }: { label: string; value: string; className?: string }) {
   return (
-    <div>
+    <div className={className}>
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="font-mono text-sm">{value}</dd>
     </div>
   );
 }
 
-// Icon, name, symbol, exchange, source and since when there is data.
+// Icon, name, symbol, exchange, source and since when there is data. On a phone the facts fit
+// one line: the symbol is left out (it ends the id above the name) and the gaps are narrower, so
+// the chart below keeps its room. A long id or name wraps instead of running off the screen.
 export function InstrumentHeader({ instrument }: { instrument: InstrumentDetail }) {
   const since =
     instrument.available_from === null
@@ -23,13 +25,13 @@ export function InstrumentHeader({ instrument }: { instrument: InstrumentDetail 
     <div className="mb-6">
       <div className="flex items-center gap-3.5">
         <InstrumentIcon id={instrument.id} size={64} />
-        <div>
-          <p className="font-mono text-sm text-muted-foreground">{instrument.id}</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">{instrument.name}</h1>
+        <div className="min-w-0">
+          <p className="font-mono text-sm break-all text-muted-foreground">{instrument.id}</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight break-words">{instrument.name}</h1>
         </div>
       </div>
-      <dl className="mt-4 flex flex-wrap gap-x-8 gap-y-3">
-        <Fact label="Symbol" value={instrument.symbol} />
+      <dl className="mt-4 flex flex-wrap gap-x-5 gap-y-3 sm:gap-x-8">
+        <Fact label="Symbol" value={instrument.symbol} className="hidden sm:block" />
         <Fact label="Exchange" value={exchangeName(instrument)} />
         <Fact label="Source" value={`${instrument.source} (${instrument.feed})`} />
         <Fact label="Data since" value={since} />

@@ -16,7 +16,8 @@ export function Header() {
         <Link to="/" aria-label="CandleStack home" className="shrink-0 rounded-md">
           <Logo />
         </Link>
-        <div className="flex min-w-0 flex-1 items-center justify-end gap-3 pl-4">
+        {/* Narrower gaps on a phone leave the search box room for its placeholder. */}
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-2 pl-3 sm:gap-3 sm:pl-4">
           {!onList && <QuickSearch />}
           <ApiStatus />
           <ThemeToggle />

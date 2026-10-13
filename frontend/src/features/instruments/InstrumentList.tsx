@@ -38,7 +38,10 @@ function ErrorState({ error, onRetry }: { error: ListError; onRetry: () => void 
           Try again
         </Button>
       )}
-      {error.detail && <p className="mt-3 font-mono text-xs text-muted-foreground/70">{error.detail}</p>}
+      {/* The server's words can hold a long path: it wraps inside the screen. */}
+      {error.detail && (
+        <p className="mt-3 max-w-full font-mono text-xs break-words text-muted-foreground/70">{error.detail}</p>
+      )}
     </div>
   );
 }

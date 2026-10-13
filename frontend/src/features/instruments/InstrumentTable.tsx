@@ -13,19 +13,24 @@ function Row({ instrument }: { instrument: Instrument }) {
       <td className={CELL}>
         <div className="flex items-center gap-2.5">
           <InstrumentIcon id={instrument.id} size={32} />
+          {/* On a phone a symbol longer than 8rem (1000CHEEMSUSDT fits) is cut short, so the name
+              keeps its room; the page of the instrument shows it in full. */}
           <Link
             to="/instrument/$id"
             params={{ id: instrument.id }}
-            className="font-mono outline-none after:absolute after:inset-0 focus-visible:text-primary"
+            className="max-w-32 truncate font-mono outline-none after:absolute after:inset-0 focus-visible:text-primary sm:max-w-none"
           >
             {instrument.symbol}
           </Link>
         </div>
       </td>
-      <td className={`${CELL} max-w-[16rem] text-muted-foreground`}>
+      {/* On a phone the name takes the width the symbol leaves (w-full with max-w-0 lets a cell
+          shrink below its text) and truncates, so a long name never widens the table past the
+          screen; from sm up it is at most 16rem wide, as before. */}
+      <td className={`${CELL} w-full max-w-0 text-muted-foreground sm:w-auto sm:max-w-[16rem]`}>
         <span className="block truncate">{instrument.name}</span>
         {/* On a phone the market and exchange columns are hidden: show them under the name. */}
-        <span className="block text-xs capitalize sm:hidden">
+        <span className="block truncate text-xs capitalize sm:hidden">
           {instrument.market} · {exchangeName(instrument)}
         </span>
       </td>

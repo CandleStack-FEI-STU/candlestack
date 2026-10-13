@@ -50,6 +50,14 @@ describe('InstrumentTable', () => {
     expect(btc).toMatch(/<img [^>]*width="32"/);
   });
 
+  it('lets the name, not the table, give way on a phone', async () => {
+    const [btc] = rows(await render());
+    // w-full with max-w-0: the name cell takes the width left and truncates instead of widening
+    // the table; from sm up it is at most 16rem, as before.
+    expect(btc).toMatch(/<td class="[^"]*w-full max-w-0[^"]*sm:max-w-\[16rem\]"><span class="block truncate">Bitcoin/);
+    expect(btc).toMatch(/<a [^>]*class="max-w-32 truncate [^"]*sm:max-w-none"[^>]*>BTCUSDT<\/a>/);
+  });
+
   it('keeps the symbol the only link of a row, so the row stays one click target', async () => {
     const all = rows(await render());
     expect(all).toHaveLength(2);
