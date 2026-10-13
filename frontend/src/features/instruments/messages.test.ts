@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ApiError } from '@/api';
 
-import { describeListError, emptyMessage, quickSearchError, unavailableMessage } from './messages';
+import { describeListError, emptyMessage, mismatchMessage, quickSearchError, unavailableMessage } from './messages';
 
 describe('messages', () => {
   it('names the query and the market when nothing matches', () => {
@@ -11,6 +11,18 @@ describe('messages', () => {
     expect(emptyMessage('', 'crypto')).toBe('No instruments in crypto pairs.');
     expect(emptyMessage('zzz', 'stock', 'NYSE')).toMatch(/“zzz” in stocks on NYSE\./);
     expect(emptyMessage('', undefined, 'BATS')).toBe('No instruments on BATS.');
+    expect(emptyMessage('zzz', 'crypto', 'BINANCE')).toMatch(/“zzz” in crypto pairs on Binance\./);
+  });
+
+  it('says why a market and an exchange it does not trade on find nothing', () => {
+    expect(mismatchMessage('crypto', 'NYSE')).toEqual({
+      title: 'No crypto pairs on NYSE',
+      hint: 'NYSE lists stocks only.',
+    });
+    expect(mismatchMessage('stock', 'BINANCE')).toEqual({
+      title: 'No stocks on Binance',
+      hint: 'Binance lists crypto pairs only.',
+    });
   });
 
   it('says which market is left out', () => {

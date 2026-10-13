@@ -3,6 +3,7 @@ export { candleBridgeQueryOptions, candlePageQueryOptions, type Candles } from '
 export { ApiError } from './client';
 export { useHealth, type Health } from './health';
 export {
+  exchangeLabel,
   exchangeName,
   instrumentIconUrl,
   instrumentQueryOptions,
@@ -12,6 +13,7 @@ export {
 export { queryClient } from './queryClient';
 export {
   EXCHANGES,
+  exchangeMarket,
   hasNextPage,
   instrumentSearchQueryOptions,
   resultTotal,

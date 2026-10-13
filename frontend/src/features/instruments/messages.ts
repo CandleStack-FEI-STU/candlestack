@@ -1,4 +1,4 @@
-import { ApiError, type Exchange, type Market } from '@/api';
+import { ApiError, exchangeLabel, exchangeMarket, type Exchange, type Market } from '@/api';
 
 const MARKET_NAMES: Record<Market, string> = { stock: 'Stocks', crypto: 'Crypto pairs' };
 
@@ -6,9 +6,17 @@ const MARKET_NAMES: Record<Market, string> = { stock: 'Stocks', crypto: 'Crypto 
 // sees why.
 export function emptyMessage(query: string, market: Market | undefined, exchange?: Exchange): string {
   const inMarket = market === undefined ? '' : ` in ${MARKET_NAMES[market].toLowerCase()}`;
-  const where = exchange === undefined ? inMarket : `${inMarket} on ${exchange}`;
+  const where = exchange === undefined ? inMarket : `${inMarket} on ${exchangeLabel(exchange)}`;
   if (query === '') return `No instruments${where}.`;
   return `No instruments match “${query}”${where}. Try a symbol like btc or a name like apple.`;
+}
+
+// What to say for a link that pairs a market with an exchange it does not trade on
+// (?market=crypto&exchange=NYSE): the controls cannot make one, an old or hand-edited link can.
+export function mismatchMessage(market: Market, exchange: Exchange): { title: string; hint: string } {
+  const name = exchangeLabel(exchange);
+  const lists = MARKET_NAMES[exchangeMarket(exchange)].toLowerCase();
+  return { title: `No ${MARKET_NAMES[market].toLowerCase()} on ${name}`, hint: `${name} lists ${lists} only.` };
 }
 
 // A market whose list could not be loaded is left out of the search: say which one.

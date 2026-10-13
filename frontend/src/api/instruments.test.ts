@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { exchangeName, getInstrument, instrumentIconUrl, instrumentQueryOptions } from './instruments';
+import { exchangeLabel, exchangeName, getInstrument, instrumentIconUrl, instrumentQueryOptions } from './instruments';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -25,9 +25,18 @@ describe('instrumentIconUrl', () => {
   });
 });
 
+describe('exchangeLabel', () => {
+  it('names Binance as the company writes it and a stock exchange by its code', () => {
+    expect(exchangeLabel('BINANCE')).toBe('Binance');
+    expect(exchangeLabel('NYSE')).toBe('NYSE');
+  });
+});
+
 describe('exchangeName', () => {
   it('names the listing exchange of a stock and Binance for a crypto pair', () => {
     expect(exchangeName({ exchange: 'NASDAQ', source: 'alpaca' })).toBe('NASDAQ');
+    expect(exchangeName({ exchange: 'BINANCE', source: 'binance' })).toBe('Binance');
+    // the API before #182
     expect(exchangeName({ exchange: null, source: 'binance' })).toBe('Binance');
     expect(exchangeName({ exchange: null, source: 'alpaca' })).toBe('—');
   });

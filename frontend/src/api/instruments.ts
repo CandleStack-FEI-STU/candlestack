@@ -6,11 +6,19 @@ import type { components } from './schema';
 export type InstrumentDetail = components['schemas']['InstrumentDetailOut'];
 export type Market = components['schemas']['Market'];
 
-// The exchange to show for an instrument. The API gives stocks their listing exchange and crypto
-// pairs none (null): they all come from Binance, which is the exchange. Shared by the list and
-// the instrument page, so both say the same.
+// An exchange as the app names it: Binance as the company writes it, the stock exchanges by their
+// code (NASDAQ, NYSE).
+export function exchangeLabel(exchange: string): string {
+  return exchange === 'BINANCE' ? 'Binance' : exchange;
+}
+
+// The exchange to show for an instrument: the listing exchange of a stock, Binance for a crypto
+// pair. The API before #182 (still on prod until the next release) gives crypto pairs none
+// (null); they all come from Binance. Shared by the list and the instrument page, so both say
+// the same.
 export function exchangeName(instrument: Pick<InstrumentDetail, 'exchange' | 'source'>): string {
-  return instrument.exchange ?? (instrument.source === 'binance' ? 'Binance' : '—');
+  if (instrument.exchange !== null) return exchangeLabel(instrument.exchange);
+  return instrument.source === 'binance' ? 'Binance' : '—';
 }
 
 // The path of an instrument; an id has a colon, e.g. "stock:BRK.B".

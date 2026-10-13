@@ -9,14 +9,21 @@ export type InstrumentSearchResult = components['schemas']['InstrumentSearchOut'
 
 export type Exchange = components['schemas']['Exchange'];
 
-// The exchanges the API filters by, in the order the filter shows them. `satisfies` keeps the
-// list in step with the generated type: a value the API drops fails the type check.
-export const EXCHANGES = ['NASDAQ', 'NYSE', 'ARCA', 'AMEX', 'BATS'] as const satisfies readonly Exchange[];
+// The exchanges the API filters by, in the order the filter shows them: the stock exchanges, then
+// Binance, where the crypto pairs trade. `satisfies` keeps the list in step with the generated
+// type: a value the API drops fails the type check.
+export const EXCHANGES = ['NASDAQ', 'NYSE', 'ARCA', 'AMEX', 'BATS', 'BINANCE'] as const satisfies readonly Exchange[];
+
+// The market whose instruments trade on an exchange: Binance lists the crypto pairs, the others
+// stocks.
+export function exchangeMarket(exchange: Exchange): Market {
+  return exchange === 'BINANCE' ? 'crypto' : 'stock';
+}
 
 export type InstrumentSearchParams = {
   q: string;
   market?: Market;
-  // Only stocks listed there; crypto pairs have no exchange.
+  // Only the instruments that trade there: BINANCE has the crypto pairs, the others stocks.
   exchange?: Exchange;
   limit: number;
   offset: number;
