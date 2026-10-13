@@ -92,9 +92,9 @@ minute.
   (`?limit=500`), each older page the 500 before the start of the oldest one
   (`?end=<meta.start>&limit=500`), never more than the instrument's `max_candles`. With history
   below it, the latest page refreshes from where that history ends (`?start=…`), so no candles
-  go missing after an idle tab; if that would be over `max_candles`, it loads its last 500 again
-  and history starts over below it. History ends at the first candle (`available_from`) or at an
-  empty page.
+  go missing after an idle tab. Past 1000 candles (or 90% of `max_candles`), or when the server
+  answers `too-many-candles`, it loads its last 500 again and history starts over below it.
+  History ends at the first candle (`available_from`) or at an empty page.
 - **Gaps.** When `meta.gaps_total > 0`, the chart shows a small note: it joins sessions, so
   real gaps in the data would be hidden otherwise.
 

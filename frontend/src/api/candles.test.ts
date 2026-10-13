@@ -8,6 +8,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// Runs the query function of a page as TanStack Query would.
+function runQuery({ queryFn }: ReturnType<typeof candlePageQueryOptions>): Promise<unknown> {
+  return (queryFn as (context: { signal: AbortSignal }) => Promise<unknown>)({ signal: new AbortController().signal });
+}
+
 describe('getCandles', () => {
   it('asks the candles endpoint of the instrument for the last candles before an end', async () => {
     const fetch = vi.fn(() => Promise.resolve(new Response('{"t":[]}')));
@@ -50,15 +55,20 @@ describe('pageRange', () => {
     expect(pageRange({ ...base, maxCandles: 200, end: END - 3600 }, END)).toEqual({ limit: 200, end: END - 3600 });
   });
 
-  it('reaches the latest page down to the history below it, however long the tab sat idle', () => {
-    const since = END - 3 * PAGE_SIZE * 3600;
+  it('reaches the latest page down to the history below it, so a refresh opens no hole', () => {
+    const since = END - (PAGE_SIZE + 300) * 3600;
     expect(pageRange({ ...base, since }, END)).toEqual({ start: since });
   });
 
-  it('asks for the last candles again when the stretch down to the history is over the maximum', () => {
+  it('asks for the last candles again after an idle time of more than two pages', () => {
+    expect(pageRange({ ...base, since: END - 999 * 3600 }, END)).toEqual({ start: END - 999 * 3600 });
+    expect(pageRange({ ...base, since: END - 1000 * 3600 }, END)).toEqual({ limit: PAGE_SIZE });
+  });
+
+  it('keeps a tenth of the maximum for a browser clock that runs behind', () => {
     const maxCandles = 1000;
-    expect(pageRange({ ...base, maxCandles, since: END - 999 * 3600 }, END)).toEqual({ start: END - 999 * 3600 });
-    expect(pageRange({ ...base, maxCandles, since: END - 1000 * 3600 }, END)).toEqual({ limit: PAGE_SIZE });
+    expect(pageRange({ ...base, maxCandles, since: END - 899 * 3600 }, END)).toEqual({ start: END - 899 * 3600 });
+    expect(pageRange({ ...base, maxCandles, since: END - 900 * 3600 }, END)).toEqual({ limit: PAGE_SIZE });
   });
 });
 
@@ -84,12 +94,37 @@ describe('candlePageQueryOptions', () => {
   it('refreshes the latest page from `since` with history below it', async () => {
     const fetch = vi.fn(() => Promise.resolve(new Response('{"t":[]}')));
     vi.stubGlobal('fetch', fetch);
-    const since = Math.floor(Date.now() / 1000) - 3 * PAGE_SIZE * 3600;
-    const { queryFn } = candlePageQueryOptions({ ...base, since });
-    await (queryFn as (context: { signal: AbortSignal }) => Promise<unknown>)({ signal: new AbortController().signal });
+    const since = Math.floor(Date.now() / 1000) - (PAGE_SIZE + 300) * 3600;
+    await runQuery(candlePageQueryOptions({ ...base, since }));
     expect(fetch).toHaveBeenCalledWith(
       `/api/v1/data/instruments/crypto%3ABTCUSDT/candles?timeframe=1h&start=${since}`,
       expect.anything(),
     );
+  });
+
+  it('asks for the last candles when the server, whose clock is ahead, finds too many from `since`', async () => {
+    const tooMany = { type: 'https://candlestack.tech/problems/too-many-candles', status: 422, detail: 'Too many.' };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(tooMany), { status: 422 }))
+      .mockResolvedValueOnce(new Response('{"t":[1]}'));
+    vi.stubGlobal('fetch', fetch);
+    const since = Math.floor(Date.now() / 1000) - (PAGE_SIZE + 300) * 3600;
+    await expect(runQuery(candlePageQueryOptions({ ...base, since }))).resolves.toEqual({ t: [1] });
+    expect(fetch).toHaveBeenLastCalledWith(
+      `/api/v1/data/instruments/crypto%3ABTCUSDT/candles?timeframe=1h&limit=${PAGE_SIZE}`,
+      expect.anything(),
+    );
+  });
+
+  it('fails an older page that the server refuses, and other errors of the latest page', async () => {
+    const tooMany = { type: 'https://candlestack.tech/problems/too-many-candles', status: 422, detail: 'Too many.' };
+    const fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify(tooMany), { status: 422 })));
+    vi.stubGlobal('fetch', fetch);
+    await expect(runQuery(candlePageQueryOptions({ ...base, end: END }))).rejects.toThrow('Too many.');
+    fetch.mockResolvedValueOnce(new Response('{"detail":"Down."}', { status: 503 }));
+    const since = Math.floor(Date.now() / 1000) - 3600;
+    await expect(runQuery(candlePageQueryOptions({ ...base, since }))).rejects.toThrow('Down.');
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });

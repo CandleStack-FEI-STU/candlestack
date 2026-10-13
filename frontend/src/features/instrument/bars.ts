@@ -20,8 +20,8 @@ export type History = {
   // Where the next older page ends: where the oldest page begins.
   nextEnd: number | undefined;
   gapsTotal: number;
-  // The latest page begins above `since`, so the older pages are left out and history goes on
-  // from the latest page.
+  // The latest page begins above `since`: the older pages are left out, so no hole shows, until
+  // useCandleHistory drops them.
   detached: boolean;
 };
 

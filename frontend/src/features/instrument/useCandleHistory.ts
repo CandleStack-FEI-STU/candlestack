@@ -36,17 +36,19 @@ type Pages = {
 };
 
 // Called by useQueries only when a page changes, so `bars` keeps its identity in between and
-// the chart is not redrawn on every render.
-function summarize(pages: UseQueryResult<Candles>[], since: number | undefined): Pages {
+// the chart is not redrawn on every render. Detached, the older pages are on their way out
+// (useCandleHistory drops them), so they neither hold back nor fail anything.
+export function summarize(pages: UseQueryResult<Candles>[], since: number | undefined): Pages {
   const loaded = pages.flatMap((page) => (page.data ? [page.data] : []));
   const history = mergePages(loaded, since);
+  const shown = history.detached ? pages.slice(0, 1) : pages;
   return {
     history,
-    nextEnd: loaded.length === pages.length ? history.nextEnd : undefined,
-    busy: pages.some((page) => page.isFetching),
-    olderBusy: pages.slice(1).some((page) => page.isFetching),
+    nextEnd: shown.every((page) => page.data) ? history.nextEnd : undefined,
+    busy: shown.some((page) => page.isFetching),
+    olderBusy: shown.slice(1).some((page) => page.isFetching),
     latestPending: pages[0]?.isPending ?? true,
-    failed: pages.find((page) => page.error),
+    failed: shown.find((page) => page.error),
     lastSuccess: Math.max(0, ...pages.map((page) => page.dataUpdatedAt)),
   };
 }
@@ -84,13 +86,14 @@ export function useCandleHistory(instrument: InstrumentDetail, timeframe: Timefr
 
   const more = hasOlder(pages.history.nextEnd, instrument.available_from);
   const { nextEnd, busy, failed } = pages;
-  const { detached } = pages.history;
   const loadOlder = useCallback(() => {
     if (busy || failed || !more || nextEnd === undefined) return;
-    // Detached, the older pages hang below nothing: history starts again under the latest page.
-    if (detached) setOlderEnds([nextEnd]);
-    else setOlderEnds((ends) => (ends.includes(nextEnd) ? ends : [...ends, nextEnd]));
-  }, [busy, failed, more, nextEnd, detached]);
+    setOlderEnds((ends) => (ends.includes(nextEnd) ? ends : [...ends, nextEnd]));
+  }, [busy, failed, more, nextEnd]);
+
+  // The latest page begins above the older pages (pageRange): drop them right away, during
+  // this render, and history starts again below the latest page.
+  if (pages.history.detached) setOlderEnds([]);
 
   const retry = useCallback(() => void failed?.refetch(), [failed]);
   const auto = useAutoRetries(pages.lastSuccess, retry);
