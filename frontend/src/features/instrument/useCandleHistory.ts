@@ -70,9 +70,9 @@ function useAutoRetries(lastSuccess: number, retry: () => void) {
 // instrument or timeframe (a React key), which starts again from the latest page.
 export function useCandleHistory(instrument: InstrumentDetail, timeframe: Timeframe): CandleHistory {
   const [olderEnds, setOlderEnds] = useState<number[]>([]);
-  // The latest page always reaches down to where the first older page ends.
+  // The latest page reaches down to where the first older page ends (see pageRange).
   const since = olderEnds[0];
-  const base = { instrument: instrument.id, market: instrument.market, timeframe };
+  const base = { instrument: instrument.id, timeframe, maxCandles: instrument.max_candles };
   const combine = useCallback((pages: UseQueryResult<Candles>[]) => summarize(pages, since), [since]);
   const pages = useQueries({
     queries: [
@@ -84,10 +84,13 @@ export function useCandleHistory(instrument: InstrumentDetail, timeframe: Timefr
 
   const more = hasOlder(pages.history.nextEnd, instrument.available_from);
   const { nextEnd, busy, failed } = pages;
+  const { detached } = pages.history;
   const loadOlder = useCallback(() => {
     if (busy || failed || !more || nextEnd === undefined) return;
-    setOlderEnds((ends) => (ends.includes(nextEnd) ? ends : [...ends, nextEnd]));
-  }, [busy, failed, more, nextEnd]);
+    // Detached, the older pages hang below nothing: history starts again under the latest page.
+    if (detached) setOlderEnds([nextEnd]);
+    else setOlderEnds((ends) => (ends.includes(nextEnd) ? ends : [...ends, nextEnd]));
+  }, [busy, failed, more, nextEnd, detached]);
 
   const retry = useCallback(() => void failed?.refetch(), [failed]);
   const auto = useAutoRetries(pages.lastSuccess, retry);

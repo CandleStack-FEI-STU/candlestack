@@ -4,7 +4,8 @@ import { PAGE_SIZE, type Candles } from '@/api';
 
 import { hasOlder, mergePages, toBars } from './bars';
 
-function page(times: number[], start = (times[0] ?? 1000) - 100, gaps = 0): Candles {
+// A page as the API sends it: `start` is where it begins, the first candle unless it is missing.
+function page(times: number[], start = times[0] ?? 1000, gaps = 0): Candles {
   return {
     meta: {
       instrument: 'crypto:BTCUSDT',
@@ -27,6 +28,11 @@ function page(times: number[], start = (times[0] ?? 1000) - 100, gaps = 0): Cand
   };
 }
 
+// `count` candles one second apart from `from` on.
+function times(from: number, count: number): number[] {
+  return Array.from({ length: count }, (_, i) => from + i);
+}
+
 describe('toBars', () => {
   it('turns the columns into one object per candle', () => {
     expect(toBars(page([10, 20]))).toEqual([
@@ -37,45 +43,57 @@ describe('toBars', () => {
 });
 
 describe('mergePages', () => {
-  it('puts older pages before the latest one, sorted, without duplicates', () => {
-    const history = mergePages([page([30, 40, 50]), page([10, 20, 30])]);
+  it('puts older pages before the latest one, sorted, and goes on where the oldest begins', () => {
+    const history = mergePages([page([30, 40, 50]), page([10, 20], 5)], 30);
     expect(history.bars.map((bar) => bar.time)).toEqual([10, 20, 30, 40, 50]);
-    expect(history.nextEnd).toBe(10);
+    expect(history.nextEnd).toBe(5);
+    expect(history.detached).toBe(false);
   });
 
-  it('keeps the newest PAGE_SIZE candles of a page', () => {
-    const times = Array.from({ length: PAGE_SIZE + 20 }, (_, i) => i);
-    const history = mergePages([page(times)]);
-    expect(history.bars).toHaveLength(PAGE_SIZE);
-    expect(history.nextEnd).toBe(20);
+  it('keeps every candle of a page', () => {
+    const history = mergePages([page(times(0, PAGE_SIZE + 20))]);
+    expect(history.bars).toHaveLength(PAGE_SIZE + 20);
+    expect(history.nextEnd).toBe(0);
   });
 
-  it('continues before an empty page from its start, so a long holiday does not stop history', () => {
-    const history = mergePages([page([500, 600]), page([], 100)]);
-    expect(history.nextEnd).toBe(100);
+  it('leaves no hole when the latest page refreshes after the history below it was loaded', () => {
+    // The latest page began at 1000, so the older page ends there. Much later, the latest page
+    // refreshes from `since` (pageRange) and holds every candle from 1000 to now.
+    const older = page(times(1000 - PAGE_SIZE, PAGE_SIZE));
+    const refreshed = page(times(1000, PAGE_SIZE + 300));
+    const history = mergePages([refreshed, older], 1000);
+    expect(history.bars.map((bar) => bar.time)).toEqual(times(1000 - PAGE_SIZE, 2 * PAGE_SIZE + 300));
+    expect(history.nextEnd).toBe(1000 - PAGE_SIZE);
   });
 
-  it('keeps the refreshed latest page down to the history, so no hole opens after idle time', () => {
-    // History below: an older page that ended at 100. Meanwhile the latest page was refreshed
-    // after a long idle time and now holds PAGE_SIZE + 300 candles from 100 on.
-    const latest = Array.from({ length: PAGE_SIZE + 300 }, (_, i) => 100 + i);
-    const history = mergePages([page(latest), page([40, 70, 100])], 100);
-    const times = history.bars.map((bar) => bar.time);
-    expect(times.slice(0, 4)).toEqual([40, 70, 100, 101]);
-    expect(times).toHaveLength(PAGE_SIZE + 300 + 2);
-    expect(history.nextEnd).toBe(40);
+  it('drops the history below a latest page that no longer reaches it, instead of showing a hole', () => {
+    // Idle too long for one request (pageRange): the latest page holds only its last candles,
+    // which begin after the older page ends. History goes on from the latest page.
+    const older = page(times(1000 - PAGE_SIZE, PAGE_SIZE));
+    const refreshed = page(times(5000, PAGE_SIZE));
+    const history = mergePages([refreshed, older], 1000);
+    expect(history.bars.map((bar) => bar.time)).toEqual(times(5000, PAGE_SIZE));
+    expect(history.nextEnd).toBe(5000);
+    expect(history.detached).toBe(true);
   });
 
-  it('ends history at an older page that only repeats the candle it overlaps with', () => {
-    const history = mergePages([page([30, 40, 50]), page([30], 0)], 30);
-    expect(history.bars.map((bar) => bar.time)).toEqual([30, 40, 50]);
+  it('ends history at an empty older page that starts where it ends', () => {
+    // The API answers so when no candle opens before `end`; asking again would get the same.
+    const history = mergePages([page([1000, 1001]), page([], 1000)], 1000);
+    expect(history.bars.map((bar) => bar.time)).toEqual([1000, 1001]);
     expect(history.nextEnd).toBeUndefined();
     expect(hasOlder(history.nextEnd, 0)).toBe(false);
   });
 
+  it('goes on before an older page whose candles are all missing', () => {
+    const history = mergePages([page([1000, 1001]), page([], 400, 600)], 1000);
+    expect(history.nextEnd).toBe(400);
+    expect(history.gapsTotal).toBe(600);
+  });
+
   it('adds up the gaps of every page and is empty without pages', () => {
-    expect(mergePages([page([1], 0, 2), page([0], -10, 3)]).gapsTotal).toBe(5);
-    expect(mergePages([])).toEqual({ bars: [], nextEnd: undefined, gapsTotal: 0 });
+    expect(mergePages([page([1], 1, 2), page([0], -10, 3)], 1).gapsTotal).toBe(5);
+    expect(mergePages([])).toEqual({ bars: [], nextEnd: undefined, gapsTotal: 0, detached: false });
   });
 });
 
