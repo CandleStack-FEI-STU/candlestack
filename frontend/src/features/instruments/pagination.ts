@@ -10,3 +10,11 @@ export function clampedPage(page: number, total: number | undefined, pageSize: n
   const last = lastPage(total, pageSize);
   return page > last ? last : undefined;
 }
+
+// What the list shows for a page: its rows, "Loading" while an empty result is not the answer
+// yet (the previous result stands in, or the page is being clamped), "past the end", or empty.
+export function listBodyState(rows: number, waiting: boolean, page: number): 'rows' | 'loading' | 'past' | 'empty' {
+  if (rows > 0) return 'rows';
+  if (waiting) return 'loading';
+  return page > 1 ? 'past' : 'empty';
+}

@@ -27,6 +27,8 @@ describe('validateInstrumentsSearch', () => {
     expect(validate({ q: '   ', market: 'bonds', page: 1 })).toEqual({});
     expect(validate({ page: -3 })).toEqual({});
     expect(validate({ page: 2.5 })).toEqual({});
+    // offset=5e+21 would be a 422 from the API
+    expect(validate({ page: '1e20' })).toEqual({});
     expect(validate({ q: ['btc'] })).toEqual({});
   });
 

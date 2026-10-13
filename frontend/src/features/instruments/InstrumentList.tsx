@@ -15,10 +15,10 @@ import { Button } from '@/components/ui/button';
 import { InstrumentTable } from './InstrumentTable';
 import { describeListError, emptyMessage, unavailableMessage, type ListError } from './messages';
 import { Pager } from './Pager';
-import { clampedPage } from './pagination';
+import { clampedPage, listBodyState } from './pagination';
 
-// Rows per page. The API allows up to 100; 50 fits a screen or two.
-export const LIST_PAGE_SIZE = 50;
+// Rows per page. The API allows up to 100; 25 fits about one screen.
+export const LIST_PAGE_SIZE = 25;
 
 type Props = { query: string; market: Market | undefined; exchange: Exchange | undefined; page: number };
 
@@ -75,9 +75,10 @@ type BodyProps = { items: InstrumentSearchResult['items']; waiting: boolean; pag
 // page is being clamped, an empty result is not the answer yet: it says "Loading", not "No
 // instruments match" or "past the end" for a moment.
 function ListBody({ items, waiting, page, empty }: BodyProps) {
-  if (items.length > 0) return <InstrumentTable items={items} />;
-  if (waiting) return <Note>Loading instruments…</Note>;
-  if (page > 1) return <PastTheEnd />;
+  const state = listBodyState(items.length, waiting, page);
+  if (state === 'rows') return <InstrumentTable items={items} />;
+  if (state === 'loading') return <Note>Loading instruments…</Note>;
+  if (state === 'past') return <PastTheEnd />;
   return <Note>{empty}</Note>;
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { moveActive } from './quickSearchKeys';
+import { enterAction, moveActive } from './quickSearchKeys';
 
 describe('header search keys', () => {
   it('moves the highlight down and up, and stops at the ends', () => {
@@ -18,5 +18,15 @@ describe('header search keys', () => {
   it('leaves the highlight alone for other keys and without options', () => {
     expect(moveActive(1, 'a', 3)).toBe(1);
     expect(moveActive(4, 'ArrowDown', 0)).toBe(0);
+  });
+
+  it('opens the first result on Enter, or waits for the results while they load', () => {
+    expect(enterAction(false, 'btc')).toBe('open');
+    expect(enterAction(true, 'btc')).toBe('wait');
+  });
+
+  it('does nothing on Enter in an empty box, so nothing is left waiting', () => {
+    expect(enterAction(true, '')).toBe('none');
+    expect(enterAction(true, '   ')).toBe('none');
   });
 });

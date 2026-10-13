@@ -24,9 +24,10 @@ function parseExchange(value: unknown, market: Market | undefined): Exchange | u
   return EXCHANGES.find((exchange) => exchange === value);
 }
 
+// A safe integer only: ?page=1e20 would send offset=5e+21, which the API rejects.
 function parsePage(value: unknown): number | undefined {
   const page = Number(value);
-  return Number.isInteger(page) && page > 1 ? page : undefined;
+  return Number.isSafeInteger(page) && page > 1 ? page : undefined;
 }
 
 // Unknown or broken values are dropped, so ?market=bonds or ?page=-3 opens the plain list.
