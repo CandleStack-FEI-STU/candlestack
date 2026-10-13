@@ -27,10 +27,11 @@ function Note({ children, tone = 'muted' }: { children: string; tone?: 'muted' |
   return <p className={`px-3 py-12 text-center text-sm ${color}`}>{children}</p>;
 }
 
-// What went wrong, what to do about it, and the server's words in small print.
+// What went wrong, what to do about it, and the server's words in small print. w-full: in the
+// page's flex column (Layout.tsx) a centered box is otherwise as wide as its longest word.
 function ErrorState({ error, onRetry }: { error: ListError; onRetry: () => void }) {
   return (
-    <div role="alert" className="mx-auto flex max-w-md flex-col items-center gap-2 py-12 text-center text-sm">
+    <div role="alert" className="mx-auto flex w-full max-w-md flex-col items-center gap-2 py-12 text-center text-sm">
       <p className={error.tone === 'warn' ? 'font-medium text-warn' : 'font-medium text-destructive'}>{error.title}</p>
       <p className="text-muted-foreground">{error.hint}</p>
       {error.canRetry && (

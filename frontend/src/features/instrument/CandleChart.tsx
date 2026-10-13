@@ -169,15 +169,14 @@ export function CandleChart({ bars, market, onNearLeftEdge }: Props) {
   const { container, hovered, awayFromLatest, scrollToLatest } = useCandleChart(market, bars, onNearLeftEdge);
   const legend = legendFor(bars, hovered, priceDecimals(bars.at(-1)?.close ?? 0));
 
-  // As tall as the screen leaves room for: the header, the instrument info, the switch and the
-  // footer take about 26rem, and 29.5rem on a phone, where the status line and the footer take two
-  // lines each. Never under 20rem (phones in landscape), never over 60rem (tall monitors).
+  // As tall as the rest of the page leaves room for on the screen, however many lines the name,
+  // the facts or the status take: the page is a flex column (Layout.tsx) and the chart its part
+  // that grows, up to where its section stops (InstrumentCandles.tsx). Never under 16rem on a phone
+  // (a long name takes three lines there) and 20rem from sm up (phones in landscape): then the
+  // page scrolls.
   return (
-    <div className="relative">
-      <div
-        ref={container}
-        className="h-[clamp(20rem,calc(100dvh-29.5rem),60rem)] w-full sm:h-[clamp(20rem,calc(100dvh-26rem),60rem)]"
-      />
+    <div className="relative min-h-64 flex-1 sm:min-h-80">
+      <div ref={container} className="absolute inset-0" />
       {legend && <ChartLegend legend={legend} />}
       {awayFromLatest && (
         <Button

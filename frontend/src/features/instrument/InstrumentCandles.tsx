@@ -32,11 +32,14 @@ function Status({
 }
 
 function Placeholder({ children }: { children: string }) {
-  return <p className="py-24 text-center text-sm text-muted-foreground">{children}</p>;
+  return <p className="my-auto py-24 text-center text-sm text-muted-foreground">{children}</p>;
 }
 
 // The chart of one instrument at one timeframe, with its loading and error states. Without any
-// candles there is no chart and no status line: a failed first load shows only its error.
+// candles there is no chart and no status line: a failed first load shows only its error. It
+// fills the height the page leaves, for the chart, also while it loads or fails, so it does not
+// jump when the candles arrive. It stops at 64rem, the chart at about 60rem with the status line:
+// on a very tall screen the space left stays below it.
 export function InstrumentCandles({ instrument, timeframe }: { instrument: InstrumentDetail; timeframe: Timeframe }) {
   const history = useCandleHistory(instrument, timeframe);
   const hasBars = history.bars.length > 0;
@@ -44,7 +47,7 @@ export function InstrumentCandles({ instrument, timeframe }: { instrument: Instr
   return (
     <section
       aria-label={`${instrument.symbol} candles, ${timeframe}`}
-      className="rounded-lg border bg-background p-2 sm:p-4"
+      className="flex max-h-[64rem] flex-1 flex-col rounded-lg border bg-background p-2 sm:p-4"
     >
       {history.error && (
         <div className="mb-3">

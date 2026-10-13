@@ -13,8 +13,8 @@ function Fact({ label, value, className }: { label: string; value: string; class
 }
 
 // Icon, name, symbol, exchange, source and since when there is data. On a phone the facts fit
-// one line: the symbol is left out (it ends the id above the name) and the gaps are narrower, so
-// the chart below keeps its room. A long id or name wraps instead of running off the screen.
+// one line: the symbol is shown only to screen readers (on screen it ends the id above the name)
+// and the gaps are narrower, so the chart below keeps its room. A long id or name wraps instead of running off the screen.
 export function InstrumentHeader({ instrument }: { instrument: InstrumentDetail }) {
   const since =
     instrument.available_from === null
@@ -31,7 +31,7 @@ export function InstrumentHeader({ instrument }: { instrument: InstrumentDetail 
         </div>
       </div>
       <dl className="mt-4 flex flex-wrap gap-x-5 gap-y-3 sm:gap-x-8">
-        <Fact label="Symbol" value={instrument.symbol} className="hidden sm:block" />
+        <Fact label="Symbol" value={instrument.symbol} className="sr-only sm:not-sr-only" />
         <Fact label="Exchange" value={exchangeName(instrument)} />
         <Fact label="Source" value={`${instrument.source} (${instrument.feed})`} />
         <Fact label="Data since" value={since} />

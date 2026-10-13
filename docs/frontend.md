@@ -104,13 +104,20 @@ minute.
 - **Gaps.** When `meta.gaps_total > 0`, the chart shows a small note: it joins sessions, so
   real gaps in the data would be hidden otherwise.
 - **Phones.** Every page fits a 360 px screen without sideways scrolling, in both themes. Long
-  text gives way instead of the layout: names and symbols in the list truncate (on a phone the
-  name takes the width the symbol leaves, and a symbol longer than 8rem is cut short), an
-  instrument's id and name wrap, and error messages break their long paths (`break-words`).
-  Below `sm` the instrument page leaves the symbol out of its facts (it ends the id above the
-  name) and narrows the gaps of the facts and the timeframe switch, so each fits one line, and
-  the chart subtracts 29.5rem instead of 26rem from the screen's height for the rest of the
-  page. From `sm` up nothing changes.
+  text gives way instead of the layout: the instrument list has fixed column widths (symbol half
+  the row on a phone; symbol, market and exchange 35, 12 and 15 % from `sm` up and 40, 10 and
+  12 % from `lg` up; the name takes the rest), so names, symbols, markets and exchanges truncate
+  (their title shows them in full); an instrument's id and name wrap, and error messages break
+  their long paths (`break-words`). Below `sm` the instrument page shows the symbol fact only to
+  screen readers (it ends the id above the name) and narrows the gaps of the facts and the
+  timeframe switch, so each fits one line.
+- **Chart height.** The layout is at least as tall as the visible screen (`100dvh`, `100vh`
+  without dvh) and the page is a flex column (`Layout.tsx`). The candles section, also while it
+  loads or fails, and the chart in it are the part that grows: the chart takes the height the
+  header, the instrument info, the switch, the status line and the footer leave, however many
+  lines they take. At least 16rem on a phone and 20rem from `sm` up, below that the page
+  scrolls; the section stops at 64rem (the chart at about 60rem), and on a taller screen the
+  space left stays below it. `chartHeight.test.tsx` checks every link of that chain.
 
 ## Instrument icons
 

@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { ApiError } from '@/api';
+import { classes } from '@/test/markup';
 
 import { CandlesError } from './CandlesError';
 
@@ -17,12 +18,14 @@ function render(error: Error) {
 describe('CandlesError', () => {
   // min-w-0 lets the message shrink in its flex row, break-words breaks the path inside the box.
   it('wraps a long message inside its box', () => {
-    expect(render(new ApiError(404, PATH))).toMatch(/<p role="alert" class="min-w-0 break-words">Nothing at/);
+    const message = classes(render(new ApiError(404, PATH)), /<p [^>]*role="alert"[^>]*>/);
+    expect(message).toContain('min-w-0');
+    expect(message).toContain('break-words');
   });
 
   it('wraps a long message while it counts down', () => {
-    expect(render(new ApiError(429, PATH, { retryAfter: 30 }))).toMatch(
-      /<output class="min-w-0 break-words">Nothing at/,
-    );
+    const message = classes(render(new ApiError(429, PATH, { retryAfter: 30 })), /<output[^>]*>/);
+    expect(message).toContain('min-w-0');
+    expect(message).toContain('break-words');
   });
 });
