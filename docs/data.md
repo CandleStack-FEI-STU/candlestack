@@ -83,7 +83,7 @@ source:
   "exchange": "NASDAQ",
   "base": null,
   "quote": null,
-  "timeframes": ["1m", "5m", "15m", "1h", "4h", "1d"],
+  "timeframes": ["1m", "5m", "15m", "30m", "1h", "4h", "1d"],
   "available_from": 1595856600,
   "available_to": 1790380620,
   "max_candles": 50000
@@ -141,6 +141,7 @@ Both markets have the same list.
 | `1m` | 60 | Binance `1m` | Alpaca `1Min`, regular session only |
 | `5m` | 300 | Binance `5m` | built from 1m |
 | `15m` | 900 | Binance `15m` | built from 1m |
+| `30m` | 1800 | Binance `30m` | built from 1m, aligned to the session open |
 | `1h` | 3600 | Binance `1h` | built from 1m, aligned to the session open |
 | `4h` | 14400 | Binance `4h` | built from 1m, two candles per session |
 | `1d` | 86400 | Binance `1d` | Alpaca `1Day`, see [4h and 1d](#4h-and-1d) |
@@ -158,7 +159,7 @@ Both markets have the same list.
   session close) must be at or before the request time. The candle still in progress never
   appears and is not a gap.
 - Crypto bins are aligned to UTC epoch multiples of the timeframe (1d starts at 00:00 UTC,
-  4h at 00:00, 04:00, ..., 20:00 UTC).
+  30m at 00:00, 00:30, ..., 4h at 00:00, 04:00, ..., 20:00 UTC).
 
 ## Stock sessions and calendar
 
@@ -176,6 +177,7 @@ Both markets have the same list.
 | `1m` | 09:30, 09:31, ..., 15:59 | 390 | 09:30, ..., 12:59 | 210 |
 | `5m` | 09:30, 09:35, ..., 15:55 | 78 | 09:30, ..., 12:55 | 42 |
 | `15m` | 09:30, 09:45, ..., 15:45 | 26 | 09:30, ..., 12:45 | 14 |
+| `30m` | 09:30, 10:00, ..., 15:30 | 13 | 09:30, ..., 12:30 | 7 |
 | `1h` | 09:30, 10:30, ..., 14:30, 15:30 (30 min) | 7 | 09:30, 10:30, 11:30, 12:30 (30 min) | 4 |
 | `4h` | 09:30-13:30, 13:30-16:00 | 2 | 09:30-13:00 | 1 |
 | `1d` | 09:30-16:00 | 1 | 09:30-13:00 | 1 |
@@ -385,7 +387,7 @@ The former `/api/v1/data/candles?instrument=<id>` endpoint has been removed.
 | Parameter | Rule |
 | --- | --- |
 | `instrument_id` (path) | required, an instrument id |
-| `timeframe` | required, one of `1m 5m 15m 1h 4h 1d` |
+| `timeframe` | required, one of `1m 5m 15m 30m 1h 4h 1d` |
 | `start` | required, inclusive; epoch seconds or ISO 8601 (see [Time](#time)) |
 | `end` | optional, exclusive, same formats; default the request time |
 
@@ -472,9 +474,9 @@ Invalid parameters, all of them at once:
   "type": "https://candlestack.tech/problems/validation",
   "title": "Invalid request",
   "status": 422,
-  "detail": "query parameter 'timeframe': Input should be '1m', '5m', '15m', '1h', '4h' or '1d'; query parameter 'start': 'yesterday' is neither epoch seconds nor an ISO 8601 date or date-time",
+  "detail": "query parameter 'timeframe': Input should be '1m', '5m', '15m', '30m', '1h', '4h' or '1d'; query parameter 'start': 'yesterday' is neither epoch seconds nor an ISO 8601 date or date-time",
   "errors": [
-    {"loc": ["query", "timeframe"], "msg": "Input should be '1m', '5m', '15m', '1h', '4h' or '1d'", "type": "enum"},
+    {"loc": ["query", "timeframe"], "msg": "Input should be '1m', '5m', '15m', '30m', '1h', '4h' or '1d'", "type": "enum"},
     {"loc": ["query", "start"], "msg": "'yesterday' is neither epoch seconds nor an ISO 8601 date or date-time", "type": "time"}
   ]
 }

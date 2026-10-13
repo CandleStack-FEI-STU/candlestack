@@ -110,6 +110,7 @@ def test_sessions_between_overlap_rules(sessions: list[Session]) -> None:
         (Timeframe.M1, 390, 210),
         (Timeframe.M5, 78, 42),
         (Timeframe.M15, 26, 14),
+        (Timeframe.M30, 13, 7),
         (Timeframe.H1, 7, 4),
         (Timeframe.H4, 2, 1),
         (Timeframe.D1, 1, 1),

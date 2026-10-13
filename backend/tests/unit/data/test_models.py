@@ -20,6 +20,7 @@ def test_timeframes_in_order_with_seconds() -> None:
         ("1m", 60),
         ("5m", 300),
         ("15m", 900),
+        ("30m", 1800),
         ("1h", 3600),
         ("4h", 14400),
         ("1d", 86400),
@@ -27,6 +28,7 @@ def test_timeframes_in_order_with_seconds() -> None:
 
 
 def test_timeframe_larger() -> None:
+    assert Timeframe.M15.larger()[0] is Timeframe.M30
     assert Timeframe.H1.larger() == [Timeframe.H4, Timeframe.D1]
     assert Timeframe.D1.larger() == []
 

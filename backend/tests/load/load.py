@@ -31,8 +31,8 @@ import httpx
 
 API = "/api/v1/data"
 # Timeframes the chart opens with and the candles it shows per window.
-TIMEFRAMES = ("15m", "1h", "4h", "1d")
-SECONDS = {"15m": 900, "1h": 3600, "4h": 14400, "1d": 86400}
+TIMEFRAMES = ("15m", "30m", "1h", "4h", "1d")
+SECONDS = {"15m": 900, "30m": 1800, "1h": 3600, "4h": 14400, "1d": 86400}
 WINDOW = 300
 SCROLLS = 3
 _MEMORY = re.compile(r"([\d.]+)\s*([KMG]i?B)")

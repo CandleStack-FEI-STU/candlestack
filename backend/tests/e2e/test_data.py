@@ -68,7 +68,7 @@ def test_crypto_instrument(http: httpx.Client) -> None:
         "BTC",
         "USDT",
     )
-    assert body["timeframes"] == ["1m", "5m", "15m", "1h", "4h", "1d"]
+    assert body["timeframes"] == ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
     assert body["available_from"] == 1502942400  # first BTCUSDT 1m candle, 2017-08-17T04:00Z
     assert body["max_candles"] == 50000
 
