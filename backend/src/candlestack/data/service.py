@@ -221,14 +221,37 @@ class DataService:
             raise TooManyCandles(
                 limit, self._candles_max, f"Use a limit of {self._candles_max} or less."
             )
+        if lookup.first is None:  # no candle yet: an empty period
+            return await self._load(lookup, end, end)
+        found = await self._load(lookup, self._window(lookup, end, limit), end)
+        # Candles that closed after the live chunk was fetched are not in it: count that many
+        # more bins, so that ``limit`` candles come back when there are that many.
+        short = limit - found.frame.height - found.gaps_total
+        if short > 0:
+            start = self._window(lookup, end, limit + short)
+            if start < found.start:
+                found = await self._load(lookup, start, end)
+        return found
+
+    def _window(self, lookup: _Lookup, end: int, count: int) -> int:
+        """Start of the last ``count`` closed candles before ``end``; ``end`` when there are
+        none."""
         start = first_of_last(
-            end, lookup.now, timeframe, limit, lookup.sessions, lower=lookup.available_from
+            end,
+            lookup.now,
+            lookup.timeframe,
+            count,
+            lookup.sessions,
+            lower=lookup.available_from,
         )
-        # No candle yet: an empty period. The window holds at most ``limit`` closed candles
-        # (plus one still open), so it needs no count check: any limit up to the maximum works.
-        return await self._load(
-            lookup, end if start is None or lookup.first is None else start, end
-        )
+        if start is None:
+            return end
+        # The period holds the counted candles and at most one that is still open; the size
+        # check of ``candles`` does not apply, so it must not depend on ``first_of_last``.
+        requested = candle_count(start, end, lookup.timeframe, lookup.sessions)
+        if requested > count + 1:
+            raise TooManyCandles(requested, self._candles_max, "Use a smaller limit.")
+        return start
 
     async def _lookup(self, instrument_id: InstrumentId, timeframe: Timeframe) -> _Lookup:
         instrument = await self._find(instrument_id)

@@ -380,8 +380,8 @@ async def candles(
             f"return, default {DEFAULT_LIMIT}. Stocks count only candles of trading sessions "
             "(nights, weekends and holidays are skipped), crypto counts every candle. Fewer "
             "come back when the data starts later. Not together with `start` (422 "
-            "`validation`). Above 5000 it is a 422 `validation`; when the server's "
-            "`max_candles` (see the instrument detail) is below 5000, a `limit` above it is "
+            f"`validation`). Above {MAX_LIMIT} it is a 422 `validation`; when the server's "
+            "`max_candles` (see the instrument detail) is below that, a `limit` above it is "
             "`too-many-candles`.",
         ),
     ] = None,

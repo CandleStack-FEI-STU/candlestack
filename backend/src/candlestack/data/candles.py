@@ -305,6 +305,8 @@ def first_of_last(
     step = timeframe.seconds
     if sessions is None:
         newest = min(end - 1, now - step) // step * step
+        if newest < (lower or 0):
+            return None
         return max(lower or 0, newest - (count - 1) * step)
     earliest, remaining = None, count
     for i in range(bisect.bisect_left(sessions, end, key=lambda session: session.open) - 1, -1, -1):

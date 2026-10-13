@@ -594,6 +594,9 @@ def test_first_of_last_stops_at_the_lower_bound(sessions: list[Session]) -> None
     assert first_of_last(end, now, Timeframe.D1, 3, sessions, lower=utc("2024-06-04 15:00")) is None
     assert first_of_last(end, now, Timeframe.H1, 100, lower=lower) == lower
     assert first_of_last(end, now, Timeframe.H1, 3, lower=lower) == utc("2024-06-04 17:00")
+    # No bin that opens at or after ``lower`` and is closed by now: none, for both kinds.
+    assert first_of_last(lower + 1800, lower + 1800, Timeframe.H1, 3, lower=lower) is None
+    assert first_of_last(lower + 1800, lower + 1800, Timeframe.H1, 3, sessions, lower=lower) is None
 
 
 def test_first_of_last_with_fewer_candles_than_asked(sessions: list[Session]) -> None:
