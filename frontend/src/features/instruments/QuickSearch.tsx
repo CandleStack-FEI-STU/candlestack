@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
 import {
+  useCallback,
+  useEffect,
   useRef,
   useState,
   type FocusEvent,
@@ -14,6 +16,7 @@ import {
 import { instrumentSearchQueryOptions, type Instrument } from '@/api';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
+import { describeListError } from './messages';
 import { moveActive } from './quickSearchKeys';
 
 // A short list is enough to jump to an instrument; "All results" opens the full list.
@@ -33,42 +36,41 @@ function onListKey(event: KeyboardEvent<HTMLAnchorElement>, input: RefObject<HTM
   links[next]?.focus();
 }
 
-// Safari and Firefox on macOS blur the input on mousedown with no relatedTarget, which would
-// close the list before the click lands. Keeping the focus where it is lets the click through.
-const keepFocus = (event: MouseEvent) => event.preventDefault();
-
 // A Ctrl/Cmd-, Shift- or Alt-click opens the result elsewhere: this tab keeps its search.
 const opensElsewhere = (event: MouseEvent) =>
   event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0;
 
 // What the list says above its links: searching, an error, or that nothing matched.
-type ResultsState = { searching: boolean; error: Error | null; items: readonly Instrument[] };
+type ResultsState = { q: string; searching: boolean; error: Error | null; items: readonly Instrument[] };
 
 function StatusItem({ tone = 'muted', children }: { tone?: 'muted' | 'error'; children: ReactNode }) {
   const color = tone === 'error' ? 'text-destructive' : 'text-muted-foreground';
   return <li className={`px-3 py-1.5 ${color}`}>{children}</li>;
 }
 
-function StatusNote({ searching, error, items }: ResultsState) {
+// An error in the same words as the list page uses, e.g. "The instrument catalog is unavailable
+// right now.", not the server's raw detail.
+function StatusNote({ q, searching, error, items }: ResultsState) {
   if (searching) return <StatusItem>Searching…</StatusItem>;
-  if (error) return <StatusItem tone="error">Search failed: {error.message}</StatusItem>;
+  if (error) return <StatusItem tone="error">{describeListError(error, q).title}</StatusItem>;
   if (items.length === 0) return <StatusItem>No instruments match.</StatusItem>;
   return null;
 }
 
 type ResultsProps = ResultsState & {
-  q: string;
+  // What is in the box now; `q` lags it by the debounce.
+  typed: string;
   tf: string | undefined;
   input: RefObject<HTMLInputElement | null>;
   onPick: () => void;
 };
 
-function Results({ q, tf, input, onPick, ...state }: ResultsProps) {
+function Results({ typed, tf, input, onPick, ...state }: ResultsProps) {
   const onKeyDown = (event: KeyboardEvent<HTMLAnchorElement>) => onListKey(event, input);
   const onClick = (event: MouseEvent) => {
     if (!opensElsewhere(event)) onPick();
   };
-  const link = { onClick, onKeyDown, onMouseDown: keepFocus };
+  const link = { onClick, onKeyDown };
   return (
     <ul className="absolute top-full right-0 z-20 mt-1 w-full max-w-[calc(100vw-2rem)] min-w-72 overflow-hidden rounded-md border bg-background py-1 text-sm shadow-lg">
       <StatusNote {...state} />
@@ -82,8 +84,8 @@ function Results({ q, tf, input, onPick, ...state }: ResultsProps) {
         </li>
       ))}
       <li>
-        <Link to="/" search={{ q }} {...link} className={`${ITEM} text-muted-foreground`}>
-          All results for “{q}”
+        <Link to="/" search={{ q: typed }} {...link} className={`${ITEM} text-muted-foreground`}>
+          All results for “{typed}”
         </Link>
       </li>
     </ul>
@@ -105,12 +107,49 @@ function useResults(text: string) {
   };
 }
 
+// Enter pressed before the results arrive is kept, not lost: when they do, it opens the first
+// instrument, if any. Typing more cancels it.
+function useEnterWhenReady(searching: boolean, box: RefObject<HTMLDivElement | null>) {
+  const waiting = useRef(false);
+  useEffect(() => {
+    if (searching || !waiting.current) return;
+    waiting.current = false;
+    box.current?.querySelector<HTMLAnchorElement>('a[data-result]')?.click();
+  }, [searching, box]);
+  const wait = useCallback(() => {
+    waiting.current = true;
+  }, []);
+  const cancel = useCallback(() => {
+    waiting.current = false;
+  }, []);
+  return { wait, cancel };
+}
+
+// Safari and Firefox on macOS blur the input on mousedown with no relatedTarget, which would
+// close the list before the click lands. A mousedown anywhere in the list, on a link or on
+// "Searching…", keeps the focus in the input. A plain listener, since the list itself is no
+// interactive element to hang a React handler on.
+function useKeepFocusInList(box: RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    const element = box.current;
+    if (!element) return;
+    const keep = (event: globalThis.MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest('ul')) event.preventDefault();
+    };
+    element.addEventListener('mousedown', keep);
+    return () => element.removeEventListener('mousedown', keep);
+  }, [box]);
+}
+
 // The header search's state: the text, whether the list is open, and its handlers.
 function useQuickSearch() {
   const [text, setText] = useState('');
   const [open, setOpen] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const box = useRef<HTMLDivElement>(null);
   const results = useResults(text);
+  const enter = useEnterWhenReady(results.searching, box);
+  useKeepFocusInList(box);
 
   const onPick = () => {
     setOpen(false);
@@ -122,31 +161,33 @@ function useQuickSearch() {
     if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
   };
   // ArrowDown goes into the list. Enter opens the first instrument and nothing else: not "All
-  // results" when nothing matched or the search failed, and not a row while still searching.
+  // results" when nothing matched or the search failed; while searching, once the results arrive.
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Escape') return setOpen(false);
     if (event.key !== 'ArrowDown' && event.key !== 'Enter') return;
     event.preventDefault();
-    const list = event.currentTarget.parentElement;
-    if (event.key === 'ArrowDown') list?.querySelector('a')?.focus();
-    else if (!results.searching) list?.querySelector<HTMLAnchorElement>('a[data-result]')?.click();
+    if (event.key === 'ArrowDown') return box.current?.querySelector('a')?.focus();
+    if (results.searching) enter.wait();
+    else box.current?.querySelector<HTMLAnchorElement>('a[data-result]')?.click();
   };
   // Clearing the box (Escape does that in a search input) closes the list at once.
   const onChange = (value: string) => {
+    enter.cancel();
     setText(value);
     setOpen(value.trim() !== '');
   };
-  return { text, results, open: open && results.q !== '', input, onPick, onBlur, onKeyDown, onChange, setOpen };
+  const isOpen = open && results.q !== '';
+  return { text, results, open: isOpen, input, box, onPick, onBlur, onKeyDown, onChange, setOpen };
 }
 
 // Search from any instrument page: type "eth", pick one with the mouse or the arrow keys and
 // Enter, and its chart opens in the same timeframe.
 export function QuickSearch() {
-  const { text, results, open, input, onPick, onBlur, onKeyDown, onChange, setOpen } = useQuickSearch();
+  const { text, results, open, input, box, onPick, onBlur, onKeyDown, onChange, setOpen } = useQuickSearch();
   const tf = useRouterState({ select: (state) => (state.location.search as { tf?: string }).tf });
 
   return (
-    <div className="relative w-full max-w-xs" onBlur={onBlur}>
+    <div ref={box} className="relative w-full max-w-xs" onBlur={onBlur}>
       <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
       <input
         ref={input}
@@ -160,7 +201,7 @@ export function QuickSearch() {
         onKeyDown={onKeyDown}
         className="h-8 w-full rounded-md border bg-background pr-2 pl-8 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
       />
-      {open && <Results {...results} tf={tf} input={input} onPick={onPick} />}
+      {open && <Results {...results} typed={text.trim()} tf={tf} input={input} onPick={onPick} />}
     </div>
   );
 }
