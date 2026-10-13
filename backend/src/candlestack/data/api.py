@@ -378,8 +378,9 @@ async def candles(  # noqa: PLR0913 (a query parameter each, and the settings)
             ge=1,
             le=MAX_LIMIT,
             description="Without `start`: how many of the newest candles before `end` to "
-            f"return, default {DEFAULT_LIMIT} (`max_candles` when that is lower). Stocks count only "
-            "candles of trading sessions (nights, weekends and holidays are skipped), crypto counts every candle. Fewer "
+            f"return, default {DEFAULT_LIMIT} (`max_candles` when that is lower). Stocks count "
+            "only candles of trading sessions (nights, weekends and holidays are skipped), "
+            "crypto counts every candle. Fewer "
             "come back when the data starts later. Not together with `start` (422 "
             f"`validation`). Above {MAX_LIMIT} it is a 422 `validation`; when the server's "
             "`max_candles` (see the instrument detail) is below that, a `limit` above it is "
