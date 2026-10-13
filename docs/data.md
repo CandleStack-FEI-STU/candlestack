@@ -158,8 +158,8 @@ Both markets have the same list.
 - Only closed candles are returned: the candle's end (`t` + duration, for stocks at most the
   session close) must be at or before the request time. The candle still in progress never
   appears and is not a gap.
-- Crypto bins are aligned to UTC epoch multiples of the timeframe (1d starts at 00:00 UTC,
-  30m at 00:00, 00:30, ..., 4h at 00:00, 04:00, ..., 20:00 UTC).
+- Crypto bins are aligned to UTC epoch multiples of the timeframe (1d starts at 00:00 UTC;
+  30m at 00:00, 00:30, ..., 23:30 UTC; 4h at 00:00, 04:00, ..., 20:00 UTC).
 
 ## Stock sessions and calendar
 

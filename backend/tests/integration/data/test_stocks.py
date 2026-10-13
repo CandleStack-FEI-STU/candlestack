@@ -99,18 +99,21 @@ async def test_normal_day_from_1m_bars(service: DataService, upstream):
 
 @pytest.mark.usefixtures("stocks")
 @pytest.mark.parametrize(
-    ("bars", "day", "count"),
+    ("month", "pages", "day", "count"),
     [
-        ("bars-AAPL-1Min-2024-06-03-p0.json", JUNE_3, 13),
-        ("bars-AAPL-1Min-2024-11-29.json", NOVEMBER_29, 7),  # early close
+        (
+            "2024-06-01",
+            ["bars-AAPL-1Min-2024-06-03-p0.json", "bars-AAPL-1Min-2024-06-03-p1.json"],
+            JUNE_3,
+            13,
+        ),
+        ("2024-11-01", ["bars-AAPL-1Min-2024-11-29.json"], NOVEMBER_29, 7),  # early close
     ],
 )
 async def test_30m_candles_are_two_15m_candles(
-    service: DataService, upstream, bars: str, day, count: int
+    service: DataService, upstream, month: str, pages: list[str], day, count: int
 ):
-    month = "2024-06-01" if day == JUNE_3 else "2024-11-01"
-    pages = ["bars-AAPL-1Min-2024-06-03-p1.json"] if day == JUNE_3 else []
-    upstream.bars("1Min", f"{month}T00:00:00Z", bars, *pages)
+    upstream.bars("1Min", f"{month}T00:00:00Z", *pages)
 
     halves = await service.candles(AAPL, Timeframe.M30, *period(day))
     quarters = await service.candles(AAPL, Timeframe.M15, *period(day))

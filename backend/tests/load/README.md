@@ -12,8 +12,8 @@ Each user repeats one session, with a pause of about `--think` seconds between s
 1. **search**: types a crypto base asset letter by letter, `GET /instruments?q=b&market=crypto`,
    then `bt`, `btc`;
 2. **detail**: opens the first result, `GET /instruments/{id}`;
-3. **candles**: loads the 300 candles the chart shows first, in a random timeframe (`15m`, `30m`,
-   `1h`, `4h` or `1d`), `GET /instruments/{id}/candles`;
+3. **candles**: loads the 300 candles the chart shows first, in a random timeframe (`15m`, `1h`,
+   `4h` or `1d`), `GET /instruments/{id}/candles`;
 4. **scroll back**: loads the 300 candles before them, three times.
 
 Only crypto, so no Alpaca keys are needed. Every user sends its own `CF-Connecting-IP`, as
