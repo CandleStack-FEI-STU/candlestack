@@ -9,9 +9,9 @@ export type Candles = components['schemas']['CandlesOut'];
 // How many candles one page shows: the chart opens with one page, scrolling left adds one more.
 export const PAGE_SIZE = 500;
 
-// What one request asks for: the last `limit` candles before `end` (now without it), or every
-// candle from `start` to `end`. The API counts the candles by the market schedule itself.
-export type CandleRange = { limit: number; end?: number } | { start: number; end: number };
+// What one request asks for: the last `limit` candles before `end` (now without it). The API
+// counts the candles by the market schedule itself.
+export type CandleRange = { limit: number; end?: number };
 
 // GET /api/v1/data/instruments/{id}/candles.
 export function getCandles(
@@ -21,9 +21,8 @@ export function getCandles(
   signal?: AbortSignal,
 ): Promise<Candles> {
   const query = new URLSearchParams({ timeframe });
-  if ('start' in range) query.set('start', String(range.start));
   if (range.end !== undefined) query.set('end', String(range.end));
-  if ('limit' in range) query.set('limit', String(range.limit));
+  query.set('limit', String(range.limit));
   return get<Candles>(`/v1/data/instruments/${encodeURIComponent(instrument)}/candles?${query.toString()}`, signal);
 }
 
@@ -48,31 +47,24 @@ export function candlePageQueryOptions({ instrument, timeframe, maxCandles, end 
   });
 }
 
-export type CandleBridge = { instrument: string; timeframe: Timeframe; start?: number; end?: number };
+// How many candles a bridge asks for: a page or two is what a minute or an idle hour or two
+// leaves behind. A gap it does not close makes history start over instead.
+export const BRIDGE_CANDLES = 2 * PAGE_SIZE;
 
-type BridgeRange = { start?: number; end?: number };
+export type CandleBridge = { instrument: string; timeframe: Timeframe; maxCandles: number; end?: number };
 
-// The range a bridge query asks for: the last part of its key.
-function bridgeRange(queryKey: readonly unknown[]): BridgeRange | undefined {
-  const range = queryKey.at(-1);
-  return typeof range === 'object' && range !== null ? range : undefined;
-}
-
-// The candles between the older pages (which end at `start`) and the refreshed latest page
-// (which begins at `end`): the ones that left the latest page as it moved on. They never change,
-// but a refresh of the latest page asks for a longer bridge, so a bridge left behind goes soon.
-// Without both ends there is no gap and nothing is asked. While a longer bridge from the same
-// start loads, the shorter one before it stands in.
-export function candleBridgeQueryOptions({ instrument, timeframe, start, end }: CandleBridge) {
-  const range: BridgeRange = { start, end };
+// The last BRIDGE_CANDLES candles before `end`, the start of the refreshed latest page: they
+// cover the candles that left it as it moved on, down to the older pages if the gap is not too
+// big. Asked again whenever the latest page moves on, so a bridge left behind goes soon. Without
+// `end` there is no gap and nothing is asked.
+export function candleBridgeQueryOptions({ instrument, timeframe, maxCandles, end }: CandleBridge) {
   return queryOptions({
-    queryKey: ['candles', instrument, timeframe, 'bridge', range],
+    queryKey: ['candles', instrument, timeframe, 'bridge', end ?? 'none'],
     queryFn:
-      start === undefined || end === undefined
+      end === undefined
         ? skipToken
-        : ({ signal }) => getCandles(instrument, timeframe, { start, end }, signal),
-    placeholderData: (previous, previousQuery) =>
-      end !== undefined && previousQuery && bridgeRange(previousQuery.queryKey)?.start === start ? previous : undefined,
+        : ({ signal }) =>
+            getCandles(instrument, timeframe, { limit: Math.min(BRIDGE_CANDLES, maxCandles), end }, signal),
     staleTime: Infinity,
     gcTime: 60_000,
   });

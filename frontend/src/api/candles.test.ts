@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { candles } from '@/test/candles';
 
-import { PAGE_SIZE, candleBridgeQueryOptions, candlePageQueryOptions, getCandles } from './candles';
+import { BRIDGE_CANDLES, PAGE_SIZE, candleBridgeQueryOptions, candlePageQueryOptions, getCandles } from './candles';
 
 const END = 1_780_000_000;
 const URL = '/api/v1/data/instruments/crypto%3ABTCUSDT/candles';
@@ -19,15 +19,13 @@ function stubFetch() {
 }
 
 describe('getCandles', () => {
-  it('asks the candles endpoint of the instrument for the last candles, or for a period', async () => {
+  it('asks the candles endpoint of the instrument for the last candles before an end, or now', async () => {
     const fetch = stubFetch();
     await getCandles('crypto:BTCUSDT', '1h', { limit: 500 });
     await getCandles('crypto:BTCUSDT', '1h', { limit: 500, end: END });
-    await getCandles('crypto:BTCUSDT', '1h', { start: END - 7200, end: END });
     expect(fetch.mock.calls.map((call: unknown[]) => call[0])).toEqual([
       `${URL}?timeframe=1h&limit=500`,
       `${URL}?timeframe=1h&end=${END}&limit=500`,
-      `${URL}?timeframe=1h&start=${END - 7200}&end=${END}`,
     ]);
   });
 });
@@ -65,30 +63,26 @@ describe('candlePageQueryOptions', () => {
 });
 
 describe('candleBridgeQueryOptions', () => {
-  const base = { instrument: 'crypto:BTCUSDT', timeframe: '1h' } as const;
+  const base = { instrument: 'crypto:BTCUSDT', timeframe: '1h', maxCandles: 50_000 } as const;
 
-  it('asks for exactly the candles between the older pages and the latest page, once', async () => {
+  it('asks once for the BRIDGE_CANDLES candles before the start of the latest page', async () => {
     const fetch = stubFetch();
-    const bridge = candleBridgeQueryOptions({ ...base, start: END - 7200, end: END });
-    expect(bridge.queryKey).toEqual(['candles', 'crypto:BTCUSDT', '1h', 'bridge', { start: END - 7200, end: END }]);
+    const bridge = candleBridgeQueryOptions({ ...base, end: END });
+    expect(bridge.queryKey).toEqual(['candles', 'crypto:BTCUSDT', '1h', 'bridge', END]);
     expect(bridge.staleTime).toBe(Infinity);
+    // A bridge left behind by a longer one goes after a minute.
+    expect(bridge.gcTime).toBe(60_000);
     await new QueryClient().fetchQuery(bridge);
-    expect(fetch).toHaveBeenCalledWith(`${URL}?timeframe=1h&start=${END - 7200}&end=${END}`, expect.anything());
+    expect(fetch).toHaveBeenCalledWith(`${URL}?timeframe=1h&end=${END}&limit=${BRIDGE_CANDLES}`, expect.anything());
+  });
+
+  it('never asks for more candles than the server allows', async () => {
+    const fetch = stubFetch();
+    await new QueryClient().fetchQuery(candleBridgeQueryOptions({ ...base, maxCandles: 600, end: END }));
+    expect(fetch).toHaveBeenCalledWith(`${URL}?timeframe=1h&end=${END}&limit=600`, expect.anything());
   });
 
   it('asks nothing without a gap', () => {
-    expect(candleBridgeQueryOptions({ ...base, start: END }).queryFn).toBe(skipToken);
     expect(candleBridgeQueryOptions(base).queryFn).toBe(skipToken);
-  });
-
-  it('lets the shorter bridge from the same start stand in while a longer one loads', () => {
-    const { placeholderData, gcTime } = candleBridgeQueryOptions({ ...base, start: END - 7200, end: END });
-    const shorter = candles([END - 7200]);
-    const keep = placeholderData as (previous: unknown, query: { queryKey: unknown[] } | undefined) => unknown;
-    const key = (start: number, end: number) => ['candles', 'crypto:BTCUSDT', '1h', 'bridge', { start, end }];
-    expect(keep(shorter, { queryKey: key(END - 7200, END - 3600) })).toBe(shorter);
-    expect(keep(shorter, { queryKey: key(END - 3600, END) })).toBeUndefined();
-    // A bridge left behind by a longer one goes after a minute.
-    expect(gcTime).toBe(60_000);
   });
 });

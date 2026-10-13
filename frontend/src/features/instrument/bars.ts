@@ -33,7 +33,8 @@ export type Pages = {
   // anchor, each next one where the one before it begins (`meta.start`, the first candle the
   // API counted, a missing one too).
   older: readonly (Candles | undefined)[];
-  // The candles between the anchor and the start of the refreshed latest page, once it moved on.
+  // The last candles before the start of the refreshed latest page, once it moved on above the
+  // anchor; only those from the anchor on count, the older pages hold the ones below.
   bridge?: Candles;
   // Where the older pages begin to hang: the start of the latest page when the first was asked.
   anchor?: number;
@@ -46,11 +47,14 @@ export function mergePages({ latest, older, bridge, anchor }: Pages): History {
   if (latest === undefined) return { bars: [], nextEnd: undefined, gapsTotal: 0 };
   const byTime = new Map<number, Bar>();
   let gapsTotal = 0;
-  for (const page of [latest, bridge, ...older]) {
-    if (page === undefined) continue;
-    for (const bar of toBars(page)) if (!byTime.has(bar.time)) byTime.set(bar.time, bar);
+  const add = (page: Candles | undefined, from = Number.NEGATIVE_INFINITY) => {
+    if (page === undefined) return;
+    for (const bar of toBars(page)) if (bar.time >= from && !byTime.has(bar.time)) byTime.set(bar.time, bar);
     gapsTotal += page.meta.gaps_total;
-  }
+  };
+  add(latest);
+  add(bridge, anchor);
+  for (const page of older) add(page);
   const bars = [...byTime.values()].toSorted((a, b) => a.time - b.time);
   return { bars, nextEnd: chainEnd(latest, older, anchor), gapsTotal };
 }

@@ -88,18 +88,19 @@ minute.
   refreshes at most once a minute. No automatic retry on 429: the page shows "try again in N s"
   counting down from `Retry-After`.
 - **Pages by count.** The chart asks for candles by number, not by time, and the API counts
-  them by the market schedule (stocks: sessions only). The latest page is always the last 500
-  candles (`?limit=500`); the older pages hang below its start at the first scroll to the left
-  (the anchor), each the 500 before the start of the one above it (`?end=<meta.start>&limit=500`),
-  never more than the instrument's `max_candles`. Older pages never change and stay cached. When
-  the refreshed latest page has moved on above the anchor, a bridge asks for exactly the candles
-  in between (`?start=<anchor>&end=<its start>`), so none go missing after an idle tab. Until it
-  arrives, or while it fails (429, 5xx, no answer), the chart keeps showing the latest page and
-  the bridge as they were, and the new candles wait. History starts over below the latest page
-  once a bridge answer holds 1000 candles or more (its candles plus `meta.gaps_total`), or when
-  the API refuses the bridge for good (any other 4xx, such as `too-many-candles`). History ends
-  at the first candle (`available_from`), at a page that starts at its end, or after three older
-  pages in a row without candles (one or two are an outage).
+  them by the market schedule (stocks: sessions only). A page is `limit=min(500, max_candles)`
+  candles. The latest page is always the last of them (`?limit=…`); the older pages hang below
+  its start at the first scroll to the left (the anchor), each ending where the one above it
+  begins (`?end=<meta.start>&limit=…`). Older pages never change and stay cached. When the
+  refreshed latest page has moved on above the anchor, a bridge asks for the
+  `min(1000, max_candles)` candles before its start (`?end=<its start>&limit=…`); the candles
+  from the anchor on fill the gap, so none go missing after an idle tab. Until the bridge
+  arrives, or while it fails (to be retried), the chart keeps showing the latest page and the
+  bridge as they were, and the new candles wait. History starts over below the latest page when
+  the bridge begins above the anchor (more than 1000 candles went by) or the API cannot give it
+  (`too-many-candles`, `period-out-of-range`). History ends at the first candle
+  (`available_from`), at a page that starts at its end, or after three older pages in a row
+  without candles (one or two are an outage).
 - **Gaps.** When `meta.gaps_total > 0`, the chart shows a small note: it joins sessions, so
   real gaps in the data would be hidden otherwise.
 

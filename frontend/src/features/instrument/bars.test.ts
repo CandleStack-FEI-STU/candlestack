@@ -41,29 +41,42 @@ describe('mergePages', () => {
 
   it('fills the hole above the older pages with the bridge after the latest page refreshed (crypto 1m)', () => {
     // History hangs below the anchor. Ten hours later, the refreshed latest page holds the last
-    // 500 minutes, which begin 600 minutes above the anchor; the bridge holds those 600.
+    // 500 minutes, which begin 600 minutes above the anchor; the bridge, the 1000 minutes before
+    // them, reaches 400 minutes below the anchor, into the older page.
     const anchor = 1_800_000_000;
     const older = candles(times(anchor - 500 * 60, 500));
     const latest = candles(times(anchor + 600 * 60, 500));
-    const end = bridgeTo(anchor, latest);
-    expect(end).toBe(anchor + 600 * 60);
-    const bridge = candles(times(anchor, 600));
+    expect(bridgeTo(anchor, latest)).toBe(anchor + 600 * 60);
+    const bridge = candles(times(anchor - 400 * 60, 1000));
     const history = mergePages({ latest, older: [older], bridge, anchor });
     expect(timesOf(history.bars)).toEqual(times(anchor - 500 * 60, 1600));
     expect(history.nextEnd).toBe(anchor - 500 * 60);
   });
 
-  it('fills the hole of a stock a minute later in the session with one candle (AAPL 1m)', () => {
-    const minutes = sessionMinutes(3);
-    const k = 600;
+  it('fills the hole of a stock a minute later in the session (AAPL 1m)', () => {
+    const minutes = sessionMinutes(5);
+    const k = 1200;
     const anchor = minutes[k] ?? 0;
     const older = candles(minutes.slice(k - 500, k));
-    // A minute later the last 500 session minutes begin one candle above the anchor.
+    // A minute later the last 500 session minutes begin one candle above the anchor; the bridge
+    // holds the 1000 session minutes before them, across the nights.
     const latest = candles(minutes.slice(k + 1, k + 501));
     expect(bridgeTo(anchor, latest)).toBe(minutes[k + 1]);
-    const bridge = candles([anchor]);
+    const bridge = candles(minutes.slice(k + 1 - 1000, k + 1));
     const history = mergePages({ latest, older: [older], bridge, anchor });
     expect(timesOf(history.bars)).toEqual(minutes.slice(k - 500, k + 501));
+  });
+
+  it('takes from the bridge only the candles from the anchor on: the older pages hold the rest', () => {
+    // The older page is missing the candle at 120; the bridge has it, but it is the older
+    // page's to tell.
+    const history = mergePages({
+      latest: candles([360, 420]),
+      bridge: candles([60, 120, 180, 240, 300]),
+      older: [candles([180, 240], { start: 60 })],
+      anchor: 300,
+    });
+    expect(timesOf(history.bars)).toEqual([180, 240, 300, 360, 420]);
   });
 
   it('needs no bridge while the latest page still begins at the anchor', () => {
