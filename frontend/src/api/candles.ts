@@ -50,21 +50,29 @@ export function candlePageQueryOptions({ instrument, timeframe, maxCandles, end 
 
 export type CandleBridge = { instrument: string; timeframe: Timeframe; start?: number; end?: number };
 
+type BridgeRange = { start?: number; end?: number };
+
+// The range a bridge query asks for: the last part of its key.
+function bridgeRange(queryKey: readonly unknown[]): BridgeRange | undefined {
+  const range = queryKey.at(-1);
+  return typeof range === 'object' && range !== null ? range : undefined;
+}
+
 // The candles between the older pages (which end at `start`) and the refreshed latest page
 // (which begins at `end`): the ones that left the latest page as it moved on. They never change,
 // but a refresh of the latest page asks for a longer bridge, so a bridge left behind goes soon.
 // Without both ends there is no gap and nothing is asked. While a longer bridge from the same
 // start loads, the shorter one before it stands in.
 export function candleBridgeQueryOptions({ instrument, timeframe, start, end }: CandleBridge) {
+  const range: BridgeRange = { start, end };
   return queryOptions({
-    queryKey: ['candles', instrument, timeframe, 'bridge', start ?? 'none', end ?? 'none'],
+    queryKey: ['candles', instrument, timeframe, 'bridge', range],
     queryFn:
       start === undefined || end === undefined
         ? skipToken
         : ({ signal }) => getCandles(instrument, timeframe, { start, end }, signal),
-    meta: { start },
     placeholderData: (previous, previousQuery) =>
-      end !== undefined && previousQuery?.meta?.['start'] === start ? previous : undefined,
+      end !== undefined && previousQuery && bridgeRange(previousQuery.queryKey)?.start === start ? previous : undefined,
     staleTime: Infinity,
     gcTime: 60_000,
   });

@@ -70,7 +70,7 @@ describe('candleBridgeQueryOptions', () => {
   it('asks for exactly the candles between the older pages and the latest page, once', async () => {
     const fetch = stubFetch();
     const bridge = candleBridgeQueryOptions({ ...base, start: END - 7200, end: END });
-    expect(bridge.queryKey).toEqual(['candles', 'crypto:BTCUSDT', '1h', 'bridge', END - 7200, END]);
+    expect(bridge.queryKey).toEqual(['candles', 'crypto:BTCUSDT', '1h', 'bridge', { start: END - 7200, end: END }]);
     expect(bridge.staleTime).toBe(Infinity);
     await new QueryClient().fetchQuery(bridge);
     expect(fetch).toHaveBeenCalledWith(`${URL}?timeframe=1h&start=${END - 7200}&end=${END}`, expect.anything());
@@ -84,12 +84,10 @@ describe('candleBridgeQueryOptions', () => {
   it('lets the shorter bridge from the same start stand in while a longer one loads', () => {
     const { placeholderData, gcTime } = candleBridgeQueryOptions({ ...base, start: END - 7200, end: END });
     const shorter = candles([END - 7200]);
-    const keep = placeholderData as (
-      previous: unknown,
-      query: { meta: Record<string, unknown> } | undefined,
-    ) => unknown;
-    expect(keep(shorter, { meta: { start: END - 7200 } })).toBe(shorter);
-    expect(keep(shorter, { meta: { start: END - 3600 } })).toBeUndefined();
+    const keep = placeholderData as (previous: unknown, query: { queryKey: unknown[] } | undefined) => unknown;
+    const key = (start: number, end: number) => ['candles', 'crypto:BTCUSDT', '1h', 'bridge', { start, end }];
+    expect(keep(shorter, { queryKey: key(END - 7200, END - 3600) })).toBe(shorter);
+    expect(keep(shorter, { queryKey: key(END - 3600, END) })).toBeUndefined();
     // A bridge left behind by a longer one goes after a minute.
     expect(gcTime).toBe(60_000);
   });

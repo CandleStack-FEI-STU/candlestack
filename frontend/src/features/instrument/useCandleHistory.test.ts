@@ -30,34 +30,34 @@ const noBridge = query({});
 const timesOf = (bars: readonly { time: number }[]) => bars.map((bar) => bar.time);
 
 describe('summarize', () => {
+  const first = { latest: before, bridge: undefined };
+
   it('waits for an older page on its way and reports one that failed', () => {
-    const loading = summarize({ latest: before, shown: before, anchor }, [
-      noBridge,
-      older,
-      query({ isFetching: true }),
-    ]);
+    const loading = summarize({ latest: before, shown: first, anchor }, [noBridge, older, query({ isFetching: true })]);
     expect(loading.busy).toBe(true);
-    expect(loading.olderBusy).toBe(true);
     expect(loading.nextEnd).toBeUndefined();
     const failed = query({ error: new Error('down') });
-    expect(summarize({ latest: before, shown: before, anchor }, [noBridge, older, failed]).failed).toBe(failed);
+    expect(summarize({ latest: before, shown: first, anchor }, [noBridge, older, failed]).failed).toBe(failed);
   });
 
   it('keeps showing the latest page as it was until the first bridge arrives, so no hole shows', () => {
     // The latest page refreshed and now begins at 480; its first bridge is on its way.
     const latest = candles([480, 540]);
-    const loading = summarize({ latest, shown: before, anchor }, [query({ isFetching: true }), older]);
+    const loading = summarize({ latest, shown: first, anchor }, [query({ isFetching: true }), older]);
     expect(timesOf(loading.history.bars)).toEqual([180, 240, 300, 360]);
     expect(loading.ready).toBe(false);
-    expect(loading.busy).toBe(true);
-    expect(loading.olderBusy).toBe(false);
-    const arrived = summarize({ latest, shown: before, anchor }, [query({ data: candles([300, 360, 420]) }), older]);
+    // The next older page hangs below the anchor, which the bridge does not move.
+    expect(loading.busy).toBe(false);
+    expect(loading.nextEnd).toBe(180);
+    const bridge = candles([300, 360, 420]);
+    const arrived = summarize({ latest, shown: first, anchor }, [query({ data: bridge }), older]);
     expect(timesOf(arrived.history.bars)).toEqual([180, 240, 300, 360, 420, 480, 540]);
     expect(arrived.ready).toBe(true);
+    expect(arrived.frame).toEqual({ latest, bridge });
   });
 
   it('keeps showing the last bridge with the latest page it led to while a longer one loads', () => {
-    const shown = candles([420, 480]);
+    const shown = { latest: candles([420, 480]), bridge: candles([300, 360]) };
     const latest = candles([540, 600]);
     const last = query({ data: candles([300, 360]), placeholder: true, isFetching: true });
     const loading = summarize({ latest, shown, anchor }, [last, older]);
@@ -65,26 +65,40 @@ describe('summarize', () => {
     expect(loading.ready).toBe(false);
   });
 
-  it('starts history over when the gap is too big to bridge, without an error', () => {
-    const tooMany = new ApiError(422, 'Use a shorter period.', { problem: 'too-many-candles' });
-    const pages = summarize({ latest: candles([600]), shown: before, anchor }, [query({ error: tooMany }), older]);
-    expect(pages.tooFar).toBe(true);
-    expect(pages.failed).toBeUndefined();
-    expect(pages.busy).toBe(false);
+  it('keeps showing the last good bridge while the longer one fails, and lets it be retried', () => {
+    // A 503, a 429 or no answer: the query has no data, but the chart keeps what it showed.
+    const shown = { latest: candles([420, 480]), bridge: candles([300, 360]) };
+    for (const error of [new ApiError(503, 'Down.'), new ApiError(429, 'Slow down.'), new ApiError(0, 'Offline.')]) {
+      const bridge = query({ error });
+      const pages = summarize({ latest: candles([540, 600]), shown, anchor }, [bridge, older]);
+      expect(timesOf(pages.history.bars)).toEqual([180, 240, 300, 360, 420, 480]);
+      expect(pages.tooFar).toBe(false);
+      expect(pages.failed).toBe(bridge);
+    }
   });
 
-  it('starts history over once the bridge reaches two pages instead of asking for ever more', () => {
-    const long = (count: number) => query({ data: candles(times(anchor, count)), placeholder: true });
+  it('starts history over, without an error, when the bridge is refused for good', () => {
+    const refusals = [
+      new ApiError(422, 'Use a shorter period.', { problem: 'too-many-candles' }),
+      new ApiError(422, 'Set end after the start.', { problem: 'validation' }),
+      new ApiError(404, 'No such instrument.', { problem: 'instrument-not-found' }),
+    ];
+    for (const error of refusals) {
+      const pages = summarize({ latest: candles([600]), shown: first, anchor }, [query({ error }), older]);
+      expect(pages.tooFar).toBe(true);
+      expect(pages.failed).toBeUndefined();
+    }
+  });
+
+  it('starts history over once a bridge answer holds two pages, missing candles counted', () => {
+    const long = (count: number, gaps = 0) =>
+      query({ data: candles(times(anchor, count), { gaps }), placeholder: true });
     const latest = candles([anchor + 60 * 2 * PAGE_SIZE]);
-    expect(summarize({ latest, shown: before, anchor }, [long(2 * PAGE_SIZE - 1), older]).tooFar).toBe(false);
-    expect(summarize({ latest, shown: before, anchor }, [long(2 * PAGE_SIZE), older]).tooFar).toBe(true);
-  });
-
-  it('reports a bridge that failed otherwise, so it can be retried', () => {
-    const bridge = query({ error: new ApiError(503, 'Down.') });
-    const pages = summarize({ latest: candles([600]), shown: before, anchor }, [bridge, older]);
-    expect(pages.tooFar).toBe(false);
-    expect(pages.failed).toBe(bridge);
+    const tooFar = (bridge: UseQueryResult<Candles>) =>
+      summarize({ latest, shown: first, anchor }, [bridge, older]).tooFar;
+    expect(tooFar(long(2 * PAGE_SIZE - 1))).toBe(false);
+    expect(tooFar(long(2 * PAGE_SIZE))).toBe(true);
+    expect(tooFar(long(2 * PAGE_SIZE - 10, 10))).toBe(true);
   });
 });
 

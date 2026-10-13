@@ -34,63 +34,70 @@ export type CandleHistory = {
   autoRetry: () => void;
 };
 
+// What the chart shows of the latest page and the bridge under it.
+export type Frame = { latest: Candles | undefined; bridge: Candles | undefined };
+
 type Pages = {
   history: History;
   // Where the next older page ends, once every older page asked for so far has arrived.
   nextEnd: number | undefined;
-  // The bridge for the latest page as it is now has arrived, or none is needed.
+  // The bridge for the latest page as it is now has arrived, or none is needed: `frame` is
+  // what the chart shows from now on.
   ready: boolean;
-  // The bridge or an older page is on its way.
+  frame: Frame;
+  // An older page is on its way. The bridge does not count: the next older page hangs below
+  // the anchor, which the bridge does not move.
   busy: boolean;
-  // An older page is on its way (the bridge alone loads without a word).
-  olderBusy: boolean;
   failed: UseQueryResult<Candles> | undefined;
-  // The gap above the older pages is too big to bridge: more than one answer may hold
-  // (`too-many-candles`, weeks away) or more than BRIDGE_CANDLES. History starts over below the
-  // latest page.
+  // The gap above the older pages cannot be bridged: the bridge was refused for good (a 4xx
+  // other than 429, e.g. `too-many-candles` after weeks away) or holds BRIDGE_CANDLES or more.
+  // History starts over below the latest page.
   tooFar: boolean;
   // When a page last arrived; automatic retries count from there.
   lastSuccess: number;
 };
 
-// The most candles a bridge holds before history starts over instead: the bridge is asked
-// again, longer, on every refresh of the latest page.
+// The most candles a bridge answer holds, missing ones counted, before history starts over
+// instead: the bridge is asked again, longer, on every refresh of the latest page.
 const BRIDGE_CANDLES = 2 * PAGE_SIZE;
 
 function isTooFar(bridge: UseQueryResult<Candles> | undefined): boolean {
   const { data, error } = bridge ?? {};
-  if (error instanceof ApiError && error.problem === 'too-many-candles') return true;
+  if (error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 429) return true;
   return data !== undefined && data.t.length + data.meta.gaps_total >= BRIDGE_CANDLES;
+}
+
+// The bridge asked for has arrived, not just the shorter one standing in for it.
+function arrived(bridge: UseQueryResult<Candles> | undefined): boolean {
+  return bridge?.data !== undefined && !bridge.isPlaceholderData;
 }
 
 export type Shown = {
   // The latest page as it is now.
   latest: Candles | undefined;
-  // The latest page as the chart last showed it: until the bridge to the latest page as it is
-  // now arrives, the chart keeps showing that one (with the bridge before), so no hole shows.
-  shown: Candles | undefined;
+  // The latest page and the bridge as the chart last showed them: until the bridge to the latest
+  // page as it is now arrives (or while it fails), the chart keeps showing those, so no hole
+  // shows and the new candles wait.
+  shown: Frame;
   anchor: number | undefined;
 };
 
 // The bridge and the older pages under the latest page. Called by useQueries only when a page
 // changes, so `bars` keeps its identity in between and the chart is not redrawn on every render.
 export function summarize({ latest, shown, anchor }: Shown, [bridge, ...older]: UseQueryResult<Candles>[]): Pages {
-  const ready =
-    bridgeTo(anchor, latest) === undefined || (bridge?.data !== undefined && bridge.isPlaceholderData !== true);
-  const history = mergePages({
-    latest: ready ? latest : (shown ?? latest),
-    older: older.map((page) => page.data),
-    bridge: bridge?.data,
-    anchor,
-  });
+  const needed = bridgeTo(anchor, latest) !== undefined;
+  const ready = !needed || arrived(bridge);
+  const frame = { latest, bridge: needed ? bridge?.data : undefined };
+  const kept = ready || shown.latest === undefined ? frame : shown;
+  const history = mergePages({ ...kept, older: older.map((page) => page.data), anchor });
   const tooFar = isTooFar(bridge);
   const pages = bridge && !tooFar ? [bridge, ...older] : older;
   return {
     history,
     nextEnd: older.every((page) => page.data) ? history.nextEnd : undefined,
     ready,
-    busy: pages.some((page) => page.isFetching),
-    olderBusy: older.some((page) => page.isFetching),
+    frame,
+    busy: older.some((page) => page.isFetching),
     failed: pages.find((page) => page.error),
     tooFar,
     lastSuccess: Math.max(0, ...pages.map((page) => page.dataUpdatedAt)),
@@ -124,7 +131,7 @@ type Base = { instrument: string; timeframe: Timeframe; maxCandles: number };
 // anchor, the start of the latest page when the first of them was asked.
 function usePages(base: Base, olderEnds: readonly number[]) {
   const latest = useQuery(candlePageQueryOptions(base));
-  const [shown, setShown] = useState<Candles | undefined>(undefined);
+  const [shown, setShown] = useState<Frame>({ latest: undefined, bridge: undefined });
   const anchor = olderEnds[0];
   const latestData = latest.data;
   const combine = useCallback(
@@ -138,7 +145,8 @@ function usePages(base: Base, olderEnds: readonly number[]) {
     ],
     combine,
   });
-  if (pages.ready && shown !== latestData) setShown(latestData);
+  const { ready, frame } = pages;
+  if (ready && (frame.latest !== shown.latest || frame.bridge !== shown.bridge)) setShown(frame);
   return { latest, pages, anchor };
 }
 
@@ -174,7 +182,7 @@ export function useCandleHistory(instrument: InstrumentDetail, timeframe: Timefr
     bars: pages.history.bars,
     gapsTotal: pages.history.gapsTotal,
     isPending: latest.isPending,
-    isLoadingOlder: pages.olderBusy,
+    isLoadingOlder: pages.busy,
     hasOlder: more,
     restarts,
     error: failed?.error ?? null,
