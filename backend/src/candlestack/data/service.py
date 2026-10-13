@@ -37,12 +37,14 @@ from candlestack.data.candles import (
 from candlestack.data.catalog import normalise_query
 from candlestack.data.catalog_store import CatalogStore
 from candlestack.data.errors import (
+    DataIntegrityError,
     InstrumentNotFound,
     InvalidRequest,
     PeriodOutOfRange,
     SourceUnavailable,
     TooManyCandles,
 )
+from candlestack.data.icons import FALLBACK_AFTER_FAILURE, Icon, Icons
 from candlestack.data.models import (
     CandleSet,
     Exchange,
@@ -91,11 +93,13 @@ class DataService:
         sources: Mapping[Market, DataSource],
         cache: Cache,
         catalogs: CatalogStore,
+        icons: Icons,
         candles_max: int,
     ) -> None:
         self._sources = sources
         self._cache = cache
         self._catalogs = catalogs
+        self._icons = icons
         self._candles_max = candles_max
 
     async def search(
@@ -141,6 +145,16 @@ class DataService:
             available_to=newest_minute(int(_time()), sessions),
             max_candles=self._candles_max,
         )
+
+    async def icon(self, instrument_id: InstrumentId) -> Icon:
+        """The instrument's logo, or the fallback image. Raises ``InstrumentNotFound`` only:
+        when the catalog cannot be loaded, the fallback stands in, as an image must."""
+        try:
+            instrument = await self._find(instrument_id)
+        except (SourceUnavailable, DataIntegrityError) as exc:
+            logger.warning("Icon of %s without the catalog: %s", instrument_id, exc.detail)
+            return FALLBACK_AFTER_FAILURE
+        return await self._icons.icon(instrument)
 
     async def candles(
         self, instrument_id: InstrumentId, timeframe: Timeframe, start: int, end: int
@@ -246,6 +260,7 @@ def build_data_service(settings: Settings, redis: Redis, http: httpx.AsyncClient
         sources=sources,
         cache=cache,
         catalogs=CatalogStore(cache, sources),
+        icons=Icons(settings, http, limiter, cache),
         candles_max=settings.candles_max,
     )
 

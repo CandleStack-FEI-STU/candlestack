@@ -69,6 +69,10 @@ class Cache:
         self._redis = redis
         self._down_until = 0.0
 
+    def available(self) -> bool:
+        """Whether the cache is used now: ``False`` for a few seconds after Redis failed."""
+        return not self._is_down()
+
     async def get(self, name: str) -> bytes | None:
         """The cached value, or ``None`` on a miss or when Redis fails."""
         if self._is_down():

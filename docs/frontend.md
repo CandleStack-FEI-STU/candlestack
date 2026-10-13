@@ -98,7 +98,10 @@ minute.
 | TypeScript, Lightweight Charts | Apache 2.0 |
 | Geist font | SIL Open Font License 1.1 |
 
-Lightweight Charts asks for a TradingView attribution; its default logo on the chart covers it.
+Lightweight Charts asks for a TradingView attribution, and logo.dev's free plan for a link to
+Logo.dev (the instrument icons, `docs/data.md`). Both are a line in the footer of every page
+(`src/components/Footer.tsx`); the chart is created with `attributionLogo: false`, so it shows no
+logo of its own.
 
 ## Prototype
 

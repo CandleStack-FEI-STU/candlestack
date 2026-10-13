@@ -31,6 +31,7 @@ from candlestack.data import (
     TooManyCandles,
 )
 from candlestack.data.api import get_data_service, get_rate_limiter
+from candlestack.data.icons import FALLBACK, Icon
 from candlestack.data.schemas import CandlesOut, candles_json
 
 PROBLEM = "application/problem+json"
@@ -42,6 +43,7 @@ BTCUSDT = Instrument(
 AAPL = Instrument(
     InstrumentId(Market.STOCK, "AAPL"), "Apple Inc. Common Stock", "alpaca", "iex", "NASDAQ"
 )
+AAPL_LOGO = Icon(b"\x89PNG\r\n\x1a\n-aapl", "image/png", 86400)
 # 2024-06-03T00:00:00Z and 2024-06-04T00:00:00Z
 DAY_START, DAY_END = 1717372800, 1717459200
 
@@ -113,6 +115,14 @@ class FakeDataService:
         if instrument_id != AAPL.id:
             raise InstrumentNotFound(instrument_id)
         return InstrumentInfo(AAPL, tuple(Timeframe), 1595856600, 1790372340, 50000)
+
+    async def icon(self, instrument_id: InstrumentId) -> Icon:
+        self._called("icon", instrument_id)
+        if instrument_id == AAPL.id:
+            return AAPL_LOGO
+        if instrument_id == BTCUSDT.id:
+            return FALLBACK
+        raise InstrumentNotFound(instrument_id)
 
     async def candles(
         self, instrument_id: InstrumentId, timeframe: Timeframe, start: int, end: int
@@ -354,6 +364,49 @@ def test_instrument_ids_in_other_scripts(client: TestClient, service: FakeDataSe
         InstrumentId(Market.CRYPTO, "币安人生USDT"),
         InstrumentId(Market.STOCK, "BRK.B"),
     ]
+
+
+# --- icon -------------------------------------------------------------------------------------
+
+
+def test_icon_logo(client: TestClient, service: FakeDataService) -> None:
+    response = client.get("/api/v1/data/instruments/stock:aapl/icon")
+
+    assert response.status_code == 200
+    assert response.content == AAPL_LOGO.content
+    assert response.headers["content-type"] == "image/png"
+    assert response.headers["cache-control"] == "public, max-age=86400"
+    assert service.calls == [("icon", (AAPL.id,))]
+
+
+def test_icon_fallback(client: TestClient) -> None:
+    response = client.get("/api/v1/data/instruments/crypto:BTCUSDT/icon")
+
+    assert response.status_code == 200
+    assert response.content == FALLBACK.content
+    assert response.headers["content-type"] == "image/svg+xml"
+    assert response.headers["cache-control"] == "public, max-age=3600"
+
+
+def test_icon_of_an_unknown_instrument(client: TestClient) -> None:
+    response = client.get("/api/v1/data/instruments/stock:NOPE/icon")
+
+    body = problem(response, 404, "instrument-not-found")
+    assert body["instrument"] == "stock:NOPE"
+
+
+def test_icon_id_validation(client: TestClient, service: FakeDataService) -> None:
+    response = client.get("/api/v1/data/instruments/forex:EURUSD/icon")
+
+    problem(response, 422, "validation")
+    assert service.calls == []
+
+
+def test_icon_is_not_rate_limited(client: TestClient, limiter: FakeLimiter) -> None:
+    limiter.wait = 30
+
+    assert client.get("/api/v1/data/instruments/stock:AAPL/icon").status_code == 200
+    assert limiter.calls == []
 
 
 # --- candles ----------------------------------------------------------------------------------

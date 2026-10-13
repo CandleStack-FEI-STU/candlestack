@@ -72,6 +72,13 @@ the feed CandleStack uses. Without keys, `/api/health/sources` answers 503 with 
 `status` `error`, instrument searches report `"unavailable": ["stock"]` and stock requests get
 503 `source-unavailable`.
 
+### logo.dev key for instrument icons
+
+Instrument icons come from [logo.dev](https://www.logo.dev). Without a key every icon is the
+fallback image, and everything else works the same. To see the real logos, create a free
+account there and put its publishable key (`pk_...`) into `.env` as `LOGO_DEV_KEY`, then run
+`docker compose up --build` again.
+
 More: [architecture](docs/architecture.md), [market data](docs/data.md),
 [backtest engine](docs/engine.md), [frontend](frontend/README.md), [contributing](CONTRIBUTING.md),
 [infrastructure](infra/README.md).
