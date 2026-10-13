@@ -90,6 +90,32 @@ minute.
 - **Gaps.** When `meta.gaps_total > 0`, the chart shows a small note: it joins sessions, so
   real gaps in the data would be hidden otherwise.
 
+## Instrument icons
+
+`src/components/InstrumentIcon.tsx` shows the icon of `GET /api/v1/data/instruments/{id}/icon`
+(the logo from logo.dev or the backend's fallback, `docs/data.md`) in three places:
+
+| Place | Size | Corner radius | Row |
+| --- | --- | --- | --- |
+| Instrument list, before the symbol | 32 px | 3.2 px | 41 px (4 px padding), as high as without it |
+| Header quick search, before the symbol | 32 px | 3.2 px | 44 px |
+| Instrument page header, next to the name | 64 px | 6.4 px | - |
+
+- The radius is 10 % of the size. The fallback SVG is square, so the frontend rounds it like a
+  logo; a rounding of its own would show the white tile in its corners.
+- Every icon sits on a white tile in both themes: many logos have a transparent background, and
+  black ones such as Apple's would disappear on the dark background. The image fills the tile
+  1 px inside its edge, clipped to its corners, under a 1 px hairline (a solid grey in dark
+  mode: a translucent white would leave a light rim), so no logo runs over the edge.
+- The image is same-origin (allowed by the CSP), `loading="lazy"`, with a fixed width and height
+  so rows do not jump while it loads, and an empty `alt`: the symbol is always next to it.
+- When the image does not load at all (e.g. a 502 during a deploy), the tile draws the backend's
+  fallback itself (Lucide's `chart-candlestick` in white on dark grey), never a broken image.
+- In the list, the icon is not a link of its own: the symbol's link still covers the whole row.
+- On phones (< 640 px) the quick-search list hangs from the header's bar (`Header.tsx`, its
+  positioning parent) with a 16 px gutter on both sides; from `sm` up it is right-aligned under
+  the search box and never wider than the screen.
+
 ## Licenses
 
 | Library | License |

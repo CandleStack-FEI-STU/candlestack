@@ -109,7 +109,7 @@ into an `<img>`; the browser never calls logo.dev itself.
 | Instrument | Image | `Cache-Control` |
 | --- | --- | --- |
 | a logo at logo.dev | that logo, 128x128 PNG (or the JPEG or WebP logo.dev sends) | `public, max-age=86400` |
-| no logo at logo.dev, or no `LOGO_DEV_KEY` | the fallback: Lucide's `chart-candlestick` in white on a dark grey rounded square, SVG | `public, max-age=3600` |
+| no logo at logo.dev, or no `LOGO_DEV_KEY` | the fallback: Lucide's `chart-candlestick` in white on a dark grey square (the frontend rounds it like the logos), SVG | `public, max-age=3600` |
 | logo.dev failing, rate limiting us or rejecting our key (then it is not asked for 10 minutes), our budget spent, Redis down, or the catalog not loadable | the fallback | `public, max-age=60` |
 
 - Source: [logo.dev](https://www.logo.dev/docs), `GET https://img.logo.dev/ticker/<symbol>` for

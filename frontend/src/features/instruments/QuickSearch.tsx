@@ -14,6 +14,7 @@ import {
 } from 'react';
 
 import { instrumentSearchQueryOptions, type Instrument } from '@/api';
+import { InstrumentIcon } from '@/components/InstrumentIcon';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
 import { quickSearchError } from './messages';
@@ -22,7 +23,7 @@ import { enterAction, moveActive } from './quickSearchKeys';
 // A short list is enough to jump to an instrument; "All results" opens the full list.
 const LIMIT = 8;
 const DEBOUNCE_MS = 250;
-const ITEM = 'flex items-center gap-3 px-3 py-1.5 outline-none hover:bg-accent focus-visible:bg-accent';
+const ITEM = 'flex items-center gap-2.5 px-3 py-1.5 outline-none hover:bg-accent focus-visible:bg-accent';
 
 // Arrow keys move the focus between the links in the list; Escape goes back to the input.
 function onListKey(event: KeyboardEvent<HTMLAnchorElement>, input: RefObject<HTMLInputElement | null>) {
@@ -66,19 +67,25 @@ type ResultsProps = ResultsState & {
   onPick: () => void;
 };
 
+// A row: icon, symbol, name and market. The symbol is at least as wide as most (so the names line
+// up) and shows in full up to half the row, e.g. 1000CHEEMSUSDT; the name gives way first.
 function Results({ typed, tf, input, onPick, ...state }: ResultsProps) {
   const onKeyDown = (event: KeyboardEvent<HTMLAnchorElement>) => onListKey(event, input);
   const onClick = (event: MouseEvent) => {
     if (!opensElsewhere(event)) onPick();
   };
   const link = { onClick, onKeyDown };
+  // On a phone the list hangs from the header's bar (Header.tsx, its positioning parent), with a
+  // 16 px gutter on both sides, instead of from the narrow search box, where it ran off the left
+  // edge; from sm up it is right-aligned under the box, never wider than the screen.
   return (
-    <ul className="absolute top-full right-0 z-20 mt-1 w-full max-w-[calc(100vw-2rem)] min-w-72 overflow-hidden rounded-md border bg-background py-1 text-sm shadow-lg">
+    <ul className="absolute inset-x-4 top-full z-20 mt-1 overflow-hidden rounded-md border bg-background py-1 text-sm shadow-lg sm:left-auto sm:right-0 sm:w-full sm:max-w-[calc(100vw-2rem)] sm:min-w-72">
       <StatusNote {...state} />
       {state.items.map((item) => (
         <li key={item.id}>
           <Link to="/instrument/$id" params={{ id: item.id }} search={{ tf }} {...link} data-result className={ITEM}>
-            <span className="w-20 shrink-0 font-mono">{item.symbol}</span>
+            <InstrumentIcon id={item.id} size={32} />
+            <span className="max-w-1/2 min-w-19 shrink-0 truncate font-mono">{item.symbol}</span>
             <span className="truncate text-muted-foreground">{item.name}</span>
             <span className="ml-auto shrink-0 text-xs text-muted-foreground">{item.market}</span>
           </Link>
@@ -191,21 +198,24 @@ export function QuickSearch() {
   const { text, results, open, input, box, onPick, onBlur, onKeyDown, onChange, setOpen } = useQuickSearch();
   const tf = useRouterState({ select: (state) => (state.location.search as { tf?: string }).tf });
 
+  // Positioned only from sm up: on a phone the list is placed against the header's bar.
   return (
-    <div ref={box} className="relative w-full max-w-xs" onBlur={onBlur}>
-      <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-      <input
-        ref={input}
-        type="search"
-        aria-label="Go to an instrument"
-        value={text}
-        maxLength={50}
-        placeholder="Search…"
-        onChange={(event) => onChange(event.target.value)}
-        onFocus={() => setOpen(true)}
-        onKeyDown={onKeyDown}
-        className="h-8 w-full rounded-md border bg-background pr-2 pl-8 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-      />
+    <div ref={box} className="w-full max-w-xs sm:relative" onBlur={onBlur}>
+      <div className="relative">
+        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          ref={input}
+          type="search"
+          aria-label="Go to an instrument"
+          value={text}
+          maxLength={50}
+          placeholder="Search…"
+          onChange={(event) => onChange(event.target.value)}
+          onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
+          className="h-8 w-full rounded-md border bg-background pr-2 pl-8 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        />
+      </div>
       {open && <Results {...results} typed={text.trim()} tf={tf} input={input} onPick={onPick} />}
     </div>
   );

@@ -10,7 +10,9 @@ export function Header() {
   const onList = useRouterState({ select: (state) => state.location.pathname === '/' });
   return (
     <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-[96rem] items-center justify-between px-4 lg:px-8">
+      {/* Relative: on a phone the quick search's list hangs from this bar, the full width of the
+          screen, not from its narrow search box (QuickSearch.tsx). */}
+      <div className="relative mx-auto flex h-14 max-w-[96rem] items-center justify-between px-4 lg:px-8">
         <Link to="/" aria-label="CandleStack home" className="shrink-0 rounded-md">
           <Logo />
         </Link>

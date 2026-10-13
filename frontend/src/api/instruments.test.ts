@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { exchangeName, getInstrument, instrumentQueryOptions } from './instruments';
+import { exchangeName, getInstrument, instrumentIconUrl, instrumentQueryOptions } from './instruments';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -16,6 +16,12 @@ describe('getInstrument', () => {
 
   it('shares one cache entry per instrument between the loader and the page', () => {
     expect(instrumentQueryOptions('crypto:BTCUSDT').queryKey).toEqual(['instrument', 'crypto:BTCUSDT']);
+  });
+});
+
+describe('instrumentIconUrl', () => {
+  it('points at the icon of the instrument by its id', () => {
+    expect(instrumentIconUrl('stock:BRK.B')).toBe('/api/v1/data/instruments/stock%3ABRK.B/icon');
   });
 });
 
