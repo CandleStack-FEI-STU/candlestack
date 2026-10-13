@@ -69,10 +69,11 @@ class Icon:
 # The Lucide icon chart-candlestick (https://lucide.dev, ISC licence: "Copyright (c) for
 # portions of Lucide are held by Cole Bemis 2013-2022 as part of Feather (MIT). All other
 # copyright (c) for Lucide are held by Lucide Contributors 2022.") in white on a dark grey
-# rounded square, readable in both themes.
+# square, readable in both themes. Square on purpose: the frontend rounds every icon, logo or
+# fallback, by the same share of its size.
 FALLBACK_SVG = (
     b'<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">'
-    b'<rect width="64" height="64" rx="14" fill="#57534e"/>'
+    b'<rect width="64" height="64" fill="#57534e"/>'
     b'<g transform="translate(14 14) scale(1.5)" fill="none" stroke="#ffffff" stroke-width="2"'
     b' stroke-linecap="round" stroke-linejoin="round">'
     b'<path d="M9 5v4"/><rect width="4" height="6" x="7" y="9" rx="1"/><path d="M9 15v2"/>'

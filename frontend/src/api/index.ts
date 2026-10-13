@@ -2,7 +2,13 @@
 export { PAGE_SIZE, candleBridgeQueryOptions, candlePageQueryOptions, type Candles } from './candles';
 export { ApiError } from './client';
 export { useHealth, type Health } from './health';
-export { exchangeName, instrumentQueryOptions, type InstrumentDetail, type Market } from './instruments';
+export {
+  exchangeName,
+  instrumentIconUrl,
+  instrumentQueryOptions,
+  type InstrumentDetail,
+  type Market,
+} from './instruments';
 export { queryClient } from './queryClient';
 export {
   EXCHANGES,

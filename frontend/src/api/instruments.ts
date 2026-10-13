@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query';
 
-import { get } from './client';
+import { apiUrl, get } from './client';
 import type { components } from './schema';
 
 export type InstrumentDetail = components['schemas']['InstrumentDetailOut'];
@@ -13,9 +13,20 @@ export function exchangeName(instrument: Pick<InstrumentDetail, 'exchange' | 'so
   return instrument.exchange ?? (instrument.source === 'binance' ? 'Binance' : '—');
 }
 
+// The path of an instrument; an id has a colon, e.g. "stock:BRK.B".
+function instrumentPath(id: string): string {
+  return `/v1/data/instruments/${encodeURIComponent(id)}`;
+}
+
 // GET /api/v1/data/instruments/{id}. Counts against the 60 per minute limit like the candles.
 export function getInstrument(id: string, signal?: AbortSignal): Promise<InstrumentDetail> {
-  return get<InstrumentDetail>(`/v1/data/instruments/${encodeURIComponent(id)}`, signal);
+  return get<InstrumentDetail>(instrumentPath(id), signal);
+}
+
+// GET /api/v1/data/instruments/{id}/icon, the src of an <img>: always an image (the logo or the
+// fallback), never an error for an instrument of the catalog. Not counted against the limit.
+export function instrumentIconUrl(id: string): string {
+  return apiUrl(`${instrumentPath(id)}/icon`);
 }
 
 // One cache entry per instrument, shared by the route loader and the page. The catalog

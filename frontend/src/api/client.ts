@@ -63,10 +63,15 @@ async function readJson(res: Response): Promise<{ ok: true; body: unknown } | { 
   }
 }
 
+// The URL of an API path, e.g. for an <img> that the browser loads itself.
+export function apiUrl(path: string): string {
+  return BASE + path;
+}
+
 export async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(BASE + path, { signal, headers: { Accept: 'application/json' } });
+    res = await fetch(apiUrl(path), { signal, headers: { Accept: 'application/json' } });
   } catch (error) {
     if (signal?.aborted) throw error;
     throw new ApiError(0, 'Cannot reach the server. Check your connection.');
