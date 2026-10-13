@@ -1,8 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  EXCHANGES,
-  exchangeMarket,
   hasNextPage,
   instrumentSearchQueryOptions,
   resultTotal,
@@ -73,12 +71,5 @@ describe('resultTotal', () => {
   it('reads the total, or nothing from the API before #109', () => {
     expect(resultTotal(result(50, 120, 0))).toBe(120);
     expect(resultTotal(result(50))).toBeUndefined();
-  });
-});
-
-describe('exchanges', () => {
-  it('lists the stock exchanges, then Binance, which has the crypto pairs', () => {
-    expect(EXCHANGES).toEqual(['NASDAQ', 'NYSE', 'ARCA', 'AMEX', 'BATS', 'BINANCE']);
-    expect(EXCHANGES.map(exchangeMarket)).toEqual(['stock', 'stock', 'stock', 'stock', 'stock', 'crypto']);
   });
 });

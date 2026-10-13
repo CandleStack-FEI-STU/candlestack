@@ -40,12 +40,12 @@ characters.
 | `name` | `BTC/USDT` (base/quote) | Alpaca asset name |
 | `source` | `binance` | `alpaca` |
 | `feed` | `spot` | `iex` |
-| `exchange` | `BINANCE` (`null` before #182) | Alpaca exchange (`NASDAQ`, `NYSE`, `ARCA`, ...) |
+| `exchange` | `BINANCE` (`null` before #182) | Alpaca exchange (`NASDAQ`, `NYSE`, `ARCA`, ...); `null` for one outside the `exchange` filter's list |
 | `base`, `quote` | `BTC`, `USDT` | `null` |
 
 Since #182 crypto pairs carry `"exchange": "BINANCE"` where they had `"exchange": null`, in
 the search, the instrument and every other answer with an instrument. The field stays nullable
-(a stock Alpaca reports without an exchange keeps `null`), so a client still handles `null`.
+(a stock on an exchange outside the list below has `null`), so a client still handles `null`.
 
 `GET /api/v1/data/instruments?q=&market=&exchange=&limit=&offset=` searches the cached catalogs of both
 markets (no source call per item) and returns one page,
@@ -55,7 +55,7 @@ markets (no source call per item) and returns one page,
 | --- | --- |
 | `q` | optional, 1-50 characters; without it, every instrument in symbol order (equal symbols: crypto first). A query without letters or digits finds nothing. Case-insensitive; separators are ignored in symbols: `btc/usdt`, `btc-usdt` and `BTC USDT` all match `BTCUSDT`, `brkb` matches `BRK.B` |
 | `market` | optional, `crypto` or `stock` |
-| `exchange` | optional, `AMEX`, `ARCA`, `BATS`, `BINANCE`, `NASDAQ` or `NYSE` (upper case); only the instruments that trade there. `BINANCE` lists the crypto pairs and the others stocks, so with the other `market` (`market=crypto&exchange=NYSE`) nothing matches. Only the catalog of the exchange's market is searched: while it cannot be loaded, the answer is 503 `source-unavailable`, not 200 with `unavailable`. Works with `q`, `market` and paging. Alpaca exchanges outside this list are logged as a warning when the catalog is fetched from Alpaca |
+| `exchange` | optional, `AMEX`, `ARCA`, `BATS`, `BINANCE`, `NASDAQ` or `NYSE` (upper case); only the instruments that trade there. `BINANCE` lists the crypto pairs and the others stocks, so with the other `market` (`market=crypto&exchange=NYSE`) nothing matches. Only the catalog of the exchange's market is searched: while it cannot be loaded, the answer is 503 `source-unavailable`, not 200 with `unavailable`. Works with `q`, `market` and paging. A stock Alpaca reports on an exchange outside this list (or on `BINANCE`) gets `exchange: null`, and the values are logged as a warning when the catalog is fetched from Alpaca |
 | `limit` | default 20, max 100 |
 | `offset` | default 0; matches to skip. Past the end, `items` is empty and `total` still counts all matches |
 

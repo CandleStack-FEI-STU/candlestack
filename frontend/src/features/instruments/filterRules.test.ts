@@ -11,7 +11,6 @@ import {
   nextActive,
   optionGroup,
   sectionStart,
-  typeHasExchange,
   usableActive,
   withExchange,
   withType,
@@ -29,33 +28,23 @@ const show = (options: FilterOption[]) =>
 
 const indexOf = (options: FilterOption[], label: string) => options.findIndex((option) => option.label === label);
 
-describe('typeHasExchange', () => {
+describe('mismatchOf', () => {
   it('lets All have every exchange and every type have "All exchanges"', () => {
     for (const exchange of [...STOCK_EXCHANGES, 'BINANCE'] as Exchange[]) {
-      expect(typeHasExchange(undefined, exchange)).toBe(true);
+      expect(mismatchOf(undefined, exchange)).toBeUndefined();
     }
     for (const market of [undefined, 'stock', 'crypto'] as (Market | undefined)[]) {
-      expect(typeHasExchange(market, undefined)).toBe(true);
+      expect(mismatchOf(market, undefined)).toBeUndefined();
     }
   });
 
-  it('gives stocks the stock exchanges and crypto Binance', () => {
+  it('gives stocks the stock exchanges and crypto Binance, and names a pair that cannot match', () => {
     for (const exchange of STOCK_EXCHANGES) {
-      expect(typeHasExchange('stock', exchange)).toBe(true);
-      expect(typeHasExchange('crypto', exchange)).toBe(false);
+      expect(mismatchOf('stock', exchange)).toBeUndefined();
+      expect(mismatchOf('crypto', exchange)).toEqual({ market: 'crypto', exchange });
     }
-    expect(typeHasExchange('crypto', 'BINANCE')).toBe(true);
-    expect(typeHasExchange('stock', 'BINANCE')).toBe(false);
-  });
-});
-
-describe('mismatchOf', () => {
-  it('names the market and the exchange of a pair that cannot match, and nothing else', () => {
-    expect(mismatchOf('crypto', 'NYSE')).toEqual({ market: 'crypto', exchange: 'NYSE' });
-    expect(mismatchOf('stock', 'BINANCE')).toEqual({ market: 'stock', exchange: 'BINANCE' });
     expect(mismatchOf('crypto', 'BINANCE')).toBeUndefined();
-    expect(mismatchOf(undefined, 'NYSE')).toBeUndefined();
-    expect(mismatchOf('stock', undefined)).toBeUndefined();
+    expect(mismatchOf('stock', 'BINANCE')).toEqual({ market: 'stock', exchange: 'BINANCE' });
   });
 });
 

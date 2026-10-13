@@ -153,8 +153,10 @@ The list filters by type (the market) and exchange, both in the URL
 - Keyboard: Enter, Space or ArrowDown on the button opens the panel on the chosen type. The
   arrows, Home and End move through both sections and skip disabled entries, ArrowLeft and
   ArrowRight jump between the sections, a letter jumps to the next entry starting with it, and
-  Enter or Space picks. Escape, Tab or a click outside closes the panel and the focus returns
-  to the button. Each section is an ARIA listbox; the focus itself moves between its options.
+  Enter or Space picks. Escape closes the panel and the focus returns to the button; Tab and
+  Shift+Tab close it and move on to the element after or before the button, like leaving any
+  other control; a click outside closes it too. Each section is an ARIA listbox; the focus
+  itself moves between its options.
 - The panel is a shadcn/ui Popover (`src/components/ui/popover.tsx`, `@radix-ui/react-popover`):
   it places the panel, keeps it on the screen and closes it on Escape or a click outside.
 

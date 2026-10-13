@@ -118,13 +118,13 @@ function Sections({ options, render }: SectionsProps) {
 
 // The panel's state: open or not, the entry with the focus, and what a pick or a key does. A pick
 // goes to the URL (page 1, a new history entry, so Back undoes it) and leaves the panel open for
-// the second filter; Tab closes it like Escape does. The entry with the focus is never one the
-// type has just disabled.
+// the second filter. The entry with the focus is never one the type has just disabled.
 function useFiltersPanel(options: FilterOption[]) {
   const navigate = useNavigate({ from: '/' });
   const [open, setOpen] = useState(false);
   const [focused, setActive] = useState(0);
   const active = usableActive(options, focused);
+  const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
 
   const focus = (index: number) => {
@@ -137,16 +137,23 @@ function useFiltersPanel(options: FilterOption[]) {
   };
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
-    if (event.key === 'Tab' || event.key === 'Enter' || event.key === ' ') {
+    // Tab and Shift+Tab leave the panel as they leave the button: the focus goes to the button,
+    // and the browser moves it on from there to the next or previous element of the page (the
+    // panel itself sits at the end of the page, in a portal).
+    if (event.key === 'Tab') {
+      trigger.current?.focus();
+      return setOpen(false);
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      return event.key === 'Tab' ? setOpen(false) : pick(options[active]);
+      return pick(options[active]);
     }
     const next = nextActive(options, active, event.key);
     if (next === undefined) return;
     event.preventDefault();
     focus(next);
   };
-  return { open, setOpen, active, panel, focus, pick, onKeyDown };
+  return { open, setOpen, active, trigger, panel, focus, pick, onKeyDown };
 }
 
 type TriggerProps = { summary: string; onOpen: () => void; ref: RefObject<HTMLButtonElement | null> };
@@ -176,12 +183,12 @@ function Trigger({ summary, onOpen, ref }: TriggerProps) {
 
 // Type and exchange behind one button of a fixed size (34 × 200 px) that sums them up, so nothing
 // in the row moves when they change (#182). The panel opens on Enter, Space or ArrowDown and starts
-// on the chosen type; Escape, Tab or a click outside closes it.
+// on the chosen type. Escape closes it and the focus goes back to the button; Tab and Shift+Tab
+// close it and move on to the element after or before the button; so does a click outside.
 export function Filters({ market, exchange }: Props) {
   const options = filterOptions(market, exchange);
   const summary = filtersSummary(market, exchange);
-  const { open, setOpen, active, panel, focus, pick, onKeyDown } = useFiltersPanel(options);
-  const trigger = useRef<HTMLButtonElement>(null);
+  const { open, setOpen, active, trigger, panel, focus, pick, onKeyDown } = useFiltersPanel(options);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -198,7 +205,7 @@ export function Filters({ market, exchange }: Props) {
         // A click on the padding or a heading would focus the panel itself, where no key works:
         // the focus goes on to the entry instead.
         onFocus={(event) => event.target === event.currentTarget && focus(active)}
-        // Back to the button, unless a click outside put the focus somewhere else.
+        // Back to the button (Escape), unless Tab or a click outside put the focus somewhere else.
         onCloseAutoFocus={(event) => {
           event.preventDefault();
           if (document.activeElement === document.body) trigger.current?.focus();

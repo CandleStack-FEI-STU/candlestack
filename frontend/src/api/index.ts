@@ -1,9 +1,9 @@
 // The public face of src/api: pages and components import from '@/api' only.
 export { candleBridgeQueryOptions, candlePageQueryOptions, type Candles } from './candles';
 export { ApiError } from './client';
+export { EXCHANGES, exchangeLabel, exchangeMarket, type Exchange } from './exchanges';
 export { useHealth, type Health } from './health';
 export {
-  exchangeLabel,
   exchangeName,
   instrumentIconUrl,
   instrumentQueryOptions,
@@ -12,12 +12,9 @@ export {
 } from './instruments';
 export { queryClient } from './queryClient';
 export {
-  EXCHANGES,
-  exchangeMarket,
   hasNextPage,
   instrumentSearchQueryOptions,
   resultTotal,
-  type Exchange,
   type Instrument,
   type InstrumentSearchResult,
 } from './search';

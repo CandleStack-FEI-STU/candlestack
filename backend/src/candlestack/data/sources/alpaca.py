@@ -102,14 +102,21 @@ def parse_assets(content: bytes) -> list[Instrument]:
         if instrument_id is None or instrument_id.symbol != symbol:
             logger.warning("Skipping Alpaca symbol %r: not a valid instrument symbol", symbol)
             continue
-        if str(exchange) not in STOCK_EXCHANGES:
+        known = str(exchange) in STOCK_EXCHANGES
+        if not known:
             unknown[str(exchange)] += 1
         instruments.append(
-            Instrument(id=instrument_id, name=name, source=NAME, feed="iex", exchange=exchange)
+            Instrument(
+                id=instrument_id,
+                name=name,
+                source=NAME,
+                feed="iex",
+                exchange=exchange if known else None,
+            )
         )
     if unknown:
-        # Still listed, but the exchange filter cannot find them until Exchange has the value as a
-        # stock exchange.
+        # Still listed, without an exchange: the filter cannot find them until Exchange has the
+        # value as a stock exchange, and a stock "on BINANCE" never passes for a crypto pair.
         logger.warning(
             "Alpaca lists stocks on exchanges outside Exchange: %s",
             ", ".join(f"{exchange} ({count})" for exchange, count in sorted(unknown.items())),

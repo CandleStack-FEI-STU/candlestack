@@ -16,11 +16,6 @@ export function mismatchOf(
   return { market, exchange };
 }
 
-// Does the type have this exchange?
-export function typeHasExchange(market: Market | undefined, exchange: Exchange | undefined): boolean {
-  return mismatchOf(market, exchange) === undefined;
-}
-
 // The Filters button's text: "All instruments", "Stocks", "Stocks · NYSE", "Crypto · Binance",
 // or the exchange alone under All ("NYSE").
 export function filtersSummary(market: Market | undefined, exchange: Exchange | undefined): string {
@@ -31,7 +26,7 @@ export function filtersSummary(market: Market | undefined, exchange: Exchange | 
 // A new type keeps an exchange it has and drops one it does not (Stocks + NYSE -> Crypto drops
 // NYSE); it never picks one. Like every change of a filter, it starts at page 1.
 export function withType(search: InstrumentsSearch, market: Market | undefined): InstrumentsSearch {
-  const exchange = typeHasExchange(market, search.exchange) ? search.exchange : undefined;
+  const exchange = mismatchOf(market, search.exchange) ? undefined : search.exchange;
   return { ...search, market, exchange, page: undefined };
 }
 
@@ -64,13 +59,16 @@ export function filterOptions(market: Market | undefined, exchange: Exchange | u
     label: value ? MARKET_NAMES[value].type : 'All types',
     selected: value === market,
   }));
-  const exchanges = [undefined, ...EXCHANGES].map((value): FilterOption => ({
-    section: 'exchange',
-    exchange: value,
-    label: value ? exchangeLabel(value) : 'All exchanges',
-    selected: value === exchange,
-    reason: typeHasExchange(market, value) || !value ? undefined : `${MARKET_NAMES[exchangeMarket(value)].type} only`,
-  }));
+  const exchanges = [undefined, ...EXCHANGES].map((value): FilterOption => {
+    const ruledOut = mismatchOf(market, value);
+    return {
+      section: 'exchange',
+      exchange: value,
+      label: value ? exchangeLabel(value) : 'All exchanges',
+      selected: value === exchange,
+      reason: ruledOut && `${MARKET_NAMES[exchangeMarket(ruledOut.exchange)].type} only`,
+    };
+  });
   return [...types, ...exchanges];
 }
 
