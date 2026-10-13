@@ -7,10 +7,12 @@ import {
   canPick,
   filterOptions,
   filtersSummary,
+  mismatchOf,
   nextActive,
   optionGroup,
   sectionStart,
   typeHasExchange,
+  usableActive,
   withExchange,
   withType,
   type FilterOption,
@@ -44,6 +46,16 @@ describe('typeHasExchange', () => {
     }
     expect(typeHasExchange('crypto', 'BINANCE')).toBe(true);
     expect(typeHasExchange('stock', 'BINANCE')).toBe(false);
+  });
+});
+
+describe('mismatchOf', () => {
+  it('names the market and the exchange of a pair that cannot match, and nothing else', () => {
+    expect(mismatchOf('crypto', 'NYSE')).toEqual({ market: 'crypto', exchange: 'NYSE' });
+    expect(mismatchOf('stock', 'BINANCE')).toEqual({ market: 'stock', exchange: 'BINANCE' });
+    expect(mismatchOf('crypto', 'BINANCE')).toBeUndefined();
+    expect(mismatchOf(undefined, 'NYSE')).toBeUndefined();
+    expect(mismatchOf('stock', undefined)).toBeUndefined();
   });
 });
 
@@ -172,6 +184,23 @@ describe('sectionStart', () => {
     expect(sectionStart(filterOptions(undefined, undefined), 'exchange')).toBe(3);
     // the chosen NYSE cannot be picked under Crypto
     expect(sectionStart(filterOptions('crypto', 'NYSE'), 'exchange')).toBe(3);
+  });
+});
+
+describe('usableActive', () => {
+  it('keeps the focus where it is while the entry can be picked', () => {
+    const options = filterOptions('crypto', undefined);
+    expect(usableActive(options, indexOf(options, 'Crypto'))).toBe(indexOf(options, 'Crypto'));
+    expect(usableActive(options, indexOf(options, 'Binance'))).toBe(indexOf(options, 'Binance'));
+  });
+
+  it('moves it off an entry the type has just disabled, to the chosen or first usable one', () => {
+    // NYSE had the focus under Stocks; Back went to Crypto
+    const crypto = filterOptions('crypto', undefined);
+    expect(usableActive(crypto, indexOf(crypto, 'NYSE'))).toBe(indexOf(crypto, 'All exchanges'));
+    const binance = filterOptions('crypto', 'BINANCE');
+    expect(usableActive(binance, indexOf(binance, 'NYSE'))).toBe(indexOf(binance, 'Binance'));
+    expect(usableActive(binance, 99)).toBe(indexOf(binance, 'Crypto'));
   });
 });
 

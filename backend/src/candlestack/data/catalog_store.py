@@ -1,6 +1,6 @@
 """The instrument catalogs of both markets, kept in Redis and in process memory.
 
-Each market's list is one Redis value (``data:v1:catalog:<market>``, compact JSON with its
+Each market's list is one Redis value (``data:v2:catalog:<market>``, compact JSON with its
 fetch time). A list older than 24 hours is still served at once while one background task
 refreshes it from the source. Searches run on an in-process ``Catalog``; when the process's
 copy is stale it first adopts a newer list another process already stored. Once one market is

@@ -225,3 +225,12 @@ async def test_an_error_stored_between_the_lookup_and_the_lock_is_raised() -> No
         await Cache(cast("Redis", redis)).get_or_fetch("calendar", never)
 
     assert redis.calls == ["mget", "set", "mget", "eval"]
+
+
+def test_locks_and_kept_errors_are_versioned_with_their_values() -> None:
+    # During a deploy, a process on catalog v1 and one on v2 must not share a lock or an error
+    # while they wait for different values.
+    assert cache_module.key("catalog:crypto") == "data:v2:catalog:crypto"
+    assert cache_module.lock_key("catalog:crypto") == "data:lock:v2:catalog:crypto"
+    assert cache_module.fail_key("catalog:crypto") == "data:fail:v2:catalog:crypto"
+    assert cache_module.lock_key("calendar") == "data:lock:v1:calendar"

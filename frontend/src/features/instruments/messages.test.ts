@@ -28,6 +28,7 @@ describe('messages', () => {
   it('says which market is left out', () => {
     expect(unavailableMessage([])).toBeUndefined();
     expect(unavailableMessage(['stock'])).toMatch(/^Stocks cannot be searched right now/);
+    expect(unavailableMessage(['crypto', 'stock'])).toMatch(/^Crypto pairs and stocks cannot be searched/);
   });
 
   it('explains the old API that cannot list without a query, where retrying does not help', () => {

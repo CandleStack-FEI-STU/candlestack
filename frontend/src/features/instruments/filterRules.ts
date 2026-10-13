@@ -1,20 +1,30 @@
 import { EXCHANGES, exchangeLabel, exchangeMarket, type Exchange, type Market } from '@/api';
 import type { InstrumentsSearch } from '@/routes/instrumentsSearch';
 
+import { MARKET_NAMES } from './messages';
+
 // The rules of the Filters panel (#182): Type (the market) and Exchange, both in the URL.
 
-const TYPE_NAMES: Record<Market, string> = { stock: 'Stocks', crypto: 'Crypto' };
+// A market and an exchange it does not trade on, as an old or hand-edited link can pair them
+// (?market=crypto&exchange=NYSE), or undefined when they fit: All has every exchange, and "All
+// exchanges" fits every type.
+export function mismatchOf(
+  market: Market | undefined,
+  exchange: Exchange | undefined,
+): { market: Market; exchange: Exchange } | undefined {
+  if (market === undefined || exchange === undefined || exchangeMarket(exchange) === market) return undefined;
+  return { market, exchange };
+}
 
-// Does the type have this exchange? All types have every exchange, and "All exchanges" fits
-// every type. An old or hand-edited link can still pair them wrong: ?market=crypto&exchange=NYSE.
+// Does the type have this exchange?
 export function typeHasExchange(market: Market | undefined, exchange: Exchange | undefined): boolean {
-  return market === undefined || exchange === undefined || exchangeMarket(exchange) === market;
+  return mismatchOf(market, exchange) === undefined;
 }
 
 // The Filters button's text: "All instruments", "Stocks", "Stocks · NYSE", "Crypto · Binance",
 // or the exchange alone under All ("NYSE").
 export function filtersSummary(market: Market | undefined, exchange: Exchange | undefined): string {
-  const parts = [market && TYPE_NAMES[market], exchange && exchangeLabel(exchange)].filter(Boolean);
+  const parts = [market && MARKET_NAMES[market].type, exchange && exchangeLabel(exchange)].filter(Boolean);
   return parts.length === 0 ? 'All instruments' : parts.join(' · ');
 }
 
@@ -51,7 +61,7 @@ export function filterOptions(market: Market | undefined, exchange: Exchange | u
   const types = TYPES.map((value): FilterOption => ({
     section: 'type',
     market: value,
-    label: value ? TYPE_NAMES[value] : 'All types',
+    label: value ? MARKET_NAMES[value].type : 'All types',
     selected: value === market,
   }));
   const exchanges = [undefined, ...EXCHANGES].map((value): FilterOption => ({
@@ -59,7 +69,7 @@ export function filterOptions(market: Market | undefined, exchange: Exchange | u
     exchange: value,
     label: value ? exchangeLabel(value) : 'All exchanges',
     selected: value === exchange,
-    reason: typeHasExchange(market, value) || !value ? undefined : `${TYPE_NAMES[exchangeMarket(value)]} only`,
+    reason: typeHasExchange(market, value) || !value ? undefined : `${MARKET_NAMES[exchangeMarket(value)].type} only`,
   }));
   return [...types, ...exchanges];
 }
@@ -86,6 +96,14 @@ export function applyOption(search: InstrumentsSearch, option: FilterOption): In
 export function sectionStart(options: readonly FilterOption[], section: FilterOption['section']): number {
   const chosen = options.findIndex((option) => option.section === section && option.selected && canPick(option));
   return chosen >= 0 ? chosen : options.findIndex((option) => option.section === section && canPick(option));
+}
+
+// The entry to keep the focus on: `active`, or, when the type has just disabled it, the chosen or
+// first usable entry of its section.
+export function usableActive(options: readonly FilterOption[], active: number): number {
+  const option = options[active];
+  if (option && canPick(option)) return active;
+  return sectionStart(options, option?.section ?? 'type');
 }
 
 // The arrows, Home and End go through both sections, stopping at the ends.

@@ -171,7 +171,7 @@ async def test_search_does_not_wait_for_a_market_being_loaded(
     upstream.router.get(f"{upstream.ALPACA_API}/v2/assets").mock(side_effect=assets)
 
     assert (await service.search("apple")).unavailable == [Market.STOCK]
-    await redis.delete("data:fail:catalog:stock")  # the error Redis keeps for 10 s
+    await redis.delete("data:fail:v2:catalog:stock")  # the error Redis keeps for 10 s
     # Crypto is loaded: the next search answers while stocks are retried in the background.
     found = await asyncio.wait_for(service.search("apple"), timeout=2)
     assert (ids(found), found.unavailable) == ([], [Market.STOCK])
@@ -334,10 +334,26 @@ async def test_refresh_is_left_to_the_process_running_it(
 ):
     info = upstream.exchange_info()
     await service.search("btcusdt", Market.CRYPTO)
-    await redis.set("data:lock:catalog:crypto", "another-process", px=30_000)
+    await redis.set("data:lock:v2:catalog:crypto", "another-process", px=30_000)
 
     stale(monkeypatch)
     found = await and_background(service.search("btcusdt", Market.CRYPTO))
+
+    assert ids(found) == ["crypto:BTCUSDT"]
+    assert info.call_count == 1
+
+
+async def test_a_lock_or_error_of_the_previous_catalog_version_is_not_shared(
+    service: DataService, upstream, redis
+):
+    # Kept by a process still on data:v1:catalog during a deploy: it waits for that value, not
+    # for this one.
+    await redis.set("data:lock:v1:catalog:crypto", "old-process", px=30_000)
+    await redis.set("data:lock:catalog:crypto", "old-process", px=30_000)
+    await redis.set("data:fail:catalog:crypto", b'{"kind": "unavailable"}', ex=10)
+    info = upstream.exchange_info()
+
+    found = await asyncio.wait_for(service.search("btcusdt", Market.CRYPTO), timeout=2)
 
     assert ids(found) == ["crypto:BTCUSDT"]
     assert info.call_count == 1

@@ -342,7 +342,7 @@ export interface components {
             base: string | null;
             /**
              * Exchange
-             * @description Where it trades: the listing exchange of a stock (`NASDAQ`, `NYSE`, `ARCA`, ...), `BINANCE` for a crypto pair.
+             * @description Where it trades: the listing exchange of a stock (`NASDAQ`, `NYSE`, `ARCA`, ...), `BINANCE` for a crypto pair (null for crypto before #182; stays nullable).
              * @example BINANCE
              */
             exchange: string | null;
@@ -418,7 +418,7 @@ export interface components {
             base: string | null;
             /**
              * Exchange
-             * @description Where it trades: the listing exchange of a stock (`NASDAQ`, `NYSE`, `ARCA`, ...), `BINANCE` for a crypto pair.
+             * @description Where it trades: the listing exchange of a stock (`NASDAQ`, `NYSE`, `ARCA`, ...), `BINANCE` for a crypto pair (null for crypto before #182; stays nullable).
              * @example BINANCE
              */
             exchange: string | null;

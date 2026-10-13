@@ -349,7 +349,7 @@ async def test_alpaca_not_answering_is_unavailable_and_remembered(
         "source": "alpaca",
     }
     assert november.call_count == calls  # the second request got the kept error
-    assert 0 < await redis.ttl(f"data:fail:{chunk}") <= 10
+    assert 0 < await redis.ttl(f"data:fail:v2:{chunk}") <= 10
     assert await redis.exists(f"data:v2:{chunk}") == 0
 
 

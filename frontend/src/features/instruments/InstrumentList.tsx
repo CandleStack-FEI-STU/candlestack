@@ -12,7 +12,7 @@ import {
 } from '@/api';
 import { Button } from '@/components/ui/button';
 
-import { typeHasExchange, withExchange } from './filterRules';
+import { mismatchOf, withExchange } from './filterRules';
 import { InstrumentTable } from './InstrumentTable';
 import { describeListError, emptyMessage, mismatchMessage, unavailableMessage, type ListError } from './messages';
 import { Pager } from './Pager';
@@ -103,7 +103,7 @@ function ListBody({ items, waiting, page, empty }: BodyProps) {
 // The search result for the query, market, exchange and page in the URL, with its empty and error states.
 export function InstrumentList({ query, market, exchange, page }: Props) {
   const params = { q: query, market, exchange, limit: LIST_PAGE_SIZE, offset: (page - 1) * LIST_PAGE_SIZE };
-  const mismatch = market && exchange && !typeHasExchange(market, exchange) ? { market, exchange } : undefined;
+  const mismatch = mismatchOf(market, exchange);
   const result = useQuery({ ...instrumentSearchQueryOptions(params), enabled: !mismatch });
   const clamping = useClampPage(result, page);
 

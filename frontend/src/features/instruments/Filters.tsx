@@ -15,6 +15,7 @@ import {
   filtersSummary,
   nextActive,
   optionGroup,
+  usableActive,
   sectionStart,
   type FilterOption,
   type OptionGroup,
@@ -43,7 +44,16 @@ function Option({ option, index, active, onPick, onFocus, onKeyDown }: OptionPro
       tabIndex={index === active ? 0 : -1}
       aria-selected={option.selected}
       aria-disabled={!usable || undefined}
-      onClick={usable ? onPick : undefined}
+      // A click or a tap also moves the focus there (a tap sends no pointermove), so the arrows go
+      // on from the entry picked.
+      onClick={
+        usable
+          ? () => {
+              onFocus();
+              onPick();
+            }
+          : undefined
+      }
       onKeyDown={onKeyDown}
       onMouseDown={(event) => !usable && event.preventDefault()}
       onPointerMove={() => usable && index !== active && onFocus()}
@@ -108,11 +118,13 @@ function Sections({ options, render }: SectionsProps) {
 
 // The panel's state: open or not, the entry with the focus, and what a pick or a key does. A pick
 // goes to the URL (page 1, a new history entry, so Back undoes it) and leaves the panel open for
-// the second filter; Tab closes it like Escape does.
+// the second filter; Tab closes it like Escape does. The entry with the focus is never one the
+// type has just disabled.
 function useFiltersPanel(options: FilterOption[]) {
   const navigate = useNavigate({ from: '/' });
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
+  const [focused, setActive] = useState(0);
+  const active = usableActive(options, focused);
   const panel = useRef<HTMLDivElement>(null);
 
   const focus = (index: number) => {
@@ -183,6 +195,9 @@ export function Filters({ market, exchange }: Props) {
           event.preventDefault();
           focus(sectionStart(options, 'type'));
         }}
+        // A click on the padding or a heading would focus the panel itself, where no key works:
+        // the focus goes on to the entry instead.
+        onFocus={(event) => event.target === event.currentTarget && focus(active)}
         // Back to the button, unless a click outside put the focus somewhere else.
         onCloseAutoFocus={(event) => {
           event.preventDefault();

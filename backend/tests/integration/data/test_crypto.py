@@ -412,7 +412,7 @@ async def test_archive_with_a_wrong_checksum_is_never_cached(service: DataServic
         upstream.fixture_bytes(f"binance/archive/monthly/{name}"),
         upstream.checksum(b"something else", name),
     )
-    failure = "data:fail:candles:crypto:BTCUSDT:1h:2024-01"
+    failure = "data:fail:v2:candles:crypto:BTCUSDT:1h:2024-01"
 
     for attempt in range(3):
         if attempt == 2:
@@ -538,7 +538,7 @@ async def test_binance_not_answering_is_unavailable_and_remembered(
         "source": "binance",
     }
     assert today.call_count == calls  # the second request got the kept error
-    assert 0 < await redis.ttl(f"data:fail:{chunk}") <= 10
+    assert 0 < await redis.ttl(f"data:fail:v2:{chunk}") <= 10
     assert await redis.exists(f"data:v2:{chunk}") == 0
 
 
