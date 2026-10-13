@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { hasNextPage, instrumentSearchQueryOptions, searchInstruments, type InstrumentSearchResult } from './search';
+import {
+  hasNextPage,
+  instrumentSearchQueryOptions,
+  resultTotal,
+  searchInstruments,
+  type InstrumentSearchResult,
+} from './search';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -58,5 +64,12 @@ describe('hasNextPage', () => {
   it('without total (the API before #109) takes a full page as "maybe more"', () => {
     expect(hasNextPage(result(50), 50)).toBe(true);
     expect(hasNextPage(result(12), 50)).toBe(false);
+  });
+});
+
+describe('resultTotal', () => {
+  it('reads the total, or nothing from the API before #109', () => {
+    expect(resultTotal(result(50, 120, 0))).toBe(120);
+    expect(resultTotal(result(50))).toBeUndefined();
   });
 });

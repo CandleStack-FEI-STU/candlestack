@@ -41,11 +41,16 @@ export function instrumentSearchQueryOptions(params: InstrumentSearchParams) {
   });
 }
 
-// Is there a page after this one? The API before #109 (still on prod until the next release)
-// sends no `total`; then a full page means there may be more.
+// How many instruments match in all, or undefined from the API before #109 (still on prod until
+// the next release), which sends no `total` and no `offset`. The type says both are always
+// there; this is the one place that knows better.
+export function resultTotal(result: InstrumentSearchResult): number | undefined {
+  return (result as Partial<InstrumentSearchResult>).total;
+}
+
+// Is there a page after this one? Without a total, a full page means there may be more.
 export function hasNextPage(result: InstrumentSearchResult, limit: number): boolean {
-  const total = (result as Partial<InstrumentSearchResult>).total;
-  const offset = (result as Partial<InstrumentSearchResult>).offset ?? 0;
+  const total = resultTotal(result);
   if (total === undefined) return result.count >= limit;
-  return offset + result.count < total;
+  return (result.offset ?? 0) + result.count < total;
 }

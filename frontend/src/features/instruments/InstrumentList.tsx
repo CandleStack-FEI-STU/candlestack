@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import {
   hasNextPage,
   instrumentSearchQueryOptions,
+  resultTotal,
   type Exchange,
   type InstrumentSearchResult,
   type Market,
@@ -44,14 +45,16 @@ function ErrorState({ error, onRetry }: { error: ListError; onRetry: () => void 
 
 // An old or shared link can point past the end: /?q=apple&page=40 with 3 pages. Once the total
 // is known, the page goes to the last one, in place of the broken entry in the history.
-function useClampPage(result: UseQueryResult<InstrumentSearchResult>, page: number) {
+// Returns whether that redirect is on its way.
+function useClampPage(result: UseQueryResult<InstrumentSearchResult>, page: number): boolean {
   const navigate = useNavigate({ from: '/' });
-  const total = result.isPlaceholderData ? undefined : result.data?.total;
+  const total = result.isPlaceholderData || !result.data ? undefined : resultTotal(result.data);
   const clamped = clampedPage(page, total, LIST_PAGE_SIZE);
   useEffect(() => {
     if (clamped === undefined) return;
     void navigate({ search: (prev) => ({ ...prev, page: clamped > 1 ? clamped : undefined }), replace: true });
   }, [clamped, navigate]);
+  return clamped !== undefined;
 }
 
 // Without a total (the API before #109) the page cannot be clamped: say so, with a way back.
@@ -66,11 +69,23 @@ function PastTheEnd() {
   );
 }
 
+type BodyProps = { items: InstrumentSearchResult['items']; waiting: boolean; page: number; empty: string };
+
+// The rows, or why there are none. While the previous result stands in for the new one or the
+// page is being clamped, an empty result is not the answer yet: it says "Loading", not "No
+// instruments match" or "past the end" for a moment.
+function ListBody({ items, waiting, page, empty }: BodyProps) {
+  if (items.length > 0) return <InstrumentTable items={items} />;
+  if (waiting) return <Note>Loading instruments…</Note>;
+  if (page > 1) return <PastTheEnd />;
+  return <Note>{empty}</Note>;
+}
+
 // The search result for the query, market, exchange and page in the URL, with its empty and error states.
 export function InstrumentList({ query, market, exchange, page }: Props) {
   const params = { q: query, market, exchange, limit: LIST_PAGE_SIZE, offset: (page - 1) * LIST_PAGE_SIZE };
   const result = useQuery(instrumentSearchQueryOptions(params));
-  useClampPage(result, page);
+  const clamping = useClampPage(result, page);
 
   if (result.isPending) return <Note>Loading instruments…</Note>;
   if (result.isError) {
@@ -83,14 +98,17 @@ export function InstrumentList({ query, market, exchange, page }: Props) {
     <>
       {unavailable && <p className="mb-3 rounded-md border px-3 py-2 text-sm text-warn">{unavailable}</p>}
       <div className={result.isPlaceholderData ? 'rounded-lg border opacity-60' : 'rounded-lg border'}>
-        {data.items.length > 0 && <InstrumentTable items={data.items} />}
-        {data.items.length === 0 && page > 1 && <PastTheEnd />}
-        {data.items.length === 0 && page === 1 && <Note>{emptyMessage(query, market, exchange)}</Note>}
+        <ListBody
+          items={data.items}
+          waiting={result.isPlaceholderData || clamping}
+          page={page}
+          empty={emptyMessage(query, market, exchange)}
+        />
       </div>
       <Pager
         page={page}
         hasNext={hasNextPage(data, LIST_PAGE_SIZE)}
-        total={(data as { total?: number }).total}
+        total={resultTotal(data)}
         pageSize={LIST_PAGE_SIZE}
         loading={result.isPlaceholderData}
       />

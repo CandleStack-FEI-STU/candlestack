@@ -54,15 +54,13 @@ function serverText(error: ApiError): Text {
   };
 }
 
-// A 422 names the parameter it rejected, e.g. "query parameter 'offset': ...". The hint follows
-// it: with an empty query, a complaint about `q` is the old API; one about `offset` is a page
-// that does not exist; one about `q` with a query is the query itself.
+// A 422 names the parameter it rejected, e.g. "query parameter 'q': ...". The hint follows it:
+// with an empty query, a complaint about `q` is the old API; with a query, it is the query.
 function rejectedText(error: ApiError, query: string): Text {
   const about = (name: string) => error.message.includes(`'${name}'`);
   if (about('q') && query === '') return OLD_API;
   const title = 'The server did not accept this search.';
   const warn = { canRetry: false, tone: 'warn' } as const;
-  if (about('offset')) return { title: 'This page does not exist.', hint: 'Go back to page 1.', ...warn };
   if (about('q')) return { title, hint: 'Try a shorter query: a symbol like btc or a name like apple.', ...warn };
   return { title, hint: 'Start again from the plain list, without filters or a page in the address.', ...warn };
 }

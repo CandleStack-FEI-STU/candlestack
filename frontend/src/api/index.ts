@@ -8,6 +8,7 @@ export {
   EXCHANGES,
   hasNextPage,
   instrumentSearchQueryOptions,
+  resultTotal,
   type Exchange,
   type Instrument,
   type InstrumentSearchResult,
