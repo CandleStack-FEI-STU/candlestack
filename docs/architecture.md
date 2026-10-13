@@ -156,7 +156,7 @@ Environment variables, read by pydantic-settings without a prefix. All are docum
 | `LOGO_DEV_URL` | `https://img.logo.dev` | logo images |
 | `CANDLES_MAX` | `50000` | max candles in one candle response |
 | `CLIENT_RATE_LIMIT` | `60` | candle and instrument-detail requests per minute per client IP (IPv6: per /64); `0` disables |
-| `ALPACA_RATE_LIMIT` | prod `150`, stage `60`, `pr-*` `30`, else `60` | our Alpaca request budget per minute |
+| `ALPACA_RATE_LIMIT` | prod `150`, stage `100`, `pr-*` `30`, else `60` | our Alpaca request budget per minute |
 | `BINANCE_WEIGHT_LIMIT` | `1000` | our Binance REST weight budget per minute per environment |
 | `LOGO_DEV_RATE_LIMIT` | prod `50`, stage `20`, `pr-*` `5`, else `20` | our logo.dev request budget per minute |
 | `SENTRY_DSN` | empty | Sentry project for errors, traces, profiles and logs; empty sends nothing (set for prod and stage only) |

@@ -33,7 +33,7 @@ compose_file=$repo/infra/env/compose.yaml
 # One line "<version> <backend@digest> <frontend@digest>" per "up stage", in the deploy user's
 # home: outside the checkout, which "edge" resets.
 stage_images=${HOME:?}/stage-images
-# Previews that may run at once. The VM has 2 GB: prod and stage take about 1.15 GB with their
+# Previews that may run at once. The VM has 2 GB: prod and stage take about 1.28 GB with their
 # container limits and a preview up to 450 MB more, so a second preview could starve prod.
 max_previews=1
 
@@ -63,7 +63,7 @@ may_touch() {
 redis_memory() {
   case "$1" in
     prod) REDIS_MAXMEMORY=256mb REDIS_MEM_LIMIT=288m ;;
-    stage) REDIS_MAXMEMORY=128mb REDIS_MEM_LIMIT=160m ;;
+    stage) REDIS_MAXMEMORY=256mb REDIS_MEM_LIMIT=288m ;;
     *) REDIS_MAXMEMORY=64mb REDIS_MEM_LIMIT=96m ;;
   esac
   export REDIS_MAXMEMORY REDIS_MEM_LIMIT

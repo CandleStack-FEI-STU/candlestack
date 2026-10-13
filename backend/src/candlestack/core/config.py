@@ -10,8 +10,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 # Our Alpaca request budget per minute. Alpaca allows 200 per key: prod has its own key,
-# stage and the pull request previews share one.
-_ALPACA_RATE_LIMITS = {"prod": 150, "stage": 60}
+# stage and the pull request previews share one (100 + 30 for one preview).
+_ALPACA_RATE_LIMITS = {"prod": 150, "stage": 100}
 _ALPACA_RATE_LIMIT_PREVIEW = 30
 _ALPACA_RATE_LIMIT_DEFAULT = 60
 

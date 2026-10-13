@@ -3,6 +3,7 @@ import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import type { Instrument } from '@/api';
+import { classes } from '@/test/markup';
 
 import { InstrumentTable } from './InstrumentTable';
 
@@ -48,6 +49,25 @@ describe('InstrumentTable', () => {
     expect(btc).toMatch(/<img [^>]*src="\/api\/v1\/data\/instruments\/crypto%3ABTCUSDT\/icon"[^>]*>.*>BTCUSDT<\/a>/);
     expect(aapl).toMatch(/<img [^>]*src="\/api\/v1\/data\/instruments\/stock%3AAAPL\/icon"[^>]*>.*>AAPL<\/a>/);
     expect(btc).toMatch(/<img [^>]*width="32"/);
+  });
+
+  it('keeps long names and symbols inside the table at every width', async () => {
+    const html = await render();
+    const [btc = ''] = rows(html);
+    // Fixed column widths: the cells truncate their text instead of widening the table.
+    expect(classes(html, /<table [^>]*>/)).toContain('table-fixed');
+    expect(classes(btc, /<span [^>]*>Bitcoin/)).toContain('truncate');
+    expect(classes(btc, /<a [^>]*>BTCUSDT</)).toContain('truncate');
+  });
+
+  it('shows cut text in full on hover', async () => {
+    const [btc = '', aapl = ''] = rows(await render());
+    expect(btc).toMatch(/<a [^>]*title="BTCUSDT"[^>]*>BTCUSDT<\/a>/);
+    expect(btc).toMatch(/<span title="Bitcoin \/ TetherUS"[^>]*>Bitcoin/);
+    // The market and exchange: in their columns, and under the name on a phone.
+    expect(btc).toMatch(/<span title="crypto · Binance"[^>]*>crypto · Binance</);
+    expect(aapl).toMatch(/<td title="stock"[^>]*>stock</);
+    expect(aapl).toMatch(/<td title="NASDAQ"[^>]*>NASDAQ</);
   });
 
   it('keeps the symbol the only link of a row, so the row stays one click target', async () => {
