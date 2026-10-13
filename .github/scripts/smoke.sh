@@ -153,7 +153,8 @@ check_instruments() {
     get "/api/v1/data/instruments/$id"
     expect 200 application/json
     jq -e --arg id "$id" --arg source "$source" \
-      '.id == $id and .source == $source and (.available_from | numbers) and (.timeframes | length) == 6' \
+      '.id == $id and .source == $source and (.available_from | numbers)
+        and (["1m", "5m", "15m", "30m", "1h", "4h", "1d"] - .timeframes == [])' \
       <<<"$body" >/dev/null || fail "unexpected detail of $id: ${body:0:300}"
   done
 }
