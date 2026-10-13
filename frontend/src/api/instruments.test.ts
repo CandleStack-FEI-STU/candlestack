@@ -27,8 +27,11 @@ describe('instrumentIconUrl', () => {
 
 describe('exchangeName', () => {
   it('names the listing exchange of a stock and Binance for a crypto pair', () => {
-    expect(exchangeName({ exchange: 'NASDAQ', source: 'alpaca' })).toBe('NASDAQ');
-    expect(exchangeName({ exchange: null, source: 'binance' })).toBe('Binance');
-    expect(exchangeName({ exchange: null, source: 'alpaca' })).toBe('—');
+    expect(exchangeName({ exchange: 'NASDAQ', market: 'stock' })).toBe('NASDAQ');
+    expect(exchangeName({ exchange: 'BINANCE', market: 'crypto' })).toBe('Binance');
+    // the API before #182
+    expect(exchangeName({ exchange: null, market: 'crypto' })).toBe('Binance');
+    // a stock on an exchange outside the filter's list
+    expect(exchangeName({ exchange: null, market: 'stock' })).toBe('—');
   });
 });

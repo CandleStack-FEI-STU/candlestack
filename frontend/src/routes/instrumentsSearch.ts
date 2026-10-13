@@ -18,9 +18,9 @@ function parseMarket(value: unknown): Market | undefined {
   return value === 'stock' || value === 'crypto' ? value : undefined;
 }
 
-// Crypto pairs have no exchange: with market=crypto an exchange would only empty the list.
-function parseExchange(value: unknown, market: Market | undefined): Exchange | undefined {
-  if (market === 'crypto') return undefined;
+// Kept even when the market does not trade there (?market=crypto&exchange=NYSE, an old or
+// hand-edited link): the list then says why it is empty instead of quietly dropping a filter.
+function parseExchange(value: unknown): Exchange | undefined {
   return EXCHANGES.find((exchange) => exchange === value);
 }
 
@@ -38,7 +38,7 @@ export function validateInstrumentsSearch(
   const result: InstrumentsSearch = {};
   const q = parseQuery(search.q);
   const market = parseMarket(search.market);
-  const exchange = parseExchange(search.exchange, market);
+  const exchange = parseExchange(search.exchange);
   const page = parsePage(search.page);
   if (q !== undefined) result.q = q;
   if (market !== undefined) result.market = market;

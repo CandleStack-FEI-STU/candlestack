@@ -10,12 +10,23 @@ describe('validateInstrumentsSearch', () => {
     expect(validate({ q: ' btc ', market: 'crypto', page: '3' })).toEqual({ q: 'btc', market: 'crypto', page: 3 });
   });
 
-  it('keeps a known exchange, but not with crypto pairs, which have none', () => {
+  it('keeps a known exchange, Binance too', () => {
     expect(validate({ market: 'stock', exchange: 'NYSE' })).toEqual({ market: 'stock', exchange: 'NYSE' });
     expect(validate({ exchange: 'NASDAQ' })).toEqual({ exchange: 'NASDAQ' });
-    expect(validate({ market: 'crypto', exchange: 'NYSE' })).toEqual({ market: 'crypto' });
+    expect(validate({ exchange: 'BINANCE' })).toEqual({ exchange: 'BINANCE' });
+    expect(validate({ market: 'crypto', exchange: 'BINANCE', page: 2 })).toEqual({
+      market: 'crypto',
+      exchange: 'BINANCE',
+      page: 2,
+    });
     expect(validate({ exchange: 'LSE' })).toEqual({});
     expect(validate({ exchange: 'nyse' })).toEqual({});
+    expect(validate({ exchange: 'Binance' })).toEqual({});
+  });
+
+  it('keeps an exchange the market does not trade on, so the list can say why it is empty', () => {
+    expect(validate({ market: 'crypto', exchange: 'NYSE' })).toEqual({ market: 'crypto', exchange: 'NYSE' });
+    expect(validate({ market: 'stock', exchange: 'BINANCE' })).toEqual({ market: 'stock', exchange: 'BINANCE' });
   });
 
   it('reads a number as a query (?q=500 arrives as a number)', () => {

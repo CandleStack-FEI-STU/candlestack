@@ -1,20 +1,36 @@
-import { ApiError, type Exchange, type Market } from '@/api';
+import { ApiError, exchangeLabel, exchangeMarket, type Exchange, type Market } from '@/api';
 
-const MARKET_NAMES: Record<Market, string> = { stock: 'Stocks', crypto: 'Crypto pairs' };
+// How the list names a market: `type` where it is picked (the Filters button and panel, "Crypto
+// only"), like the timeframe or a tab; `items` in sentences about what is listed ("No crypto
+// pairs on NYSE"), where "crypto" alone would not say what is missing.
+export const MARKET_NAMES: Record<Market, { type: string; items: string }> = {
+  stock: { type: 'Stocks', items: 'stocks' },
+  crypto: { type: 'Crypto', items: 'crypto pairs' },
+};
+
+const capitalised = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 // What to say when nothing matches: name the query, the market and the exchange, so the user
 // sees why.
 export function emptyMessage(query: string, market: Market | undefined, exchange?: Exchange): string {
-  const inMarket = market === undefined ? '' : ` in ${MARKET_NAMES[market].toLowerCase()}`;
-  const where = exchange === undefined ? inMarket : `${inMarket} on ${exchange}`;
+  const inMarket = market === undefined ? '' : ` in ${MARKET_NAMES[market].items}`;
+  const where = exchange === undefined ? inMarket : `${inMarket} on ${exchangeLabel(exchange)}`;
   if (query === '') return `No instruments${where}.`;
   return `No instruments match “${query}”${where}. Try a symbol like btc or a name like apple.`;
+}
+
+// What to say for a link that pairs a market with an exchange it does not trade on
+// (?market=crypto&exchange=NYSE): the controls cannot make one, an old or hand-edited link can.
+export function mismatchMessage(market: Market, exchange: Exchange): { title: string; hint: string } {
+  const name = exchangeLabel(exchange);
+  const lists = MARKET_NAMES[exchangeMarket(exchange)].items;
+  return { title: `No ${MARKET_NAMES[market].items} on ${name}`, hint: `${name} lists ${lists} only.` };
 }
 
 // A market whose list could not be loaded is left out of the search: say which one.
 export function unavailableMessage(markets: readonly Market[]): string | undefined {
   if (markets.length === 0) return undefined;
-  const names = markets.map((market) => MARKET_NAMES[market]).join(' and ');
+  const names = capitalised(markets.map((market) => MARKET_NAMES[market].items).join(' and '));
   return `${names} cannot be searched right now; the results show the rest. Try again in a minute.`;
 }
 

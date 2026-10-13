@@ -1,16 +1,20 @@
 import { queryOptions } from '@tanstack/react-query';
 
 import { apiUrl, get } from './client';
+import { exchangeLabel, onlyExchange } from './exchanges';
 import type { components } from './schema';
 
 export type InstrumentDetail = components['schemas']['InstrumentDetailOut'];
 export type Market = components['schemas']['Market'];
 
-// The exchange to show for an instrument. The API gives stocks their listing exchange and crypto
-// pairs none (null): they all come from Binance, which is the exchange. Shared by the list and
-// the instrument page, so both say the same.
-export function exchangeName(instrument: Pick<InstrumentDetail, 'exchange' | 'source'>): string {
-  return instrument.exchange ?? (instrument.source === 'binance' ? 'Binance' : '—');
+// The exchange to show for an instrument: the listing exchange of a stock, Binance for a crypto
+// pair. The API before #182 (still on prod until the next release) gives crypto pairs none
+// (null); they all trade on the one crypto exchange. Shared by the list and the instrument page,
+// so both say the same.
+export function exchangeName(instrument: Pick<InstrumentDetail, 'exchange' | 'market'>): string {
+  if (instrument.exchange !== null) return exchangeLabel(instrument.exchange);
+  const only = onlyExchange(instrument.market);
+  return only === undefined ? '—' : exchangeLabel(only);
 }
 
 // The path of an instrument; an id has a colon, e.g. "stock:BRK.B".

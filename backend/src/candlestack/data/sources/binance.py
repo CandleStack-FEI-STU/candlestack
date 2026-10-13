@@ -26,6 +26,7 @@ from candlestack.data.candles import normalise, slice_range, validate
 from candlestack.data.errors import DataError, DataIntegrityError, InvalidRequest, SourceUnavailable
 from candlestack.data.models import (
     CANDLE_SCHEMA,
+    Exchange,
     Feed,
     Instrument,
     InstrumentId,
@@ -80,7 +81,7 @@ def to_seconds(column: str) -> pl.Expr:
 
 
 def parse_exchange_info(content: bytes) -> list[Instrument]:
-    """The TRADING spot pairs of a ``GET /api/v3/exchangeInfo`` body."""
+    """The TRADING spot pairs of a ``GET /api/v3/exchangeInfo`` body, all on ``BINANCE``."""
     try:
         symbols = orjson.loads(content)["symbols"]
         pairs = [
@@ -107,6 +108,7 @@ def parse_exchange_info(content: bytes) -> list[Instrument]:
                 name=f"{base}/{quote_asset}",
                 source=NAME,
                 feed="spot",
+                exchange=Exchange.BINANCE.value,
                 base=base,
                 quote=quote_asset,
             )

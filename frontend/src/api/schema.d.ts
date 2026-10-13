@@ -63,7 +63,7 @@ export interface paths {
          *     first), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word
          *     in the name, substring of the symbol, substring of the name; ties go to the shorter symbol,
          *     then alphabetically. Without `q`, every instrument comes back in symbol order.
-         *     `exchange` narrows any of these to the stocks listed on it.
+         *     `exchange` narrows any of these to the instruments that trade on it.
          *     `total` counts all matches: page through them with `offset` and `limit`.
          *
          *     When the instrument list of one market cannot be loaded, the other market is still
@@ -292,11 +292,12 @@ export interface components {
         };
         /**
          * Exchange
-         * @description Listing exchanges of the stocks in the catalog: the values Alpaca reports for tradable US
-         *     equities without OTC (docs/data.md, "Alpaca").
+         * @description Where the instruments of the catalog trade: for stocks the listing exchanges Alpaca
+         *     reports for tradable US equities without OTC (docs/data.md, "Alpaca"), for crypto pairs
+         *     Binance.
          * @enum {string}
          */
-        Exchange: "AMEX" | "ARCA" | "BATS" | "NASDAQ" | "NYSE";
+        Exchange: "AMEX" | "ARCA" | "BATS" | "BINANCE" | "NASDAQ" | "NYSE";
         /** Health */
         Health: {
             /** Commit */
@@ -341,8 +342,8 @@ export interface components {
             base: string | null;
             /**
              * Exchange
-             * @description Listing exchange of a stock (`NASDAQ`, `NYSE`, `ARCA`, ...); null for crypto.
-             * @example null
+             * @description Where it trades: the listing exchange of a stock (`NASDAQ`, `NYSE`, `ARCA`, ...), `BINANCE` for a crypto pair (null for crypto before #182; stays nullable).
+             * @example BINANCE
              */
             exchange: string | null;
             /**
@@ -417,8 +418,8 @@ export interface components {
             base: string | null;
             /**
              * Exchange
-             * @description Listing exchange of a stock (`NASDAQ`, `NYSE`, `ARCA`, ...); null for crypto.
-             * @example null
+             * @description Where it trades: the listing exchange of a stock (`NASDAQ`, `NYSE`, `ARCA`, ...), `BINANCE` for a crypto pair (null for crypto before #182; stays nullable).
+             * @example BINANCE
              */
             exchange: string | null;
             /**
@@ -642,7 +643,7 @@ export interface operations {
                 q?: string | null;
                 /** @description Only this market. */
                 market?: components["schemas"]["Market"] | null;
-                /** @description Only stocks listed on this exchange; crypto pairs have none, so with `market=crypto` nothing matches. */
+                /** @description Only instruments that trade on this exchange: `BINANCE` lists the crypto pairs, the others stocks, so with the other `market` nothing matches. */
                 exchange?: components["schemas"]["Exchange"] | null;
                 /** @description Most items to return. */
                 limit?: number;

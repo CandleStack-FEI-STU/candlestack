@@ -28,14 +28,21 @@ class Market(StrEnum):
 
 
 class Exchange(StrEnum):
-    """Listing exchanges of the stocks in the catalog: the values Alpaca reports for tradable US
-    equities without OTC (docs/data.md, "Alpaca")."""
+    """Where the instruments of the catalog trade: for stocks the listing exchanges Alpaca
+    reports for tradable US equities without OTC (docs/data.md, "Alpaca"), for crypto pairs
+    Binance."""
 
     AMEX = "AMEX"
     ARCA = "ARCA"
     BATS = "BATS"
+    BINANCE = "BINANCE"
     NASDAQ = "NASDAQ"
     NYSE = "NYSE"
+
+    @property
+    def market(self) -> Market:
+        """The market whose instruments trade there."""
+        return Market.CRYPTO if self is Exchange.BINANCE else Market.STOCK
 
 
 class Timeframe(StrEnum):
@@ -110,8 +117,8 @@ class InstrumentId:
 class Instrument:
     """One tradable instrument of a source's catalog.
 
-    ``exchange`` is set for stocks (``NASDAQ``, ``NYSE``, ...), ``base`` and ``quote`` for
-    crypto pairs (``BTC``, ``USDT``).
+    ``exchange`` is where it trades (``NASDAQ``, ``NYSE``, ... for stocks, ``BINANCE`` for crypto
+    pairs); ``base`` and ``quote`` are set for crypto pairs (``BTC``, ``USDT``).
     """
 
     id: InstrumentId

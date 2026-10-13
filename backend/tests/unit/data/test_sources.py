@@ -164,6 +164,7 @@ def test_exchange_info_lists_the_trading_pairs() -> None:
         "binance",
         "spot",
     )
+    assert {item.exchange for item in instruments} == {"BINANCE"}
 
 
 def test_exchange_info_skips_pairs_that_are_not_trading() -> None:
@@ -240,8 +241,20 @@ def test_assets_warn_about_exchanges_outside_the_filter(caplog: pytest.LogCaptur
     with caplog.at_level(logging.WARNING):
         instruments = parse_assets(json.dumps(body).encode())
 
-    assert [item.exchange for item in instruments] == ["NASDAQ", "NEWX", "NEWX", "IEX"]
+    assert [item.exchange for item in instruments] == ["NASDAQ", None, None, None]
     assert "exchanges outside Exchange: IEX (1), NEWX (2)" in caplog.text
+
+
+def test_assets_warn_about_a_stock_on_binance(caplog: pytest.LogCaptureFixture) -> None:
+    # BINANCE is an Exchange, but of the crypto pairs: the stock gets none, so exchange=BINANCE
+    # never finds it.
+    body = [{"name": "Some Corp", "tradable": True, "symbol": "BNBX", "exchange": "BINANCE"}]
+
+    with caplog.at_level(logging.WARNING):
+        instruments = parse_assets(json.dumps(body).encode())
+
+    assert [item.exchange for item in instruments] == [None]
+    assert "exchanges outside Exchange: BINANCE (1)" in caplog.text
 
 
 def test_assets_warn_about_a_null_exchange_next_to_a_named_one(
@@ -256,7 +269,7 @@ def test_assets_warn_about_a_null_exchange_next_to_a_named_one(
     with caplog.at_level(logging.WARNING):
         instruments = parse_assets(json.dumps(body).encode())
 
-    assert [item.exchange for item in instruments] == [None, "NEWX"]
+    assert [item.exchange for item in instruments] == [None, None]
     assert "exchanges outside Exchange: NEWX (1), None (1)" in caplog.text
 
 

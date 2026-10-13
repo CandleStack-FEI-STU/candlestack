@@ -2,7 +2,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useCallback, useEffect } from 'react';
 
 import { PageTitle } from '@/components/PageTitle';
-import { ExchangeFilter, InstrumentList, MarketFilter, SearchBox, rememberListSearch } from '@/features/instruments';
+import { Filters, InstrumentList, SearchBox, rememberListSearch } from '@/features/instruments';
 import { usePageTitle } from '@/lib/usePageTitle';
 
 // The start page: every stock and crypto pair, searchable. /?q=apple&market=stock&exchange=NASDAQ&page=2
@@ -26,11 +26,7 @@ export function InstrumentsPage() {
       <PageTitle title="Instruments" description="US stocks and crypto pairs. Open one to see its candles." />
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <SearchBox query={q} onSearch={onSearch} />
-        <div className="flex flex-wrap items-center gap-2">
-          <MarketFilter current={market} />
-          {/* Crypto pairs have no exchange: the filter only shows where stocks are listed. */}
-          {market !== 'crypto' && <ExchangeFilter current={exchange} />}
-        </div>
+        <Filters market={market} exchange={exchange} />
       </div>
       <InstrumentList query={q} market={market} exchange={exchange} page={page} />
     </>

@@ -27,8 +27,9 @@ logger = logging.getLogger(__name__)
 # The version of each key family's values (the first part of a name; 1 when not listed). Redis
 # keeps its contents across deploys, so a family gets a new version whenever the meaning or
 # format of its values changes: values stored under the old version are never read again and
-# expire. candles 2: archive candles off the timeframe's grid are taken from REST.
-VERSIONS = {"candles": 2}
+# expire. candles 2: archive candles off the timeframe's grid are taken from REST. catalog 2:
+# crypto pairs have the exchange BINANCE.
+VERSIONS = {"candles": 2, "catalog": 2}
 
 LOCK_PREFIX = "data:lock:"
 FAIL_PREFIX = "data:fail:"
@@ -55,10 +56,26 @@ Fetch = Callable[[], Awaitable[tuple[bytes, int]]]
 """Produces a value to cache and the seconds to keep it."""
 
 
+def _versioned(name: str) -> str:
+    return f"v{VERSIONS.get(name.partition(':')[0], 1)}:{name}"
+
+
 def key(name: str) -> str:
     """The Redis key of a value: ``data:v<version of its family>:<name>``, e.g.
     ``data:v2:candles:crypto:BTCUSDT:1h:2024-01`` or ``data:v1:calendar``."""
-    return f"data:v{VERSIONS.get(name.partition(':')[0], 1)}:{name}"
+    return f"data:{_versioned(name)}"
+
+
+def lock_key(name: str) -> str:
+    """The single-flight lock of a value, versioned with it (``data:lock:v2:catalog:crypto``):
+    during a deploy, a process that reads the old version does not hold up one that fetches the
+    new one."""
+    return LOCK_PREFIX + _versioned(name)
+
+
+def fail_key(name: str) -> str:
+    """The error of a value's failed fetch, versioned with it (``data:fail:v2:catalog:crypto``)."""
+    return FAIL_PREFIX + _versioned(name)
 
 
 class Cache:
@@ -100,14 +117,14 @@ class Cache:
     async def get_or_fetch(self, name: str, fetch: Fetch) -> bytes:
         """The cached value, or the one ``fetch`` produces, which is then cached.
 
-        Single-flight: one caller takes the lock ``data:lock:<name>`` (``SET NX``, 30 s) and
+        Single-flight: one caller takes the lock ``lock_key(name)`` (``SET NX``, 30 s) and
         fetches; concurrent callers poll until the value appears, or take the lock themselves
         when it expires. When ``fetch`` fails with ``SourceUnavailable`` or
-        ``DataIntegrityError``, the error is kept as ``data:fail:<name>`` for ``FAIL_SECONDS``
+        ``DataIntegrityError``, the error is kept as ``fail_key(name)`` for ``FAIL_SECONDS``
         (at most its ``retry_after``): the waiting callers and new ones raise it without calling
         the source. Other errors propagate and nothing is kept.
         """
-        lock, token = LOCK_PREFIX + name, secrets.token_hex(8)
+        lock, token = lock_key(name), secrets.token_hex(8)
         while True:
             if self._is_down():
                 return (await fetch())[0]
@@ -128,7 +145,7 @@ class Cache:
             try:
                 value, ttl = await fetch()
             except (SourceUnavailable, DataIntegrityError) as exc:
-                await self._store(FAIL_PREFIX + name, *_encode_failure(exc))
+                await self._store(fail_key(name), *_encode_failure(exc))
                 raise
             await self.set(name, value, ttl)
             return value
@@ -137,7 +154,7 @@ class Cache:
 
     async def _lookup(self, name: str) -> bytes | None:
         """The stored value, or ``None``; raises the error kept by a failed fetch."""
-        value, failure = await self._redis.mget(key(name), FAIL_PREFIX + name)
+        value, failure = await self._redis.mget(key(name), fail_key(name))
         if value is not None:
             # redis-py types values as bytes | str; this client never decodes.
             return value  # ty: ignore[invalid-return-type]
@@ -166,14 +183,14 @@ class Cache:
         if self._is_down():
             return token
         try:
-            taken = await self._redis.set(LOCK_PREFIX + name, token, nx=True, px=LOCK_TTL_MS)
+            taken = await self._redis.set(lock_key(name), token, nx=True, px=LOCK_TTL_MS)
         except _REDIS_ERRORS as exc:
             self._failed(exc)
             return token
         return token if taken else None
 
     async def unlock(self, name: str, token: str) -> None:
-        await self._release(LOCK_PREFIX + name, token)
+        await self._release(lock_key(name), token)
 
     async def _store(self, key: str, value: bytes, ttl: int) -> None:
         if self._is_down():

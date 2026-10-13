@@ -12,8 +12,9 @@ import {
 } from '@/api';
 import { Button } from '@/components/ui/button';
 
+import { mismatchOf, withExchange } from './filterRules';
 import { InstrumentTable } from './InstrumentTable';
-import { describeListError, emptyMessage, unavailableMessage, type ListError } from './messages';
+import { describeListError, emptyMessage, mismatchMessage, unavailableMessage, type ListError } from './messages';
 import { Pager } from './Pager';
 import { clampedPage, listBodyState } from './pagination';
 
@@ -73,6 +74,23 @@ function PastTheEnd() {
   );
 }
 
+// An old or hand-edited link can pair a market with an exchange it does not trade on
+// (?market=crypto&exchange=NYSE). Nothing can match, so the list says why, with a way out.
+function Mismatch({ market, exchange }: { market: Market; exchange: Exchange }) {
+  const { title, hint } = mismatchMessage(market, exchange);
+  return (
+    <div className="flex flex-col items-center gap-1.5 px-3 py-10 text-center text-sm">
+      <p className="font-medium">{title}</p>
+      <p className="text-muted-foreground">{hint}</p>
+      <Button asChild variant="outline" size="sm" className="mt-1.5">
+        <Link from="/" search={(prev) => withExchange(prev, undefined)}>
+          Show all exchanges
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
 type BodyProps = { items: InstrumentSearchResult['items']; waiting: boolean; page: number; empty: string };
 
 // The rows, or why there are none. While the previous result stands in for the new one or the
@@ -89,9 +107,17 @@ function ListBody({ items, waiting, page, empty }: BodyProps) {
 // The search result for the query, market, exchange and page in the URL, with its empty and error states.
 export function InstrumentList({ query, market, exchange, page }: Props) {
   const params = { q: query, market, exchange, limit: LIST_PAGE_SIZE, offset: (page - 1) * LIST_PAGE_SIZE };
-  const result = useQuery(instrumentSearchQueryOptions(params));
+  const mismatch = mismatchOf(market, exchange);
+  const result = useQuery({ ...instrumentSearchQueryOptions(params), enabled: !mismatch });
   const clamping = useClampPage(result, page);
 
+  if (mismatch) {
+    return (
+      <div className="rounded-lg border">
+        <Mismatch {...mismatch} />
+      </div>
+    );
+  }
   if (result.isPending) return <Note>Loading instruments…</Note>;
   if (result.isError) {
     return <ErrorState error={describeListError(result.error, query)} onRetry={() => void result.refetch()} />;

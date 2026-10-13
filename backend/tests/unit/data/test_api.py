@@ -38,7 +38,13 @@ PROBLEM = "application/problem+json"
 PROBLEMS = "https://candlestack.tech/problems/"
 
 BTCUSDT = Instrument(
-    InstrumentId(Market.CRYPTO, "BTCUSDT"), "BTC/USDT", "binance", "spot", base="BTC", quote="USDT"
+    InstrumentId(Market.CRYPTO, "BTCUSDT"),
+    "BTC/USDT",
+    "binance",
+    "spot",
+    "BINANCE",
+    base="BTC",
+    quote="USDT",
 )
 AAPL = Instrument(
     InstrumentId(Market.STOCK, "AAPL"), "Apple Inc. Common Stock", "alpaca", "iex", "NASDAQ"
@@ -196,7 +202,7 @@ def test_search(client: TestClient, service: FakeDataService) -> None:
                 "name": "BTC/USDT",
                 "source": "binance",
                 "feed": "spot",
-                "exchange": None,
+                "exchange": "BINANCE",
                 "base": "BTC",
                 "quote": "USDT",
             },
@@ -262,6 +268,13 @@ def test_search_passes_exchange(client: TestClient, service: FakeDataService) ->
     assert service.calls == [("search", ("brk", None, 20, 0, Exchange.NYSE))]
 
 
+def test_search_passes_binance(client: TestClient, service: FakeDataService) -> None:
+    response = client.get("/api/v1/data/instruments?exchange=BINANCE")
+
+    assert response.status_code == 200
+    assert service.calls == [("search", (None, None, 20, 0, Exchange.BINANCE))]
+
+
 def test_search_offset_past_the_end(client: TestClient) -> None:
     response = client.get("/api/v1/data/instruments?q=btc&offset=1000")
 
@@ -282,8 +295,8 @@ def test_search_offset_past_the_end(client: TestClient) -> None:
         (
             "exchange=LSE",
             (
-                "query parameter 'exchange': Input should be 'AMEX', 'ARCA', 'BATS', 'NASDAQ' "
-                "or 'NYSE'"
+                "query parameter 'exchange': Input should be 'AMEX', 'ARCA', 'BATS', 'BINANCE', "
+                "'NASDAQ' or 'NYSE'"
             ),
         ),
     ],

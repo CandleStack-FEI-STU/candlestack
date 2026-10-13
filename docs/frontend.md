@@ -145,6 +145,36 @@ minute.
   positioning parent) with a 16 px gutter on both sides; from `sm` up it is right-aligned under
   the search box and never wider than the screen.
 
+## Instrument filters
+
+The list filters by type (the market) and exchange, both in the URL
+(`/?market=stock&exchange=NYSE`, `/?exchange=BINANCE`), behind one **Filters** button
+(`src/features/instruments/Filters.tsx`, rules in `filterRules.ts`, #182):
+
+- The button is 34 × 200 px whatever it says ("All instruments", "Stocks · NYSE", "Crypto ·
+  Binance"), so nothing in the row moves when the filters change. Its panel is 412 px wide
+  (Type 128 px and Exchange side by side, 12 px padding, at most 480 px high), right-aligned
+  under it; on phones the sections stack and the panel is the screen width minus 32 px.
+- Exchange: All exchanges, then the stock exchanges (NASDAQ, NYSE, ARCA, AMEX, BATS), then the
+  crypto exchanges (Binance). Under Stocks, Binance is disabled and marked "Crypto only"; under
+  Crypto, the stock exchanges are disabled and marked "Stocks only": shown, not hidden, so the
+  list keeps its shape and says why. Under All every exchange can be picked, and Type stays All.
+- Changing the type keeps an exchange it has and drops one it does not; picking an exchange
+  never changes the type. Every pick starts at page 1 and adds a history entry, so Back undoes
+  it; the panel stays open for the second pick.
+- A link the panel cannot make (`/?market=crypto&exchange=NYSE`) shows an empty list that says
+  why ("No crypto pairs on NYSE", "NYSE lists stocks only.") with a "Show all exchanges" link,
+  and the panel shows NYSE chosen but disabled.
+- Keyboard: Enter, Space or ArrowDown on the button opens the panel on the chosen type. The
+  arrows, Home and End move through both sections and skip disabled entries, ArrowLeft and
+  ArrowRight jump between the sections, a letter jumps to the next entry starting with it, and
+  Enter or Space picks. Escape closes the panel and the focus returns to the button; Tab and
+  Shift+Tab close it and move on to the element after or before the button, like leaving any
+  other control; a click outside closes it too. Each section is an ARIA listbox; the focus
+  itself moves between its options.
+- The panel is a shadcn/ui Popover (`src/components/ui/popover.tsx`, `@radix-ui/react-popover`):
+  it places the panel, keeps it on the screen and closes it on Escape or a click outside.
+
 ## Licenses
 
 | Library | License |

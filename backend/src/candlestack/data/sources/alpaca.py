@@ -65,6 +65,8 @@ CALENDAR_TTL = 7 * DAY
 CALENDAR_MEMORY_SECONDS = 3600
 HISTORY_START = 2016
 BARS_LIMIT = 10_000
+# The values of Exchange a stock can have; BINANCE is the crypto pairs'.
+STOCK_EXCHANGES = frozenset(str(each) for each in Exchange if each.market is Market.STOCK)
 
 _COLUMNS = list(CANDLE_SCHEMA)
 _BAR_SCHEMA = {
@@ -100,13 +102,21 @@ def parse_assets(content: bytes) -> list[Instrument]:
         if instrument_id is None or instrument_id.symbol != symbol:
             logger.warning("Skipping Alpaca symbol %r: not a valid instrument symbol", symbol)
             continue
-        if str(exchange) not in Exchange:
+        known = str(exchange) in STOCK_EXCHANGES
+        if not known:
             unknown[str(exchange)] += 1
         instruments.append(
-            Instrument(id=instrument_id, name=name, source=NAME, feed="iex", exchange=exchange)
+            Instrument(
+                id=instrument_id,
+                name=name,
+                source=NAME,
+                feed="iex",
+                exchange=exchange if known else None,
+            )
         )
     if unknown:
-        # Still listed, but the exchange filter cannot find them until Exchange has the value.
+        # Still listed, without an exchange: the filter cannot find them until Exchange has the
+        # value as a stock exchange, and a stock "on BINANCE" never passes for a crypto pair.
         logger.warning(
             "Alpaca lists stocks on exchanges outside Exchange: %s",
             ", ".join(f"{exchange} ({count})" for exchange, count in sorted(unknown.items())),

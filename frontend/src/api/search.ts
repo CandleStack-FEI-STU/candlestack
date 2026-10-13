@@ -1,22 +1,17 @@
 import { keepPreviousData, queryOptions } from '@tanstack/react-query';
 
 import { get } from './client';
+import type { Exchange } from './exchanges';
 import type { Market } from './instruments';
 import type { components } from './schema';
 
 export type Instrument = components['schemas']['InstrumentOut'];
 export type InstrumentSearchResult = components['schemas']['InstrumentSearchOut'];
 
-export type Exchange = components['schemas']['Exchange'];
-
-// The exchanges the API filters by, in the order the filter shows them. `satisfies` keeps the
-// list in step with the generated type: a value the API drops fails the type check.
-export const EXCHANGES = ['NASDAQ', 'NYSE', 'ARCA', 'AMEX', 'BATS'] as const satisfies readonly Exchange[];
-
 export type InstrumentSearchParams = {
   q: string;
   market?: Market;
-  // Only stocks listed there; crypto pairs have no exchange.
+  // Only the instruments that trade there: BINANCE has the crypto pairs, the others stocks.
   exchange?: Exchange;
   limit: number;
   offset: number;

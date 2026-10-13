@@ -6,6 +6,7 @@ import pytest
 from candlestack.data import (
     CANDLE_SCHEMA,
     CandleSet,
+    Exchange,
     Instrument,
     InstrumentId,
     InvalidRequest,
@@ -85,6 +86,13 @@ def test_instrument_id_is_hashable_and_frozen() -> None:
     assert {instrument_id: 1}[InstrumentId(Market.STOCK, "AAPL")] == 1
     with pytest.raises(dataclasses.FrozenInstanceError):
         instrument_id.symbol = "MSFT"  # ty: ignore[invalid-assignment]
+
+
+def test_exchange_market() -> None:
+    assert Exchange.BINANCE.market is Market.CRYPTO
+    assert {exchange.market for exchange in Exchange if exchange is not Exchange.BINANCE} == {
+        Market.STOCK
+    }
 
 
 def test_instrument() -> None:
