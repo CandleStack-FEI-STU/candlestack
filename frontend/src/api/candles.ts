@@ -51,9 +51,10 @@ export function candlePageQueryOptions({ instrument, timeframe, maxCandles, end 
 export type CandleBridge = { instrument: string; timeframe: Timeframe; start?: number; end?: number };
 
 // The candles between the older pages (which end at `start`) and the refreshed latest page
-// (which begins at `end`): the ones that left the latest page as it moved on. They never change.
+// (which begins at `end`): the ones that left the latest page as it moved on. They never change,
+// but a refresh of the latest page asks for a longer bridge, so a bridge left behind goes soon.
 // Without both ends there is no gap and nothing is asked. While a longer bridge from the same
-// start loads, the shorter one before it still shows.
+// start loads, the shorter one before it stands in.
 export function candleBridgeQueryOptions({ instrument, timeframe, start, end }: CandleBridge) {
   return queryOptions({
     queryKey: ['candles', instrument, timeframe, 'bridge', start ?? 'none', end ?? 'none'],
@@ -61,8 +62,10 @@ export function candleBridgeQueryOptions({ instrument, timeframe, start, end }: 
       start === undefined || end === undefined
         ? skipToken
         : ({ signal }) => getCandles(instrument, timeframe, { start, end }, signal),
-    placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[4] === start ? previous : undefined),
+    meta: { start },
+    placeholderData: (previous, previousQuery) =>
+      end !== undefined && previousQuery?.meta?.['start'] === start ? previous : undefined,
     staleTime: Infinity,
-    gcTime: 30 * 60_000,
+    gcTime: 60_000,
   });
 }

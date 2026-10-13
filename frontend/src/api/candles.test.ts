@@ -81,13 +81,16 @@ describe('candleBridgeQueryOptions', () => {
     expect(candleBridgeQueryOptions(base).queryFn).toBe(skipToken);
   });
 
-  it('shows the shorter bridge from the same start while a longer one loads', () => {
-    const { placeholderData } = candleBridgeQueryOptions({ ...base, start: END - 7200, end: END });
+  it('lets the shorter bridge from the same start stand in while a longer one loads', () => {
+    const { placeholderData, gcTime } = candleBridgeQueryOptions({ ...base, start: END - 7200, end: END });
     const shorter = candles([END - 7200]);
-    const keep = placeholderData as (previous: unknown, query: { queryKey: unknown[] } | undefined) => unknown;
-    expect(keep(shorter, { queryKey: ['candles', 'crypto:BTCUSDT', '1h', 'bridge', END - 7200, END - 3600] })).toBe(
-      shorter,
-    );
-    expect(keep(shorter, { queryKey: ['candles', 'crypto:BTCUSDT', '1h', 'bridge', END - 3600, END] })).toBeUndefined();
+    const keep = placeholderData as (
+      previous: unknown,
+      query: { meta: Record<string, unknown> } | undefined,
+    ) => unknown;
+    expect(keep(shorter, { meta: { start: END - 7200 } })).toBe(shorter);
+    expect(keep(shorter, { meta: { start: END - 3600 } })).toBeUndefined();
+    // A bridge left behind by a longer one goes after a minute.
+    expect(gcTime).toBe(60_000);
   });
 });
