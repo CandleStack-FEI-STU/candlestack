@@ -16,8 +16,8 @@ import {
 import { instrumentSearchQueryOptions, type Instrument } from '@/api';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
-import { describeListError } from './messages';
-import { moveActive } from './quickSearchKeys';
+import { quickSearchError } from './messages';
+import { enterAction, moveActive } from './quickSearchKeys';
 
 // A short list is enough to jump to an instrument; "All results" opens the full list.
 const LIMIT = 8;
@@ -48,11 +48,12 @@ function StatusItem({ tone = 'muted', children }: { tone?: 'muted' | 'error'; ch
   return <li className={`px-3 py-1.5 ${color}`}>{children}</li>;
 }
 
-// An error in the same words as the list page uses, e.g. "The instrument catalog is unavailable
-// right now.", not the server's raw detail.
+// An error in the same words as the list page uses, with what to do, e.g. "The instrument catalog
+// is unavailable right now. The data source did not answer. Try again in a minute.", not the
+// server's raw detail.
 function StatusNote({ q, searching, error, items }: ResultsState) {
   if (searching) return <StatusItem>Searching…</StatusItem>;
-  if (error) return <StatusItem tone="error">{describeListError(error, q).title}</StatusItem>;
+  if (error) return <StatusItem tone="error">{quickSearchError(error, q)}</StatusItem>;
   if (items.length === 0) return <StatusItem>No instruments match.</StatusItem>;
   return null;
 }
@@ -107,22 +108,27 @@ function useResults(text: string) {
   };
 }
 
-// Enter pressed before the results arrive is kept, not lost: when they do, it opens the first
-// instrument, if any. Typing more cancels it.
-function useEnterWhenReady(searching: boolean, box: RefObject<HTMLDivElement | null>) {
+const openFirst = (box: RefObject<HTMLDivElement | null>) =>
+  box.current?.querySelector<HTMLAnchorElement>('a[data-result]')?.click();
+
+// Enter opens the first instrument. Pressed before the results arrive, it is kept, not lost:
+// when they do, it opens the first one, if any. Typing more cancels it.
+function useEnter(searching: boolean, box: RefObject<HTMLDivElement | null>) {
   const waiting = useRef(false);
   useEffect(() => {
     if (searching || !waiting.current) return;
     waiting.current = false;
-    box.current?.querySelector<HTMLAnchorElement>('a[data-result]')?.click();
+    openFirst(box);
   }, [searching, box]);
-  const wait = useCallback(() => {
-    waiting.current = true;
-  }, []);
+  const press = (typed: string) => {
+    const action = enterAction(searching, typed);
+    if (action === 'wait') waiting.current = true;
+    if (action === 'open') openFirst(box);
+  };
   const cancel = useCallback(() => {
     waiting.current = false;
   }, []);
-  return { wait, cancel };
+  return { press, cancel };
 }
 
 // Safari and Firefox on macOS blur the input on mousedown with no relatedTarget, which would
@@ -148,7 +154,7 @@ function useQuickSearch() {
   const input = useRef<HTMLInputElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const results = useResults(text);
-  const enter = useEnterWhenReady(results.searching, box);
+  const enter = useEnter(results.searching, box);
   useKeepFocusInList(box);
 
   const onPick = () => {
@@ -167,8 +173,7 @@ function useQuickSearch() {
     if (event.key !== 'ArrowDown' && event.key !== 'Enter') return;
     event.preventDefault();
     if (event.key === 'ArrowDown') return box.current?.querySelector('a')?.focus();
-    if (results.searching) enter.wait();
-    else box.current?.querySelector<HTMLAnchorElement>('a[data-result]')?.click();
+    enter.press(text);
   };
   // Clearing the box (Escape does that in a search input) closes the list at once.
   const onChange = (value: string) => {

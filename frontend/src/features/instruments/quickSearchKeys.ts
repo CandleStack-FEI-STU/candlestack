@@ -8,3 +8,10 @@ export function moveActive(active: number, key: string, count: number): number {
   if (key === 'End') return count - 1;
   return active;
 }
+
+// What Enter in the header search does: open the first result, or, while the results are on
+// their way, wait for them. With an empty box there is nothing to wait for.
+export function enterAction(searching: boolean, typed: string): 'open' | 'wait' | 'none' {
+  if (typed.trim() === '') return 'none';
+  return searching ? 'wait' : 'open';
+}

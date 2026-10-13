@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ApiError } from '@/api';
 
-import { describeListError, emptyMessage, unavailableMessage } from './messages';
+import { describeListError, emptyMessage, quickSearchError, unavailableMessage } from './messages';
 
 describe('messages', () => {
   it('names the query and the market when nothing matches', () => {
@@ -49,5 +49,14 @@ describe('messages', () => {
     const bug = describeListError(new TypeError('x is undefined'), '');
     expect(bug.title).toBe('Something went wrong in the app.');
     expect(bug.detail).toBe('x is undefined');
+  });
+
+  it('gives the header search the hint as well as the title', () => {
+    expect(quickSearchError(new ApiError(429, 'Too many requests', { retryAfter: 12 }), 'btc')).toBe(
+      'Too many requests. Try again in 12 s.',
+    );
+    expect(quickSearchError(new ApiError(422, "query parameter 'q': too long"), 'btc')).toBe(
+      'The server did not accept this search. Try a shorter query: a symbol like btc or a name like apple.',
+    );
   });
 });
