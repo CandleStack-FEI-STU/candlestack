@@ -1,4 +1,4 @@
-import { PAGE_SIZE, type Candles } from '@/api';
+import type { Candles } from '@/api';
 
 // One candle as the chart takes it. `time` is the open time in epoch seconds.
 export type Bar = { time: number; open: number; high: number; low: number; close: number; volume: number };
@@ -17,39 +17,66 @@ export function toBars(candles: Candles): Bar[] {
 
 export type History = {
   bars: Bar[];
-  // Where the next older page ends: the oldest candle shown, or the start of an empty page.
+  // Where the next older page ends: where the oldest page begins.
   nextEnd: number | undefined;
   gapsTotal: number;
 };
 
-// The candles a page contributes. A page keeps its newest PAGE_SIZE candles; the latest page,
-// once older pages hang below it, keeps everything down to `since`, so a refresh after a long
-// idle time cannot open a hole between it and the history.
-function pageBars(page: Candles, latest: boolean, since: number | undefined): Bar[] {
-  const bars = toBars(page);
-  return latest && since !== undefined ? bars.filter((bar) => bar.time >= since) : bars.slice(-PAGE_SIZE);
+// Older pages in a row without a candle after which history ends. One or two are an outage of
+// the source; more likely the data simply stops there, and asking on would cost a request each.
+const EMPTY_PAGES = 3;
+
+export type Pages = {
+  // The latest page; undefined until it arrives.
+  latest: Candles | undefined;
+  // The older pages, newest first; undefined while one is on its way. The first ends at the
+  // anchor, each next one where the one before it begins (`meta.start`, the first candle the
+  // API counted, a missing one too).
+  older: readonly (Candles | undefined)[];
+  // The last candles before the start of the refreshed latest page, once it moved on above the
+  // anchor; only those from the anchor on count, the older pages hold the ones below.
+  bridge?: Candles;
+  // Where the older pages begin to hang: the start of the latest page when the first was asked.
+  anchor?: number;
+};
+
+// The bars of all pages, sorted by time with every time once. An older page without a candle
+// is an outage when the API still counted candles in it (its start is below its end): history
+// goes on below it, up to EMPTY_PAGES in a row.
+export function mergePages({ latest, older, bridge, anchor }: Pages): History {
+  if (latest === undefined) return { bars: [], nextEnd: undefined, gapsTotal: 0 };
+  const byTime = new Map<number, Bar>();
+  let gapsTotal = 0;
+  const add = (page: Candles | undefined, from = Number.NEGATIVE_INFINITY) => {
+    if (page === undefined) return;
+    for (const bar of toBars(page)) if (bar.time >= from && !byTime.has(bar.time)) byTime.set(bar.time, bar);
+    gapsTotal += page.meta.gaps_total;
+  };
+  add(latest);
+  add(bridge, anchor);
+  for (const page of older) add(page);
+  const bars = [...byTime.values()].toSorted((a, b) => a.time - b.time);
+  return { bars, nextEnd: chainEnd(latest, older, anchor), gapsTotal };
 }
 
-// Pages come newest first; overlaps between pages are dropped, so the result is sorted by time
-// with every time once. An older page that adds no candle (only the one it overlaps with) means
-// the source has nothing before it: history ends there.
-export function mergePages(pages: readonly Candles[], since?: number): History {
-  const byTime = new Map<number, Bar>();
-  let nextEnd: number | undefined;
-  let gapsTotal = 0;
-  for (const [index, page] of pages.entries()) {
-    const bars = pageBars(page, index === 0, since);
-    const known = byTime.size;
-    for (const bar of bars) if (!byTime.has(bar.time)) byTime.set(bar.time, bar);
-    gapsTotal += page.meta.gaps_total;
-    if (index > 0 && bars.length > 0 && byTime.size === known) {
-      nextEnd = undefined;
-      break;
-    }
-    nextEnd = bars[0]?.time ?? page.meta.start;
+// Where the next older page ends, below the pages that arrived; undefined where history ends.
+function chainEnd(latest: Candles, older: readonly (Candles | undefined)[], anchor: number | undefined) {
+  let nextEnd = anchor ?? latest.meta.start;
+  let empty = 0;
+  for (const page of older) {
+    if (page === undefined) break;
+    empty = page.t.length === 0 ? empty + 1 : 0;
+    if (empty === EMPTY_PAGES || page.meta.start >= nextEnd) return undefined;
+    nextEnd = page.meta.start;
   }
-  const bars = [...byTime.values()].toSorted((a, b) => a.time - b.time);
-  return { bars, nextEnd, gapsTotal };
+  return nextEnd;
+}
+
+// Where the bridge ends: the start of the latest page once it moved on above the anchor, so the
+// candles in between left it. Undefined while there is no gap.
+export function bridgeTo(anchor: number | undefined, latest: Candles | undefined): number | undefined {
+  const start = latest?.meta.start;
+  return anchor !== undefined && start !== undefined && start > anchor ? start : undefined;
 }
 
 // History before `availableFrom` does not exist; without it the source cannot say, so stop.
