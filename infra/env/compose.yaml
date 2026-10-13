@@ -3,7 +3,7 @@
 # (ALPACA_KEY_ID, ALPACA_SECRET_KEY), the logo.dev key (LOGO_DEV_KEY) and SENTRY_DSN (prod and
 # stage only) for this command only:
 #   ENV_NAME=stage APP_VERSION=<version> BACKEND_IMAGE=<image@digest> FRONTEND_IMAGE=<image@digest> \
-#   REDIS_MAXMEMORY=128mb REDIS_MEM_LIMIT=160m EDGE_NETWORK=edge \
+#   REDIS_MAXMEMORY=256mb REDIS_MEM_LIMIT=288m EDGE_NETWORK=edge \
 #   docker compose -p stage -f infra/env/compose.yaml up -d
 # On the edge network (EDGE_NETWORK: "edge" for prod and stage; "edge-preview" for previews,
 # which share it with the edge Caddy only) the edge Caddy reaches <ENV_NAME>-backend:8000 (/api/*) and

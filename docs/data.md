@@ -312,7 +312,7 @@ requested timeframe.
 | Limit | Counted per | Default | When spent |
 | --- | --- | --- | --- |
 | Clients: `CLIENT_RATE_LIMIT` | client IP (`CF-Connecting-IP`, else the peer address; an IPv6 address counts as its /64 network); every candle and instrument-detail request, cached or not | 60 per minute, `0` disables | 429 `rate-limited` with `Retry-After` |
-| Alpaca: `ALPACA_RATE_LIMIT` | environment; each Alpaca request | prod 150, stage 60, `pr-*` 30 | 503 `source-unavailable` with `Retry-After` |
+| Alpaca: `ALPACA_RATE_LIMIT` | environment; each Alpaca request | prod 150, stage 100, `pr-*` 30 | 503 `source-unavailable` with `Retry-After` |
 | Binance REST: `BINANCE_WEIGHT_LIMIT` | environment; request weight of each REST call | 1000 | 503 `source-unavailable` with `Retry-After` |
 | logo.dev: `LOGO_DEV_RATE_LIMIT` | environment; each logo.dev request | prod 50, stage 20, `pr-*` 5 | the fallback icon, no waiting |
 | `data.binance.vision` | not limited | | |

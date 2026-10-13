@@ -46,7 +46,7 @@ Redis is a cache for the backend: no persistence, least recently used keys are e
 | Environment | Redis `maxmemory` | Container limit |
 | --- | --- | --- |
 | prod | `256mb` | `288m` |
-| stage | `128mb` | `160m` |
+| stage | `256mb` | `288m` |
 | `pr-<N>` | `64mb` | `96m` |
 
 All containers of an environment run with a read-only root filesystem, no Linux capabilities
@@ -105,7 +105,7 @@ one from a pull request's branch, could move a registry tag.
 A preview is deployed on demand and runs for a few hours (`preview-build.yml`, `preview.yml`,
 `preview-cleanup.yml`):
 the VM has room for one (`max_previews` in `vm/candlestack-deploy`; prod and stage take about
-1.15 GB of its 2 GB with their container limits, a preview up to 450 MB). Adding the `preview`
+1.28 GB of its 2 GB with their container limits, a preview up to 450 MB). Adding the `preview`
 label deploys the pull request's current commit, unless another pull request holds the slot:
 then the label comes off and a comment says until when. A new commit, removing the label or
 closing the pull request removes the preview, a new commit the label too. Every hour

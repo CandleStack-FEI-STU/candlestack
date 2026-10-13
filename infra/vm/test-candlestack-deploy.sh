@@ -261,16 +261,16 @@ FAKE_GIT=not-shallow allowed "prod: up prod, a release candidate in a full clone
 $SECRETS" "$(release_git v0.3.0-rc.1 6 | sed 's/ --unshallow//')
 $(up_calls prod v0.3.0-rc.1 256mb 288m with-secrets)"
 allowed "stage: up stage" stage "up stage main-0123abc $IMAGES" "$TOKEN
-$SECRETS" "$(up_calls stage main-0123abc 128mb 160m with-secrets)"
+$SECRETS" "$(up_calls stage main-0123abc 256mb 288m with-secrets)"
 allowed "stage: up stage with the Sentry DSN" stage "up stage main-0123abc $IMAGES" "$TOKEN
 $SECRETS
-SENTRY_DSN=$DSN" "$(up_calls stage main-0123abc 128mb 160m with-secrets with-dsn)"
+SENTRY_DSN=$DSN" "$(up_calls stage main-0123abc 256mb 288m with-secrets with-dsn)"
 allowed "stage: up stage with the logo.dev key" stage "up stage main-0123abc $IMAGES" "$TOKEN
 $SECRETS
 LOGO_DEV_KEY=$LOGO_KEY
-SENTRY_DSN=$DSN" "$(up_calls stage main-0123abc 128mb 160m with-secrets with-dsn with-logo)"
+SENTRY_DSN=$DSN" "$(up_calls stage main-0123abc 256mb 288m with-secrets with-dsn with-logo)"
 allowed "stage: up stage without secrets" stage "up stage main-0123abc $IMAGES" "$TOKEN" \
-  "$(up_calls stage main-0123abc 128mb 160m)"
+  "$(up_calls stage main-0123abc 256mb 288m)"
 allowed "preview: up pr-42" preview "up pr-42 pr-42-0123abc $IMAGES" "$TOKEN
 $SECRETS" "$(slot_calls)
 $(up_calls pr-42 pr-42-0123abc 64mb 96m with-secrets)"
@@ -467,7 +467,7 @@ allowed "secret value of 256 characters, blank lines" stage "up stage v1 $IMAGES
 
 ALPACA_KEY_ID=$KEY_ID
 ALPACA_SECRET_KEY=$SECRET
-" "$(up_calls stage v1 128mb 160m with-secrets)"
+" "$(up_calls stage v1 256mb 288m with-secrets)"
 SECRET=$secret
 
 echo
