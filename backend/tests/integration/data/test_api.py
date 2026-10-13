@@ -23,15 +23,13 @@ class NoCandles:
         self,
         instrument_id: InstrumentId,
         timeframe: Timeframe,
-        start: int | None,
+        start: int,
         end: int,
-        *,
-        limit: int | None = None,
     ) -> CandleSet:
         return CandleSet(
             instrument_id,
             timeframe,
-            start or end - 1,
+            start,
             end,
             "binance",
             "spot",

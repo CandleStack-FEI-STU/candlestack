@@ -170,7 +170,7 @@ async def test_last_candles_skip_weekends_and_holidays(
         upstream.aapl_bars("bars-AAPL-1Day-2024-11-25_12-02.json"),
     )
 
-    candles = await service.candles(AAPL, Timeframe.D1, None, utc("2024-12-03"), limit=3)
+    candles = await service.last_candles(AAPL, Timeframe.D1, utc("2024-12-03"), 3)
     response = await get_api(
         service,
         redis,
@@ -198,12 +198,27 @@ async def test_last_candles_over_the_available_history(service: DataService, ups
         upstream.aapl_bars("bars-AAPL-1Day-2024-11-25_12-02.json"),
     )
 
-    candles = await service.candles(AAPL, Timeframe.D1, None, utc("2024-12-03"), limit=5000)
+    candles = await service.last_candles(AAPL, Timeframe.D1, utc("2024-12-03"), 5000)
     info = await service.instrument(AAPL)
 
     assert info.available_from is not None
     assert candles.start == info.available_from
     assert candles.frame["ts"][-1] == utc("2024-12-02T14:30")
+
+
+@pytest.mark.usefixtures("stocks")
+async def test_last_candles_of_a_stock_without_any_bar_yet(service: DataService, upstream):
+    spy = InstrumentId.parse("stock:SPY")
+    upstream.router.get(
+        f"{upstream.ALPACA_DATA}/v2/stocks/bars", params={"symbols": "SPY", "limit": "1"}
+    ).respond(200, content=upstream.fixture_bytes("alpaca/error-unknown-symbol-multi.json"))
+
+    candles = await service.last_candles(spy, Timeframe.D1, utc("2024-06-05"), 10)
+
+    # No candle to count from: an empty period that starts where it ends.
+    assert candles.frame.height == 0
+    assert (candles.start, candles.end) == (utc("2024-06-05"), utc("2024-06-05"))
+    assert (candles.gaps, candles.gaps_total) == ([], 0)
 
 
 @pytest.mark.usefixtures("stocks")

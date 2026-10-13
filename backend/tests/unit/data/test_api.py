@@ -125,17 +125,16 @@ class FakeDataService:
         raise InstrumentNotFound(instrument_id)
 
     async def candles(
-        self,
-        instrument_id: InstrumentId,
-        timeframe: Timeframe,
-        start: int | None,
-        end: int,
-        *,
-        limit: int | None = None,
+        self, instrument_id: InstrumentId, timeframe: Timeframe, start: int, end: int
     ) -> CandleSet:
-        self._called("candles", instrument_id, timeframe, start, end, limit)
-        if start is None:  # like the service: the last ``limit`` candles end at ``end``
-            start = end - 24 * 3600
+        self._called("candles", instrument_id, timeframe, start, end)
+        return self.result or candle_set(instrument_id, timeframe, start, end)
+
+    async def last_candles(
+        self, instrument_id: InstrumentId, timeframe: Timeframe, end: int, limit: int
+    ) -> CandleSet:
+        self._called("last_candles", instrument_id, timeframe, end, limit)
+        start = end - limit * timeframe.seconds  # the server's pick, from the request
         return self.result or candle_set(instrument_id, timeframe, start, end)
 
     async def sources_health(self) -> dict[str, SourceHealth]:
@@ -455,7 +454,7 @@ def test_candles(client: TestClient, service: FakeDataService) -> None:
     # The orjson body is exactly what the documented model describes.
     CandlesOut.model_validate_json(response.content, strict=True)
     assert service.calls == [
-        ("candles", (BTCUSDT.id, Timeframe.H1, DAY_START, DAY_END, None)),
+        ("candles", (BTCUSDT.id, Timeframe.H1, DAY_START, DAY_END)),
     ]
 
 
@@ -478,7 +477,7 @@ def test_candles_instrument_path(
     assert service.calls == [
         (
             "candles",
-            (InstrumentId.parse(instrument), Timeframe.H1, DAY_START, DAY_END, None),
+            (InstrumentId.parse(instrument), Timeframe.H1, DAY_START, DAY_END),
         ),
     ]
 
@@ -643,8 +642,8 @@ def test_last_candles_default_limit(
     response = client.get("/api/v1/data/instruments/crypto:BTCUSDT/candles?timeframe=15m")
 
     assert response.status_code == 200
-    assert response.json()["meta"]["start"] == DAY_END - 24 * 3600  # what the service picked
-    assert service.calls == [("candles", (BTCUSDT.id, Timeframe.M15, None, DAY_END, 500))]
+    assert response.json()["meta"]["start"] == DAY_END - 500 * 900  # what the service picked
+    assert service.calls == [("last_candles", (BTCUSDT.id, Timeframe.M15, DAY_END, 500))]
 
 
 @pytest.mark.parametrize("limit", [1, 5000])
@@ -655,7 +654,8 @@ def test_last_candles_before_end(client: TestClient, service: FakeDataService, l
     )
 
     assert response.status_code == 200
-    assert service.calls == [("candles", (AAPL.id, Timeframe.H1, None, 1717421400, limit))]
+    assert response.json()["meta"]["start"] == 1717421400 - limit * 3600
+    assert service.calls == [("last_candles", (AAPL.id, Timeframe.H1, 1717421400, limit))]
 
 
 def test_start_in_the_future(

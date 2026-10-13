@@ -20,7 +20,6 @@ from candlestack.data import (
     DataService,
     InstrumentId,
     InstrumentNotFound,
-    InvalidRequest,
     PeriodOutOfRange,
     SourceUnavailable,
     Timeframe,
@@ -113,7 +112,7 @@ async def test_last_candles_before_end(service: DataService, upstream):
     upstream.fixture_archive("monthly", "BTCUSDT-1h-2024-01.zip")
     end = utc("2024-01-15T10:00")
 
-    last = await service.candles(BTC, Timeframe.H1, None, end, limit=30)
+    last = await service.last_candles(BTC, Timeframe.H1, end, 30)
     same = await service.candles(BTC, Timeframe.H1, utc("2024-01-14T04:00"), end)
 
     assert last.start == utc("2024-01-14T04:00")
@@ -143,7 +142,7 @@ async def test_last_candles_up_to_now_are_closed_ones(
         [upstream.kline((utc("2025-02-03") + hour * HOUR) * 1000) for hour in range(3)],
     )
 
-    candles = await service.candles(BTC, Timeframe.H1, None, now, limit=4)
+    candles = await service.last_candles(BTC, Timeframe.H1, now, 4)
 
     # The 02:00 candle is still open at 02:30.
     assert candles.frame["ts"].to_list() == [utc("2025-02-02T22:00") + i * HOUR for i in range(4)]
@@ -157,17 +156,27 @@ async def test_last_candles_over_the_available_history(service: DataService, ups
     opens = [(utc("2017-08-17T04:00") + hour * HOUR) * 1000 for hour in range(14 * 24 + 20)]
     upstream.archive("monthly", name, upstream.make_archive(name, opens, HOUR * 1000))
 
-    candles = await service.candles(BTC, Timeframe.H1, None, utc("2017-08-19"), limit=500)
+    candles = await service.last_candles(BTC, Timeframe.H1, utc("2017-08-19"), 500)
 
     assert candles.start == utc("2017-08-17T04:00")  # the first candle there is
     assert candles.frame.height == 44
 
 
-async def test_start_with_limit_is_invalid(service: DataService, upstream):
-    with pytest.raises(InvalidRequest, match="Give either"):
-        await service.candles(BTC, Timeframe.H1, 3600, 7200, limit=5)
-    with pytest.raises(InvalidRequest, match="Give either"):
-        await service.candles(BTC, Timeframe.H1, None, 7200)
+async def test_last_candles_checks(service: DataService, upstream):
+    upstream.exchange_info()
+    upstream.first_kline(LISTED_MS)
+
+    with pytest.raises(PeriodOutOfRange, match="Set end after 1502942400") as early:
+        await service.last_candles(BTC, Timeframe.H1, utc("2017-08-17T04:00"), 10)
+    with pytest.raises(PeriodOutOfRange, match="Set end to") as late:
+        await service.last_candles(BTC, Timeframe.H1, utc("2100-01-01"), 10)
+    with pytest.raises(TooManyCandles, match="Use a limit of 50000 or less") as many:
+        await service.last_candles(BTC, Timeframe.H1, utc("2024-01-01"), 50001)
+
+    assert early.value.available_from == utc("2017-08-17T04:00")
+    assert "Set start" not in early.value.detail
+    assert late.value.available_to <= utc("2100-01-01")
+    assert (many.value.requested, many.value.maximum) == (50001, 50000)
 
 
 async def test_concurrent_requests_fetch_each_value_once(

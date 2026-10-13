@@ -87,6 +87,29 @@ class CandleRequest:
     end: int
 
 
+@dataclass(frozen=True, slots=True)
+class _Lookup:
+    """What a candles request needs to know before it is checked."""
+
+    instrument: Instrument
+    source: DataSource
+    timeframe: Timeframe
+    now: int
+    sessions: list[Session] | None
+    first: int | None
+    available_from: int | None
+
+    def out_of_range(self, *, start: int | None, end: int) -> PeriodOutOfRange:
+        return PeriodOutOfRange(
+            self.instrument.id,
+            self.timeframe,
+            self.available_from,
+            self.now,
+            start=start,
+            end=end,
+        )
+
+
 class DataService:
     def __init__(
         self,
@@ -158,57 +181,84 @@ class DataService:
         return await self._icons.icon(instrument)
 
     async def candles(
-        self,
-        instrument_id: InstrumentId,
-        timeframe: Timeframe,
-        start: int | None,
-        end: int,
-        *,
-        limit: int | None = None,
+        self, instrument_id: InstrumentId, timeframe: Timeframe, start: int, end: int
     ) -> CandleSet:
         """Closed candles of ``[start, end)`` with their gaps and fingerprint.
-
-        Without ``start``, the last ``limit`` candles that opened before ``end``: stocks count
-        only session bins, so nights, weekends and holidays are skipped. The set starts at the
-        earliest of them (or at the first candle the source has, when there are fewer).
 
         Raises ``InvalidRequest``, ``InstrumentNotFound``, ``PeriodOutOfRange``,
         ``TooManyCandles``, ``SourceUnavailable`` and ``DataIntegrityError``.
         """
-        if (start is None) == (limit is None):
-            raise InvalidRequest("Give either start or limit.")
-        if start is not None and start >= end:
+        if start >= end:
             raise InvalidRequest(f"start ({start}) must be before end ({end}).")
+        lookup = await self._lookup(instrument_id, timeframe)
+        if end > lookup.now or (
+            lookup.available_from is not None and start < lookup.available_from
+        ):
+            raise lookup.out_of_range(start=start, end=end)
+        return await self._load(lookup, start, end)
+
+    async def last_candles(
+        self, instrument_id: InstrumentId, timeframe: Timeframe, end: int, limit: int
+    ) -> CandleSet:
+        """The last ``limit`` closed candles that open before ``end``, like ``candles`` from
+        the open of the earliest of them. Stocks count only session candles, so nights,
+        weekends and holidays are skipped. When the data starts later the set starts at the
+        first candle there is; when no candle opens before ``end`` it is empty and starts at
+        ``end``.
+
+        Raises ``TooManyCandles`` when ``limit`` is above the maximum, ``PeriodOutOfRange``
+        when ``end`` is in the future or not after the first candle, and the other errors of
+        ``candles``.
+        """
+        if limit > self._candles_max:
+            raise TooManyCandles(
+                limit, self._candles_max, f"Use a limit of {self._candles_max} or less."
+            )
+        lookup = await self._lookup(instrument_id, timeframe)
+        if end > lookup.now or (lookup.available_from is not None and end <= lookup.available_from):
+            raise lookup.out_of_range(start=None, end=end)
+        start = first_of_last(end, lookup.now, timeframe, limit, lookup.sessions)
+        if start is None or lookup.first is None:
+            start = end  # no candle yet: an empty period
+        elif lookup.available_from is not None:
+            start = max(start, lookup.available_from)
+        return await self._load(lookup, start, end)
+
+    async def _lookup(self, instrument_id: InstrumentId, timeframe: Timeframe) -> _Lookup:
         instrument = await self._find(instrument_id)
         source = self._sources[instrument_id.market]
         now = int(_time())
         sessions = await source.sessions()
         first = await self._first(source, instrument)
-        available_from = None if first is None else bin_open(first, timeframe, sessions)
-        if start is None:
-            start = _last_start(
-                end, now, timeframe, limit or 1, sessions=sessions, available_from=available_from
-            )
-        if end > now or (available_from is not None and start < available_from):
-            raise PeriodOutOfRange(
-                instrument_id, timeframe, available_from, now, start=start, end=end
-            )
+        return _Lookup(
+            instrument,
+            source,
+            timeframe,
+            now,
+            sessions,
+            first,
+            None if first is None else bin_open(first, timeframe, sessions),
+        )
+
+    async def _load(self, lookup: _Lookup, start: int, end: int) -> CandleSet:
+        """The candles of a checked period ``[start, end)``."""
+        source, timeframe, sessions = lookup.source, lookup.timeframe, lookup.sessions
         requested = candle_count(start, end, timeframe, sessions)
         if requested > self._candles_max:
             hint = suggest(start, end, timeframe, self._candles_max, sessions)
             raise TooManyCandles(requested, self._candles_max, hint)
 
         base = source.base_timeframe(timeframe)
-        periods = [] if first is None else source.periods(base, start, end, now)
-        blobs = await self._chunks(source, instrument, base, periods)
+        periods = [] if lookup.first is None else source.periods(base, start, end, lookup.now)
+        blobs = await self._chunks(source, lookup.instrument, base, periods)
         return await to_thread.run_sync(
             partial(
                 assemble,
                 source,
-                CandleRequest(instrument_id, timeframe, start, end),
+                CandleRequest(lookup.instrument.id, timeframe, start, end),
                 list(zip(periods, blobs, strict=True)),
                 base=base,
-                now=now,
+                now=lookup.now,
                 sessions=sessions,
             )
         )
@@ -291,24 +341,6 @@ def newest_minute(now: int, sessions: Sequence[Session] | None) -> int:
         if latest >= 0:
             minute = min(minute, sessions[latest].close)
     return minute - 60
-
-
-def _last_start(
-    end: int,
-    now: int,
-    timeframe: Timeframe,
-    limit: int,
-    *,
-    sessions: Sequence[Session] | None,
-    available_from: int | None,
-) -> int:
-    """Start of the last ``limit`` candles before ``end``, not before the first candle."""
-    start = first_of_last(end, now, timeframe, limit, sessions)
-    if start is None:
-        return end - 1
-    if available_from is not None:
-        start = max(start, available_from)
-    return min(start, end - 1)
 
 
 def bin_open(ts: int, timeframe: Timeframe, sessions: Sequence[Session] | None) -> int:

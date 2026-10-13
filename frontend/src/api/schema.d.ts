@@ -769,7 +769,7 @@ export interface operations {
                 start?: (number | string) | null;
                 /** @description End of the period, exclusive, in the same formats; default now. */
                 end?: (number | string) | null;
-                /** @description Without `start`: how many of the newest candles before `end` to return, default 500. Stocks count only candles of trading sessions (nights, weekends and holidays are skipped), crypto counts every candle. Fewer come back when the data starts later. Not together with `start`. */
+                /** @description Without `start`: how many of the newest candles before `end` to return, default 500. Stocks count only candles of trading sessions (nights, weekends and holidays are skipped), crypto counts every candle. Fewer come back when the data starts later. Not together with `start`. Above `max_candles` (see the instrument detail) it is `too-many-candles`. */
                 limit?: number | null;
             };
             header?: never;

@@ -379,7 +379,8 @@ async def candles(
             description="Without `start`: how many of the newest candles before `end` to "
             f"return, default {DEFAULT_LIMIT}. Stocks count only candles of trading sessions "
             "(nights, weekends and holidays are skipped), crypto counts every candle. Fewer "
-            "come back when the data starts later. Not together with `start`.",
+            "come back when the data starts later. Not together with `start`. Above "
+            "`max_candles` (see the instrument detail) it is `too-many-candles`.",
         ),
     ] = None,
 ) -> Response:
@@ -418,13 +419,12 @@ async def candles(
             ]
         )
     with _problems():
-        found = await service.candles(
-            InstrumentId.parse(instrument_id),
-            timeframe,
-            start,
-            end,
-            limit=(limit or DEFAULT_LIMIT) if start is None else None,
-        )
+        if start is None:
+            found = await service.last_candles(
+                InstrumentId.parse(instrument_id), timeframe, end, limit or DEFAULT_LIMIT
+            )
+        else:
+            found = await service.candles(InstrumentId.parse(instrument_id), timeframe, start, end)
     return Response(candles_json(found), media_type="application/json")
 
 

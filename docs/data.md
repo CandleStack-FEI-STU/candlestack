@@ -267,7 +267,7 @@ Requests are checked in this order; the first failure is the answer.
 | client rate limit | 429 `rate-limited` |
 | parameters present and well-formed: instrument id, timeframe from the list, `start` (or `limit`) and `end` as epoch seconds or ISO 8601, `limit` 1 to 5000 and not together with `start`, `start < end` | 422 `validation` |
 | instrument in the catalog | 404 `instrument-not-found` |
-| `start >= available_from` (with `limit`: always met, the start is moved up to it) and `end <=` request time | 422 `period-out-of-range` |
+| `start >= available_from` and `end <=` request time; with `limit`: `end > available_from` and `end <=` request time | 422 `period-out-of-range` |
 | expected candle count `<= CANDLES_MAX` | 422 `too-many-candles` |
 
 Source data is checked before it is cached:
@@ -392,7 +392,7 @@ The former `/api/v1/data/candles?instrument=<id>` endpoint has been removed.
 | `timeframe` | required, one of `1m 5m 15m 30m 1h 4h 1d` |
 | `start` | inclusive; epoch seconds or ISO 8601 (see [Time](#time)). Without it, `limit` picks the start |
 | `end` | optional, exclusive, same formats; default the request time |
-| `limit` | optional, 1 to 5000, default 500: without `start`, the number of candles to return. With `start` it is a 422 `validation` |
+| `limit` | optional, 1 to 5000, default 500: without `start`, the number of candles to return. With `start` it is a 422 `validation`; above `CANDLES_MAX` it is a 422 `too-many-candles` (the usable bound is the smaller of 5000 and `CANDLES_MAX`, default 50000) |
 
 Example: `/api/v1/data/instruments/stock:AAPL/candles?timeframe=1h&start=2024-06-03&end=2024-06-04`
 returns the 7 candles of that session.
@@ -405,7 +405,9 @@ returns it as `meta.start`, which is the open time of the earliest candle it cou
 are counted by the market schedule, as the candle count is: stocks only in regular sessions, so
 nights, weekends and holidays are skipped, crypto around the clock. Missing candles inside the
 period stay in `meta.gaps` and count towards `limit`. When the data starts later, fewer than
-`limit` candles come back and `meta.start` is the first candle there is. `start` together with
+`limit` candles come back and `meta.start` is the first candle there is. With `end` at or before
+the first candle the answer is 422 `period-out-of-range` ("Set end after ..."); an instrument
+without any candle yet gives an empty result with `meta.start` equal to `meta.end`. `start` together with
 `limit` is a 422 `validation`.
 
 ```text
@@ -415,8 +417,8 @@ period stay in `meta.gaps` and count towards `limit`. When the data starts later
 
 The first returns the last 500 closed 15m candles of BTCUSDT. The second returns the 500
 session candles before the open on Monday 2024-06-03; the ones before it are Friday's, as
-the weekend has no sessions. The expected candle count still has to be at most
-`CANDLES_MAX`.
+the weekend has no sessions. A `limit` above `CANDLES_MAX` is refused with 422
+`too-many-candles` ("Use a limit of N or less.").
 
 Processing: rate limit, validation, catalog lookup, period and count checks, then each chunk
 of the period from the cache or the source (single-flight; up to 16 at once for crypto, 4 for
