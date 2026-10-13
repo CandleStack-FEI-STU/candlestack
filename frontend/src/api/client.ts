@@ -3,7 +3,7 @@
 
 // Relative on purpose: in prod the page and the API share a host, in dev the Vite proxy
 // forwards /api to https://app.candlestack.tech (vite.config.ts).
-const BASE = '/api';
+export const BASE = '/api';
 
 // An error answer of the API, or no answer at all (status 0). Errors are RFC 9457
 // problem+json: `detail` says in plain words what went wrong and is fine to show to the user.

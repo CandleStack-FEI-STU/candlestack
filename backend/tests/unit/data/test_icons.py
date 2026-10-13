@@ -101,5 +101,10 @@ def test_the_fallback_is_a_valid_svg() -> None:
 
     assert root.tag == "{http://www.w3.org/2000/svg}svg"
     assert (root.get("width"), root.get("height")) == ("64", "64")
+    # Square: the frontend rounds it like a logo, so a rounding of its own would show the
+    # white tile in the corners.
+    background = root.find("{http://www.w3.org/2000/svg}rect")
+    assert background is not None
+    assert background.get("rx") is None
     assert FALLBACK.media_type == FALLBACK_AFTER_FAILURE.media_type == "image/svg+xml"
     assert (FALLBACK.max_age, FALLBACK_AFTER_FAILURE.max_age) == (3600, 60)

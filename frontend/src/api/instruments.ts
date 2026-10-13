@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query';
 
-import { get } from './client';
+import { BASE, get } from './client';
 import type { components } from './schema';
 
 export type InstrumentDetail = components['schemas']['InstrumentDetailOut'];
@@ -16,6 +16,12 @@ export function exchangeName(instrument: Pick<InstrumentDetail, 'exchange' | 'so
 // GET /api/v1/data/instruments/{id}. Counts against the 60 per minute limit like the candles.
 export function getInstrument(id: string, signal?: AbortSignal): Promise<InstrumentDetail> {
   return get<InstrumentDetail>(`/v1/data/instruments/${encodeURIComponent(id)}`, signal);
+}
+
+// GET /api/v1/data/instruments/{id}/icon, the src of an <img>: always an image (the logo or the
+// fallback), never an error for an instrument of the catalog. Not counted against the limit.
+export function instrumentIconUrl(id: string): string {
+  return `${BASE}/v1/data/instruments/${encodeURIComponent(id)}/icon`;
 }
 
 // One cache entry per instrument, shared by the route loader and the page. The catalog
