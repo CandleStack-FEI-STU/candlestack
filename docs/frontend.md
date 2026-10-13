@@ -87,6 +87,10 @@ minute.
 - **Caching.** Older candle pages never change and are cached for long. The latest page
   refreshes at most once a minute. No automatic retry on 429: the page shows "try again in N s"
   counting down from `Retry-After`.
+- **Candle history.** Each chart page asks the API for `limit=500`, which counts trading-session
+  candles for stocks and continuous candles for crypto. The newest page omits `end`; scrolling
+  left requests the next page with `end` set to the oldest candle already shown. Pages keep all
+  returned candles and loading stops at the instrument's first available candle.
 - **Gaps.** When `meta.gaps_total > 0`, the chart shows a small note: it joins sessions, so
   real gaps in the data would be hidden otherwise.
 

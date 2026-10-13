@@ -37,9 +37,9 @@ type Pages = {
 
 // Called by useQueries only when a page changes, so `bars` keeps its identity in between and
 // the chart is not redrawn on every render.
-function summarize(pages: UseQueryResult<Candles>[], since: number | undefined): Pages {
+function summarize(pages: UseQueryResult<Candles>[]): Pages {
   const loaded = pages.flatMap((page) => (page.data ? [page.data] : []));
-  const history = mergePages(loaded, since);
+  const history = mergePages(loaded);
   return {
     history,
     nextEnd: loaded.length === pages.length ? history.nextEnd : undefined,
@@ -70,15 +70,10 @@ function useAutoRetries(lastSuccess: number, retry: () => void) {
 // instrument or timeframe (a React key), which starts again from the latest page.
 export function useCandleHistory(instrument: InstrumentDetail, timeframe: Timeframe): CandleHistory {
   const [olderEnds, setOlderEnds] = useState<number[]>([]);
-  // The latest page always reaches down to where the first older page ends.
-  const since = olderEnds[0];
-  const base = { instrument: instrument.id, market: instrument.market, timeframe };
-  const combine = useCallback((pages: UseQueryResult<Candles>[]) => summarize(pages, since), [since]);
+  const base = { instrument: instrument.id, timeframe };
+  const combine = useCallback((pages: UseQueryResult<Candles>[]) => summarize(pages), []);
   const pages = useQueries({
-    queries: [
-      candlePageQueryOptions({ ...base, since }),
-      ...olderEnds.map((end) => candlePageQueryOptions({ ...base, end })),
-    ],
+    queries: [candlePageQueryOptions(base), ...olderEnds.map((end) => candlePageQueryOptions({ ...base, end }))],
     combine,
   });
 
