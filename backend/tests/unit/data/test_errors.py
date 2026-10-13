@@ -55,6 +55,15 @@ def test_period_out_of_range_before_the_first_candle() -> None:
     )
 
 
+def test_period_out_of_range_end_before_the_first_candle() -> None:
+    error = PeriodOutOfRange(BTC, Timeframe.H1, 1502942400, 1790424000, end=1502942400)
+
+    assert error.detail == (
+        "crypto:BTCUSDT has 1h candles from 2017-08-17T04:00:00Z (1502942400). "
+        "Set end after 1502942400."
+    )
+
+
 def test_period_out_of_range_in_the_future() -> None:
     error = PeriodOutOfRange(BTC, Timeframe.H1, 1502942400, 1790424000, end=1790500000)
 

@@ -265,10 +265,10 @@ Requests are checked in this order; the first failure is the answer.
 | Check | Error |
 | --- | --- |
 | client rate limit | 429 `rate-limited` |
-| parameters present and well-formed: instrument id, timeframe from the list, `start` and `end` as epoch seconds or ISO 8601, `start < end` | 422 `validation` |
+| parameters present and well-formed: instrument id, timeframe from the list, `start` (or `limit`) and `end` as epoch seconds or ISO 8601, `limit` 1 to 5000 and not together with `start`, `start < end` | 422 `validation` |
 | instrument in the catalog | 404 `instrument-not-found` |
-| `start >= available_from` and `end <=` request time | 422 `period-out-of-range` |
-| expected candle count `<= CANDLES_MAX` | 422 `too-many-candles` |
+| `start >= available_from` and `end <=` request time; with `limit`: `end > available_from` and `end <=` request time | 422 `period-out-of-range` |
+| expected candle count `<= CANDLES_MAX` (with `limit`: `limit <= CANDLES_MAX`, the open candle at `end` = now does not count) | 422 `too-many-candles` |
 
 Source data is checked before it is cached:
 
@@ -381,18 +381,44 @@ again. Keys:
 
 `GET /api/v1/data/instruments/{instrument_id}/candles?timeframe=<tf>&start=<time>&end=<time>`
 
-The instrument id is part of the path; `timeframe`, `start` and `end` are query parameters.
+`GET /api/v1/data/instruments/{instrument_id}/candles?timeframe=<tf>&end=<time>&limit=<n>`
+
+The instrument id is part of the path; `timeframe`, `start`, `end` and `limit` are query parameters.
 The former `/api/v1/data/candles?instrument=<id>` endpoint has been removed.
 
 | Parameter | Rule |
 | --- | --- |
 | `instrument_id` (path) | required, an instrument id |
 | `timeframe` | required, one of `1m 5m 15m 30m 1h 4h 1d` |
-| `start` | required, inclusive; epoch seconds or ISO 8601 (see [Time](#time)) |
+| `start` | inclusive; epoch seconds or ISO 8601 (see [Time](#time)). Without it, `limit` picks the start |
 | `end` | optional, exclusive, same formats; default the request time |
+| `limit` | optional, 1 to 5000, default 500 (`CANDLES_MAX` when that is lower): without `start`, the number of candles to return. With `start` it is a 422 `validation`; above 5000 it is a 422 `validation`, and above `CANDLES_MAX` (default 50000, so only when it is set below 5000) a 422 `too-many-candles` |
 
 Example: `/api/v1/data/instruments/stock:AAPL/candles?timeframe=1h&start=2024-06-03&end=2024-06-04`
 returns the 7 candles of that session.
+
+### Last N candles
+
+Without `start`, the response holds the last `limit` candles that open before `end` (`end`
+defaults to the request time, so only closed candles count). The server picks the start and
+returns it as `meta.start`, which is the open time of the earliest candle it counted. Candles
+are counted by the market schedule, as the candle count is: stocks only in regular sessions, so
+nights, weekends and holidays are skipped, crypto around the clock. Missing candles inside the
+period stay in `meta.gaps` and count towards `limit`. When the data starts later, fewer than
+`limit` candles come back and `meta.start` is the first candle there is. With `end` at or before
+the first candle the answer is 422 `period-out-of-range` ("Set end after ..."); an instrument
+without any candle yet gives an empty result with `meta.start` equal to `meta.end`. `start` together with
+`limit` is a 422 `validation` (error `type` `limit_with_start`, `loc` `["query", "limit"]`).
+
+```text
+/api/v1/data/instruments/crypto:BTCUSDT/candles?timeframe=15m
+/api/v1/data/instruments/stock:AAPL/candles?timeframe=1h&end=2024-06-03T13:30Z&limit=500
+```
+
+The first returns the last 500 closed 15m candles of BTCUSDT. The second returns the 500
+session candles before the open on Monday 2024-06-03; the ones before it are Friday's, as
+the weekend has no sessions. A `limit` above `CANDLES_MAX` is refused with 422
+`too-many-candles` ("Use a limit of N or less.").
 
 Processing: rate limit, validation, catalog lookup, period and count checks, then each chunk
 of the period from the cache or the source (single-flight; up to 16 at once for crypto, 4 for

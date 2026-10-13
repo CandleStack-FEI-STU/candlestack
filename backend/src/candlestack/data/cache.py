@@ -233,6 +233,11 @@ def encode_chunk(frame: pl.DataFrame, fetched_at: int) -> bytes:
     return buffer.getvalue()
 
 
+def decode_fetched_at(blob: bytes) -> int:
+    """The fetch time of an ``encode_chunk`` blob, without decoding its frame."""
+    return _HEADER.unpack_from(blob)[0]
+
+
 def decode_chunk(blob: bytes) -> tuple[pl.DataFrame, int]:
     """The frame and fetch time of an ``encode_chunk`` blob."""
     (fetched_at,) = _HEADER.unpack_from(blob)

@@ -106,6 +106,158 @@ async def test_30m_candles_open_on_the_utc_half_hours(service: DataService, upst
     assert (candles.source, candles.feed) == ("binance", "spot")
 
 
+async def test_last_candles_before_end(service: DataService, upstream):
+    upstream.exchange_info()
+    upstream.first_kline(LISTED_MS)
+    upstream.fixture_archive("monthly", "BTCUSDT-1h-2024-01.zip")
+    end = utc("2024-01-15T10:00")
+
+    last = await service.last_candles(BTC, Timeframe.H1, end, 30)
+    same = await service.candles(BTC, Timeframe.H1, utc("2024-01-14T04:00"), end)
+
+    assert last.start == utc("2024-01-14T04:00")
+    assert last.frame["ts"].to_list() == list(range(utc("2024-01-14T04:00"), end, HOUR))
+    assert last.fingerprint == same.fingerprint
+    assert (last.gaps, last.gaps_total) == ([], 0)
+
+
+async def test_last_candles_up_to_now_are_closed_ones(
+    settings: Settings, redis, http: httpx.AsyncClient, upstream, monkeypatch: pytest.MonkeyPatch
+):
+    # A limit equal to the maximum works though the open candle makes the period one longer.
+    service = build_data_service(settings.model_copy(update={"candles_max": 4}), redis, http)
+    now = utc("2025-02-03T02:30")
+    freeze(monkeypatch, now)
+    upstream.exchange_info()
+    upstream.first_kline(LISTED_MS)
+    upstream.fixture_archive("monthly", "BTCUSDT-1h-2025-01.zip")
+    name = "BTCUSDT-1h-2025-02-01.zip"
+    opens = [(utc("2025-02-01") + hour * HOUR) * 10**6 for hour in range(24)]
+    upstream.archive("daily", name, upstream.make_archive(name, opens, HOUR * 10**6))
+    upstream.archive("daily", "BTCUSDT-1h-2025-02-02.zip", None)
+    upstream.klines(
+        utc("2025-02-02") * 1000,
+        [upstream.kline((utc("2025-02-02") + hour * HOUR) * 1000) for hour in range(24)],
+    )
+    upstream.klines(
+        utc("2025-02-03") * 1000,
+        [upstream.kline((utc("2025-02-03") + hour * HOUR) * 1000) for hour in range(3)],
+    )
+
+    candles = await service.last_candles(BTC, Timeframe.H1, now, 4)
+
+    # The 02:00 candle is still open at 02:30.
+    assert candles.frame["ts"].to_list() == [utc("2025-02-02T22:00") + i * HOUR for i in range(4)]
+    assert candles.start == utc("2025-02-02T22:00")
+
+
+async def test_last_candles_count_what_the_live_chunk_has(
+    service: DataService, upstream, monkeypatch: pytest.MonkeyPatch
+):
+    first_now, now = utc("2025-02-03T02:30"), utc("2025-02-03T03:10")
+    freeze(monkeypatch, first_now)
+    freeze_binance(monkeypatch, first_now)
+    upstream.exchange_info()
+    upstream.first_kline(LISTED_MS)
+    upstream.fixture_archive("monthly", "BTCUSDT-1h-2025-01.zip")
+    name = "BTCUSDT-1h-2025-02-01.zip"
+    opens = [(utc("2025-02-01") + hour * HOUR) * 10**6 for hour in range(24)]
+    upstream.archive("daily", name, upstream.make_archive(name, opens, HOUR * 10**6))
+    upstream.archive("daily", "BTCUSDT-1h-2025-02-02.zip", None)
+    upstream.klines(
+        utc("2025-02-02") * 1000,
+        [upstream.kline((utc("2025-02-02") + hour * HOUR) * 1000) for hour in range(24)],
+    )
+    upstream.klines(
+        utc("2025-02-03") * 1000,
+        [upstream.kline((utc("2025-02-03") + hour * HOUR) * 1000) for hour in range(3)],
+    )
+    await service.last_candles(BTC, Timeframe.H1, first_now, 4)  # caches the live chunk
+    freeze(monkeypatch, now)  # the 02:00 candle has closed since; the chunk does not have it
+
+    candles = await service.last_candles(BTC, Timeframe.H1, now, 4)
+
+    assert candles.frame["ts"].to_list() == [utc("2025-02-02T22:00") + i * HOUR for i in range(4)]
+    assert candles.start == utc("2025-02-02T22:00")
+
+
+async def test_last_candles_after_the_live_chunk_is_fetched_again(
+    service: DataService, upstream, redis, monkeypatch: pytest.MonkeyPatch
+):
+    first_now, now = utc("2025-02-03T02:30"), utc("2025-02-03T03:10")
+    freeze(monkeypatch, first_now)
+    freeze_binance(monkeypatch, first_now)
+    upstream.exchange_info()
+    upstream.first_kline(LISTED_MS)
+    upstream.fixture_archive("monthly", "BTCUSDT-1h-2025-01.zip")
+    name = "BTCUSDT-1h-2025-02-01.zip"
+    opens = [(utc("2025-02-01") + hour * HOUR) * 10**6 for hour in range(24)]
+    upstream.archive("daily", name, upstream.make_archive(name, opens, HOUR * 10**6))
+    upstream.archive("daily", "BTCUSDT-1h-2025-02-02.zip", None)
+    upstream.klines(
+        utc("2025-02-02") * 1000,
+        [upstream.kline((utc("2025-02-02") + hour * HOUR) * 1000) for hour in range(24)],
+    )
+    upstream.klines(
+        utc("2025-02-03") * 1000,
+        [upstream.kline((utc("2025-02-03") + hour * HOUR) * 1000) for hour in range(3)],
+    )
+    await service.last_candles(BTC, Timeframe.H1, first_now, 4)
+    await redis.flushdb()  # the chunk expired: it is fetched again, now with the 02:00 candle
+    freeze(monkeypatch, now)
+    freeze_binance(monkeypatch, now)
+
+    candles = await service.last_candles(BTC, Timeframe.H1, now, 4)
+
+    assert candles.frame["ts"].to_list() == [utc("2025-02-02T23:00") + i * HOUR for i in range(4)]
+
+
+async def test_last_candles_never_ask_for_more_than_counted(
+    service: DataService, upstream, monkeypatch: pytest.MonkeyPatch
+):
+    upstream.exchange_info()
+    upstream.first_kline(LISTED_MS)
+    monkeypatch.setattr(service_module, "first_of_last", lambda *_, **__: utc("2024-01-01"))
+
+    with pytest.raises(RuntimeError, match="holds 336"):
+        await service.last_candles(BTC, Timeframe.H1, utc("2024-01-15"), 3)
+
+
+async def test_last_candles_over_the_available_history(service: DataService, upstream):
+    upstream.exchange_info()
+    upstream.first_kline(LISTED_MS)
+    name = "BTCUSDT-1h-2017-08.zip"
+    opens = [(utc("2017-08-17T04:00") + hour * HOUR) * 1000 for hour in range(14 * 24 + 20)]
+    upstream.archive("monthly", name, upstream.make_archive(name, opens, HOUR * 1000))
+
+    candles = await service.last_candles(BTC, Timeframe.H1, utc("2017-08-19"), 500)
+
+    assert candles.start == utc("2017-08-17T04:00")  # the first candle there is
+    assert candles.frame.height == 44
+
+
+async def test_last_candles_checks(service: DataService, upstream):
+    upstream.exchange_info()
+    upstream.first_kline(LISTED_MS)
+
+    with pytest.raises(PeriodOutOfRange, match="Set end after 1502942400") as early:
+        await service.last_candles(BTC, Timeframe.H1, utc("2017-08-17T04:00"), 10)
+    with pytest.raises(PeriodOutOfRange, match="Set end to") as late:
+        await service.last_candles(BTC, Timeframe.H1, utc("2100-01-01"), 10)
+    with pytest.raises(TooManyCandles, match="Use a limit of 50000 or less") as many:
+        await service.last_candles(BTC, Timeframe.H1, utc("2024-01-01"), 50001)
+    # The checks keep their order: the instrument, the period, then the limit.
+    with pytest.raises(InstrumentNotFound):
+        await service.last_candles(InstrumentId.parse("crypto:NOPEUSDT"), Timeframe.H1, 3600, 10**6)
+    with pytest.raises(PeriodOutOfRange):
+        await service.last_candles(BTC, Timeframe.H1, utc("2100-01-01"), 10**6)
+
+    assert early.value.available_from == utc("2017-08-17T04:00")
+    assert "Set start" not in early.value.detail
+    assert late.value.available_to <= utc("2100-01-01")
+    assert (many.value.requested, many.value.maximum) == (50001, 50000)
+
+
 async def test_concurrent_requests_fetch_each_value_once(
     service: DataService, upstream, settings: Settings, redis, http: httpx.AsyncClient
 ):

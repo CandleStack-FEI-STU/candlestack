@@ -20,6 +20,7 @@ from candlestack.data import (
     expected_bins_sessions,
     find_gaps,
     fingerprint,
+    first_of_last,
     normalise,
     resample_fixed,
     resample_sessions,
@@ -551,6 +552,75 @@ def test_candle_count_sessions(sessions: list[Session]) -> None:
     assert candle_count(*week, Timeframe.H1, sessions) == 25
     assert candle_count(*week, Timeframe.D1, sessions) == 4
     assert candle_count(*week, Timeframe.M1, sessions) == 3 * 390 + 210
+
+
+def test_first_of_last_fixed() -> None:
+    end, now = utc("2024-01-01 10:00"), utc("2024-02-01")
+
+    assert first_of_last(end, now, Timeframe.H1, 3) == utc("2024-01-01 07:00")
+    assert first_of_last(utc("2024-01-01 10:30"), now, Timeframe.H1, 3) == utc("2024-01-01 08:00")
+    assert first_of_last(end, now, Timeframe.D1, 2) == utc("2023-12-31")
+    # The newest candle that has not closed by now is left out.
+    assert first_of_last(end, utc("2024-01-01 09:30"), Timeframe.H1, 3) == utc("2024-01-01 06:00")
+    assert first_of_last(60, now, Timeframe.H1, 5) == 0  # before the epoch: from the start
+
+
+def test_first_of_last_sessions_skip_the_weekend(sessions: list[Session]) -> None:
+    monday_open, now = utc("2024-06-03 13:30"), utc("2024-07-01")
+
+    # Friday 2024-05-31 has 1h candles 13:30-19:30 (the last is 30 minutes long).
+    assert first_of_last(monday_open, now, Timeframe.H1, 3, sessions) == utc("2024-05-31 17:30")
+    assert first_of_last(monday_open, now, Timeframe.H1, 7, sessions) == utc("2024-05-31 13:30")
+    assert first_of_last(monday_open, now, Timeframe.H1, 8, sessions) == utc("2024-05-30 19:30")
+    # The 14:30 candle opens before the end 15:00 and counts, though it ends after it.
+    assert first_of_last(utc("2024-06-03 15:00"), now, Timeframe.H1, 3, sessions) == utc(
+        "2024-05-31 19:30"
+    )
+    assert first_of_last(monday_open, now, Timeframe.D1, 2, sessions) == utc("2024-05-30 13:30")
+    # A candle open at ``now`` is left out.
+    assert first_of_last(monday_open + HOUR, monday_open + HOUR, Timeframe.H1, 1, sessions) == (
+        monday_open
+    )
+
+
+def test_first_of_last_stops_at_the_lower_bound(sessions: list[Session]) -> None:
+    now, lower = utc("2025-01-01"), utc("2024-06-03 14:30")
+    end = utc("2024-06-04 20:00")
+
+    assert first_of_last(end, now, Timeframe.H1, 100, sessions, lower=lower) == lower
+    assert first_of_last(end, now, Timeframe.H1, 3, sessions, lower=lower) == utc(
+        "2024-06-04 17:30"
+    )
+    assert first_of_last(end, now, Timeframe.D1, 3, sessions, lower=utc("2024-06-04 15:00")) is None
+    assert first_of_last(end, now, Timeframe.H1, 100, lower=lower) == lower
+    assert first_of_last(end, now, Timeframe.H1, 3, lower=lower) == utc("2024-06-04 17:00")
+    # No bin that opens at or after ``lower`` and is closed by now: none, for both kinds.
+    assert first_of_last(lower + 1800, lower + 1800, Timeframe.H1, 3, lower=lower) is None
+    assert first_of_last(lower + 1800, lower + 1800, Timeframe.H1, 3, sessions, lower=lower) is None
+
+
+def test_first_of_last_with_fewer_candles_than_asked(sessions: list[Session]) -> None:
+    now = utc("2025-01-01")
+    one_week = [session for session in sessions if session.date <= date(2024, 1, 5)]
+
+    assert first_of_last(utc("2024-01-06"), now, Timeframe.D1, 50, one_week) == one_week[0].open
+    assert first_of_last(utc("2024-01-06"), now, Timeframe.D1, 50, []) is None
+    assert first_of_last(one_week[0].open, now, Timeframe.D1, 5, one_week) is None
+
+
+@pytest.mark.parametrize("timeframe", list(Timeframe))
+def test_first_of_last_starts_a_period_of_exactly_limit_candles(
+    sessions: list[Session], timeframe: Timeframe
+) -> None:
+    now = utc("2025-01-01")
+    for end in (utc("2024-06-03 13:30"), utc("2024-06-03 17:12"), utc("2024-12-02 09:00")):
+        for count in (1, 7, 40):
+            start = first_of_last(end, now, timeframe, count)
+            assert start is not None
+            assert len(expected_bins_fixed(start, end, timeframe, now=now)) == count
+            start = first_of_last(end, now, timeframe, count, sessions)
+            assert start is not None
+            assert len(expected_bins_sessions(start, end, timeframe, sessions, now=now)) == count
 
 
 @pytest.mark.parametrize("timeframe", list(Timeframe))

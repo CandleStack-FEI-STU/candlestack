@@ -38,7 +38,8 @@ class InstrumentNotFound(DataError):
 class PeriodOutOfRange(DataError):
     """The period asks for candles before the first one or after the newest closed one.
 
-    Pass the request's ``start`` and ``end`` to get a detail about the side that failed.
+    Pass the request's ``start`` (``None`` for the last N candles) and ``end`` to get a detail
+    about the side that failed.
     ``available_from`` is ``None`` when the first candle is not known.
     """
 
@@ -61,6 +62,15 @@ class PeriodOutOfRange(DataError):
         if start is not None and available_from is not None and start < available_from:
             sentences.append(
                 f"{has} from {format_time(available_from)}. Set start to {available_from} or later."
+            )
+        if (
+            start is None
+            and end is not None
+            and available_from is not None
+            and end <= available_from
+        ):
+            sentences.append(
+                f"{has} from {format_time(available_from)}. Set end after {available_from}."
             )
         if end is not None and end > available_to:
             sentences.append(

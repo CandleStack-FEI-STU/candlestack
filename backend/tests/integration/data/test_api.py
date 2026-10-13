@@ -20,7 +20,11 @@ NOW = 1790000010
 
 class NoCandles:
     async def candles(
-        self, instrument_id: InstrumentId, timeframe: Timeframe, start: int, end: int
+        self,
+        instrument_id: InstrumentId,
+        timeframe: Timeframe,
+        start: int,
+        end: int,
     ) -> CandleSet:
         return CandleSet(
             instrument_id,

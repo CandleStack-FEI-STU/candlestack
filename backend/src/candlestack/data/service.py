@@ -22,7 +22,7 @@ from anyio import to_thread
 from redis.asyncio import Redis
 
 from candlestack.core import RateLimiter, Settings
-from candlestack.data.cache import Cache, decode_chunk, encode_chunk
+from candlestack.data.cache import Cache, decode_chunk, decode_fetched_at, encode_chunk
 from candlestack.data.candles import (
     candle_count,
     closed_only,
@@ -30,6 +30,7 @@ from candlestack.data.candles import (
     expected_bins_sessions,
     find_gaps,
     fingerprint,
+    first_of_last,
     resample_sessions,
     slice_range,
     suggest,
@@ -84,6 +85,28 @@ class CandleRequest:
     timeframe: Timeframe
     start: int
     end: int
+
+
+@dataclass(frozen=True, slots=True)
+class _Lookup:
+    """What a candles request needs to know before it is checked."""
+
+    instrument: Instrument
+    source: DataSource
+    timeframe: Timeframe
+    now: int
+    sessions: list[Session] | None
+    available_from: int | None
+
+    def out_of_range(self, *, start: int | None, end: int) -> PeriodOutOfRange:
+        return PeriodOutOfRange(
+            self.instrument.id,
+            self.timeframe,
+            self.available_from,
+            self.now,
+            start=start,
+            end=end,
+        )
 
 
 class DataService:
@@ -166,32 +189,103 @@ class DataService:
         """
         if start >= end:
             raise InvalidRequest(f"start ({start}) must be before end ({end}).")
+        lookup = await self._lookup(instrument_id, timeframe)
+        if end > lookup.now or (
+            lookup.available_from is not None and start < lookup.available_from
+        ):
+            raise lookup.out_of_range(start=start, end=end)
+        requested = candle_count(start, end, timeframe, lookup.sessions)
+        if requested > self._candles_max:
+            hint = suggest(start, end, timeframe, self._candles_max, lookup.sessions)
+            raise TooManyCandles(requested, self._candles_max, hint)
+        return await self._load(lookup, start, end)
+
+    async def last_candles(
+        self, instrument_id: InstrumentId, timeframe: Timeframe, end: int, limit: int
+    ) -> CandleSet:
+        """The last ``limit`` closed candles that open before ``end``, like ``candles`` from
+        the open of the earliest of them. Stocks count only session candles, so nights,
+        weekends and holidays are skipped. When the data starts later the set starts at the
+        first candle there is; when no candle opens before ``end`` it is empty and starts at
+        ``end``.
+
+        Raises ``InstrumentNotFound``, ``PeriodOutOfRange`` when ``end`` is in the future or
+        not after the first candle, ``TooManyCandles`` when ``limit`` is above the maximum, and
+        the other errors of ``candles``.
+        """
+        lookup = await self._lookup(instrument_id, timeframe)
+        if end > lookup.now or (lookup.available_from is not None and end <= lookup.available_from):
+            raise lookup.out_of_range(start=None, end=end)
+        if limit > self._candles_max:
+            raise TooManyCandles(
+                limit, self._candles_max, f"Use a limit of {self._candles_max} or less."
+            )
+        if lookup.available_from is None:  # no candle yet: an empty period
+            return await self._load(lookup, end, end)
+        # Candles that closed after the live chunk was fetched are not in it, so they are not
+        # counted: the window is counted up to the chunk's fetch time, as ``assemble`` does.
+        known = await self._live_chunk(lookup, end)
+        as_of = min([lookup.now, *(decode_fetched_at(blob) for blob in known.values())])
+        return await self._load(lookup, self._window(lookup, end, limit, as_of), end, known)
+
+    async def _live_chunk(self, lookup: _Lookup, end: int) -> dict[str, bytes]:
+        """The live chunk (today up to now) by its label when the period before ``end`` ends in
+        it, else nothing."""
+        source, base = lookup.source, lookup.source.base_timeframe(lookup.timeframe)
+        live = [p for p in source.periods(base, end - 1, end, lookup.now) if p.kind == "live"]
+        blobs = await self._chunks(source, lookup.instrument, base, live)
+        return {period.label: blob for period, blob in zip(live, blobs, strict=True)}
+
+    def _window(self, lookup: _Lookup, end: int, count: int, as_of: int) -> int:
+        """Start of the last ``count`` candles before ``end`` that closed by ``as_of``; ``end``
+        when there are none."""
+        start = first_of_last(
+            end, as_of, lookup.timeframe, count, lookup.sessions, lower=lookup.available_from
+        )
+        if start is None:
+            return end
+        # The period holds the counted candles and at most one that is still open; the size
+        # check of ``candles`` does not apply, so a window of another size is a bug.
+        requested = candle_count(start, min(end, as_of), lookup.timeframe, lookup.sessions)
+        if requested > count + 1:
+            msg = f"The window of the last {count} candles holds {requested} (start {start})"
+            raise RuntimeError(msg)
+        return start
+
+    async def _lookup(self, instrument_id: InstrumentId, timeframe: Timeframe) -> _Lookup:
         instrument = await self._find(instrument_id)
         source = self._sources[instrument_id.market]
         now = int(_time())
         sessions = await source.sessions()
         first = await self._first(source, instrument)
-        available_from = None if first is None else bin_open(first, timeframe, sessions)
-        if end > now or (available_from is not None and start < available_from):
-            raise PeriodOutOfRange(
-                instrument_id, timeframe, available_from, now, start=start, end=end
-            )
-        requested = candle_count(start, end, timeframe, sessions)
-        if requested > self._candles_max:
-            hint = suggest(start, end, timeframe, self._candles_max, sessions)
-            raise TooManyCandles(requested, self._candles_max, hint)
+        return _Lookup(
+            instrument,
+            source,
+            timeframe,
+            now,
+            sessions,
+            None if first is None else bin_open(first, timeframe, sessions),
+        )
 
+    async def _load(
+        self, lookup: _Lookup, start: int, end: int, known: Mapping[str, bytes] | None = None
+    ) -> CandleSet:
+        """The candles of a checked period ``[start, end)`` (its size is checked by the caller);
+        ``known`` holds chunks already read, by label."""
+        source, timeframe, sessions = lookup.source, lookup.timeframe, lookup.sessions
         base = source.base_timeframe(timeframe)
-        periods = [] if first is None else source.periods(base, start, end, now)
-        blobs = await self._chunks(source, instrument, base, periods)
+        periods = (
+            [] if lookup.available_from is None else source.periods(base, start, end, lookup.now)
+        )
+        blobs = await self._chunks(source, lookup.instrument, base, periods, known or {})
         return await to_thread.run_sync(
             partial(
                 assemble,
                 source,
-                CandleRequest(instrument_id, timeframe, start, end),
+                CandleRequest(lookup.instrument.id, timeframe, start, end),
                 list(zip(periods, blobs, strict=True)),
                 base=base,
-                now=now,
+                now=lookup.now,
                 sessions=sessions,
             )
         )
@@ -225,6 +319,7 @@ class DataService:
         instrument: Instrument,
         timeframe: Timeframe,
         periods: Sequence[Period],
+        known: Mapping[str, bytes] = {},
     ) -> list[bytes]:
         limit = asyncio.Semaphore(source.chunk_concurrency)
 
@@ -234,6 +329,8 @@ class DataService:
             return blob, period.ttl
 
         async def chunk(period: Period) -> bytes:
+            if period.label in known:
+                return known[period.label]
             async with limit:
                 name = f"candles:{instrument.id}:{timeframe}:{period.label}"
                 return await self._cache.get_or_fetch(name, partial(fetch, period))

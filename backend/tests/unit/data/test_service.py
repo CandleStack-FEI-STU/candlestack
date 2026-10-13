@@ -14,7 +14,12 @@ from candlestack.data import (
     slice_range,
 )
 from candlestack.data.cache import decode_chunk, encode_chunk
-from candlestack.data.service import CandleRequest, assemble, bin_open, newest_minute
+from candlestack.data.service import (
+    CandleRequest,
+    assemble,
+    bin_open,
+    newest_minute,
+)
 from candlestack.data.sources.base import DAY, DataSource, Period, plan_periods
 
 BTC, AAPL = InstrumentId.parse("crypto:BTCUSDT"), InstrumentId.parse("stock:AAPL")
