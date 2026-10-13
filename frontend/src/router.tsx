@@ -7,6 +7,7 @@ import { RouteError, RoutePending } from '@/components/RouteStates';
 import { InstrumentsPage } from '@/pages/InstrumentsPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { validateInstrumentSearch } from '@/routes/instrumentSearch';
+import { validateInstrumentsSearch } from '@/routes/instrumentsSearch';
 
 // Every route gets the query client, so a route loader can fetch its data before it renders.
 type RouterContext = { queryClient: QueryClient };
@@ -16,9 +17,11 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
   notFoundComponent: NotFoundPage,
 });
 
+// /?q=btc&market=crypto&page=2; broken values are dropped in validateSearch.
 const instrumentsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
+  validateSearch: validateInstrumentsSearch,
   component: InstrumentsPage,
 });
 
