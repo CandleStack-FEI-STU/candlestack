@@ -3,7 +3,7 @@
 
 // Relative on purpose: in prod the page and the API share a host, in dev the Vite proxy
 // forwards /api to https://app.candlestack.tech (vite.config.ts).
-export const BASE = '/api';
+const BASE = '/api';
 
 // An error answer of the API, or no answer at all (status 0). Errors are RFC 9457
 // problem+json: `detail` says in plain words what went wrong and is fine to show to the user.
@@ -63,10 +63,15 @@ async function readJson(res: Response): Promise<{ ok: true; body: unknown } | { 
   }
 }
 
+// The URL of an API path, e.g. for an <img> that the browser loads itself.
+export function apiUrl(path: string): string {
+  return BASE + path;
+}
+
 export async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(BASE + path, { signal, headers: { Accept: 'application/json' } });
+    res = await fetch(apiUrl(path), { signal, headers: { Accept: 'application/json' } });
   } catch (error) {
     if (signal?.aborted) throw error;
     throw new ApiError(0, 'Cannot reach the server. Check your connection.');

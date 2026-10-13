@@ -67,22 +67,25 @@ type ResultsProps = ResultsState & {
   onPick: () => void;
 };
 
+// A row: icon, symbol, name and market. The symbol is at least as wide as most (so the names line
+// up) and shows in full up to half the row, e.g. 1000CHEEMSUSDT; the name gives way first.
 function Results({ typed, tf, input, onPick, ...state }: ResultsProps) {
   const onKeyDown = (event: KeyboardEvent<HTMLAnchorElement>) => onListKey(event, input);
   const onClick = (event: MouseEvent) => {
     if (!opensElsewhere(event)) onPick();
   };
   const link = { onClick, onKeyDown };
-  // On a phone the list hangs from the header, with a 16 px gutter on both sides, instead of from
-  // the narrow search box, where it ran off the left edge; from sm up it is right-aligned under it.
+  // On a phone the list hangs from the header's bar (Header.tsx, its positioning parent), with a
+  // 16 px gutter on both sides, instead of from the narrow search box, where it ran off the left
+  // edge; from sm up it is right-aligned under the box, never wider than the screen.
   return (
-    <ul className="absolute inset-x-4 top-full z-20 mt-1 overflow-hidden rounded-md border bg-background py-1 text-sm shadow-lg sm:left-auto sm:right-0 sm:w-full sm:min-w-72">
+    <ul className="absolute inset-x-4 top-full z-20 mt-1 overflow-hidden rounded-md border bg-background py-1 text-sm shadow-lg sm:left-auto sm:right-0 sm:w-full sm:max-w-[calc(100vw-2rem)] sm:min-w-72">
       <StatusNote {...state} />
       {state.items.map((item) => (
         <li key={item.id}>
           <Link to="/instrument/$id" params={{ id: item.id }} search={{ tf }} {...link} data-result className={ITEM}>
             <InstrumentIcon id={item.id} size={32} />
-            <span className="w-19 shrink-0 font-mono">{item.symbol}</span>
+            <span className="max-w-1/2 min-w-19 shrink-0 truncate font-mono">{item.symbol}</span>
             <span className="truncate text-muted-foreground">{item.name}</span>
             <span className="ml-auto shrink-0 text-xs text-muted-foreground">{item.market}</span>
           </Link>
@@ -195,6 +198,7 @@ export function QuickSearch() {
   const { text, results, open, input, box, onPick, onBlur, onKeyDown, onChange, setOpen } = useQuickSearch();
   const tf = useRouterState({ select: (state) => (state.location.search as { tf?: string }).tf });
 
+  // Positioned only from sm up: on a phone the list is placed against the header's bar.
   return (
     <div ref={box} className="w-full max-w-xs sm:relative" onBlur={onBlur}>
       <div className="relative">

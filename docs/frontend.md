@@ -109,9 +109,12 @@ minute.
   mode: a translucent white would leave a light rim), so no logo runs over the edge.
 - The image is same-origin (allowed by the CSP), `loading="lazy"`, with a fixed width and height
   so rows do not jump while it loads, and an empty `alt`: the symbol is always next to it.
+- When the image does not load at all (e.g. a 502 during a deploy), the tile draws the backend's
+  fallback itself (Lucide's `chart-candlestick` in white on dark grey), never a broken image.
 - In the list, the icon is not a link of its own: the symbol's link still covers the whole row.
-- On phones (< 640 px) the quick-search list hangs from the header with a 16 px gutter on both
-  sides; from `sm` up it is right-aligned under the search box.
+- On phones (< 640 px) the quick-search list hangs from the header's bar (`Header.tsx`, its
+  positioning parent) with a 16 px gutter on both sides; from `sm` up it is right-aligned under
+  the search box and never wider than the screen.
 
 ## Licenses
 

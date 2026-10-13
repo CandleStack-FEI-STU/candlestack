@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
-import { InstrumentIcon } from '@/components/InstrumentIcon';
+import { IconTile, InstrumentIcon } from '@/components/InstrumentIcon';
 
 // The attributes of the first element `tag`, in any order.
 function element(html: string, tag: string): string {
@@ -47,5 +47,18 @@ describe('InstrumentIcon', () => {
     expect(element(html, 'span')).toContain('overflow-hidden');
     expect(element(html, 'span')).toMatch(/after:absolute .*after:inset-ring /);
     expect(element(html, 'img')).toMatch(/absolute inset-px size-\[calc\(100%-2px\)\] .*object-contain/);
+  });
+
+  it("draws the backend's fallback itself when the image does not load", () => {
+    const html = renderToStaticMarkup(<IconTile id="stock:AAPL" size={32} failed onError={() => {}} />);
+    expect(html).not.toContain('<img');
+    expect(html).toContain('bg-icon-fallback');
+    expect(html).toContain('lucide-chart-candlestick');
+  });
+
+  it('shows the image until it failed', () => {
+    const html = renderToStaticMarkup(<IconTile id="stock:AAPL" size={32} failed={false} onError={() => {}} />);
+    expect(html).toContain('<img');
+    expect(html).not.toContain('lucide-chart-candlestick');
   });
 });

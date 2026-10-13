@@ -1,15 +1,23 @@
+import { ChartCandlestick } from 'lucide-react';
+import { useState } from 'react';
+
 import { instrumentIconUrl } from '@/api';
 import { cn } from '@/lib/utils';
 
 // 32 px in the instrument list and the header search, 64 px on the instrument page.
 const SIZE = { 32: 'size-8', 64: 'size-16' } as const;
+type Size = keyof typeof SIZE;
+
+type TileProps = { id: string; size: Size; failed: boolean; onError: () => void };
 
 // The instrument's logo, or the backend's square fallback, on a white tile rounded by 10 % of its
 // size. The image fills the tile 1 px inside its edge, clipped to its corners, and the 1 px
 // hairline is drawn above it, so a logo that fills its whole box (Apple's) never covers it. White
 // in both themes, so black logos such as Apple's stay visible in dark mode. The fixed size keeps
 // rows from jumping while it loads; the alt is empty because the symbol is always next to it.
-export function InstrumentIcon({ id, size }: { id: string; size: keyof typeof SIZE }) {
+// When the image does not load at all (e.g. a 502 during a deploy), the tile draws the backend's
+// fallback itself: the white chart-candlestick on dark grey.
+export function IconTile({ id, size, failed, onError }: TileProps) {
   return (
     <span
       className={cn(
@@ -18,14 +26,28 @@ export function InstrumentIcon({ id, size }: { id: string; size: keyof typeof SI
         SIZE[size],
       )}
     >
-      <img
-        src={instrumentIconUrl(id)}
-        alt=""
-        width={size}
-        height={size}
-        loading="lazy"
-        className="absolute inset-px size-[calc(100%-2px)] rounded-[inherit] object-contain"
-      />
+      {failed ? (
+        <span className="absolute inset-px grid place-items-center bg-icon-fallback text-white">
+          <ChartCandlestick aria-hidden className="size-[56%]" />
+        </span>
+      ) : (
+        <img
+          src={instrumentIconUrl(id)}
+          alt=""
+          width={size}
+          height={size}
+          loading="lazy"
+          onError={onError}
+          className="absolute inset-px size-[calc(100%-2px)] object-contain"
+        />
+      )}
     </span>
   );
+}
+
+// Remembers the id whose image failed, so the next instrument in the same place (the header on
+// another instrument page) tries its own image again.
+export function InstrumentIcon({ id, size }: { id: string; size: Size }) {
+  const [failed, setFailed] = useState<string | null>(null);
+  return <IconTile id={id} size={size} failed={failed === id} onError={() => setFailed(id)} />;
 }

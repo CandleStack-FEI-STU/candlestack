@@ -26,8 +26,10 @@
   --candle-up: #2e9e44;
   --candle-down: #f23645;
 
-  /* The hairline inside the white tile of an instrument icon (#179). */
+  /* The hairline inside the white tile of an instrument icon (#179), and the dark grey of the
+     backend's fallback icon (backend/src/candlestack/data/icons.py), the same in both themes. */
   --icon-ring: rgb(20 20 20 / 0.09);
+  --icon-fallback: #57534e;
 
   --radius: 0.5rem;
   color-scheme: light;
@@ -103,6 +105,7 @@
   --color-candle-up: var(--candle-up);
   --color-candle-down: var(--candle-down);
   --color-icon-ring: var(--icon-ring);
+  --color-icon-fallback: var(--icon-fallback);
 }
 
 @layer base {
