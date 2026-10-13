@@ -44,6 +44,7 @@ class Timeframe(StrEnum):
     M1 = "1m"
     M5 = "5m"
     M15 = "15m"
+    M30 = "30m"
     H1 = "1h"
     H4 = "4h"
     D1 = "1d"
@@ -62,6 +63,7 @@ _SECONDS = {
     Timeframe.M1: 60,
     Timeframe.M5: 300,
     Timeframe.M15: 900,
+    Timeframe.M30: 1800,
     Timeframe.H1: 3600,
     Timeframe.H4: 14400,
     Timeframe.D1: 86400,

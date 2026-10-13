@@ -8,7 +8,7 @@ describe('parseTimeframe', () => {
   });
 
   it('turns anything else into the default', () => {
-    for (const value of [undefined, null, '', 'banana', '1H', '30m', 1, ['1h'], { tf: '1h' }]) {
+    for (const value of [undefined, null, '', 'banana', '1H', '2h', 1, ['1h'], { tf: '1h' }]) {
       expect(parseTimeframe(value)).toBe(DEFAULT_TIMEFRAME);
     }
   });

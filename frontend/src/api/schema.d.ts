@@ -395,6 +395,7 @@ export interface components {
              *       "1m",
              *       "5m",
              *       "15m",
+             *       "30m",
              *       "1h",
              *       "4h",
              *       "1d"
@@ -565,7 +566,7 @@ export interface components {
          * @description Candle durations; iteration goes from the shortest to the longest.
          * @enum {string}
          */
-        Timeframe: "1m" | "5m" | "15m" | "1h" | "4h" | "1d";
+        Timeframe: "1m" | "5m" | "15m" | "30m" | "1h" | "4h" | "1d";
     };
     responses: never;
     parameters: never;

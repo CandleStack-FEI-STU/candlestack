@@ -2,3 +2,5 @@
 # "<METHOD> <path> <change>". A pull request that breaks the API without listing the change here
 # fails CI (see the `api` job in CONTRIBUTING.md).
 GET /api/v1/data/candles api path removed without deprecation
+GET /api/v1/data/instruments/{instrument_id} added the new `30m` enum value to the `timeframes/items/` response property for the response status `200`
+GET /api/v1/data/instruments/{instrument_id}/candles added the new `30m` enum value to the `meta/timeframe` response property for the response status `200`

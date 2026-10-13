@@ -317,7 +317,7 @@ def test_instrument_detail(client: TestClient, service: FakeDataService) -> None
         "exchange": "NASDAQ",
         "base": None,
         "quote": None,
-        "timeframes": ["1m", "5m", "15m", "1h", "4h", "1d"],
+        "timeframes": ["1m", "5m", "15m", "30m", "1h", "4h", "1d"],
         "available_from": 1595856600,
         "available_to": 1790372340,
         "max_candles": 50000,
@@ -549,7 +549,10 @@ def test_end_formats_and_default(
         ),
         (
             "stock:AAPL/candles?timeframe=2h&start=2024-06-03",
-            "query parameter 'timeframe': Input should be '1m', '5m', '15m', '1h', '4h' or '1d'",
+            (
+                "query parameter 'timeframe': "
+                "Input should be '1m', '5m', '15m', '30m', '1h', '4h' or '1d'"
+            ),
         ),
         (
             "stock:AAPL/candles?timeframe=1h",

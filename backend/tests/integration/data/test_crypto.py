@@ -89,6 +89,23 @@ async def test_closed_month_from_its_archive_then_from_the_cache(service: DataSe
     assert (catalog.call_count, first.call_count, archive.call_count) == (1, 1, 1)
 
 
+async def test_30m_candles_open_on_the_utc_half_hours(service: DataService, upstream):
+    upstream.exchange_info()
+    upstream.first_kline(LISTED_MS)
+    name = "BTCUSDT-30m-2024-01.zip"
+    half_hour = 1800
+    opens = [(utc("2024-01-01") + k * half_hour) * 1000 for k in range(48 * 31)]
+    upstream.archive("monthly", name, upstream.make_archive(name, opens, half_hour * 1000))
+
+    candles = await service.candles(BTC, Timeframe.M30, utc("2024-01-10"), utc("2024-01-11"))
+
+    assert candles.frame["ts"].to_list() == list(
+        range(utc("2024-01-10"), utc("2024-01-11"), half_hour)
+    )
+    assert (candles.gaps, candles.gaps_total) == ([], 0)
+    assert (candles.source, candles.feed) == ("binance", "spot")
+
+
 async def test_concurrent_requests_fetch_each_value_once(
     service: DataService, upstream, settings: Settings, redis, http: httpx.AsyncClient
 ):

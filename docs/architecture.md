@@ -221,7 +221,7 @@ to check that an error reaches Sentry. The Sentry settings are recorded in
 | One source per market, never mixed in one series: Binance spot for crypto, Alpaca IEX for US stocks | consistent data; both are free |
 | Full history fetched lazily on request, catalog cached 24 h and refreshed in the background | no ingestion pipeline and no scheduler to run |
 | Stocks use the regular session only (09:30-16:00 New York, calendar from Alpaca) | comparable candles; extended-hours IEX data is thin |
-| Same timeframes for both markets: `1m 5m 15m 1h 4h 1d` | experiments can switch markets without changing the pipeline |
+| Same timeframes for both markets: `1m 5m 15m 30m 1h 4h 1d` | experiments can switch markets without changing the pipeline |
 | UTC epoch seconds everywhere, candle label = open time, `start` inclusive, `end` exclusive | no time zone ambiguity at the API; New York time exists only in session math |
 | Gaps are reported, never filled | filled candles would be invented prices |
 | Explicit limits instead of silent truncation (50000 candles, per-IP and per-source rate limits) | the client always gets exactly what it asked for or an error saying what to change |

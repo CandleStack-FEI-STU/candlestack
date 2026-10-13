@@ -247,6 +247,20 @@ def test_resample_sessions_normal_day(sessions: list[Session]) -> None:
     assert resample_sessions(candles, Timeframe.M1, sessions).height == 390
 
 
+def test_resample_sessions_30m_is_two_15m_candles(sessions: list[Session]) -> None:
+    for day, count in (("2024-06-03", 390), ("2024-11-29", 210)):  # normal, early close
+        session = by_date(sessions, day)
+        candles = frame(minutes(session.open, count))
+
+        halves = rows(resample_sessions(candles, Timeframe.M30, sessions))
+        quarters = resample_sessions(candles, Timeframe.M15, sessions)
+
+        assert halves == rows(resample_sessions(quarters, Timeframe.M30, sessions))
+        assert halves == [
+            bar(session.open + k * 1800, k * 30, k * 30 + 29) for k in range(count // 30)
+        ]
+
+
 def test_resample_sessions_early_close(sessions: list[Session]) -> None:
     session = by_date(sessions, "2024-11-29")  # 14:30-18:00 UTC
     after_close = (session.close, 999, 999, 999, 999, 99)
