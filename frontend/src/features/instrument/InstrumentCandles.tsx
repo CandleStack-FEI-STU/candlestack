@@ -61,7 +61,12 @@ export function InstrumentCandles({ instrument, timeframe }: { instrument: Instr
       {!history.isPending && !hasBars && !history.error && <Placeholder>No candles in this period.</Placeholder>}
       {hasBars && (
         <>
-          <CandleChart bars={history.bars} market={instrument.market} onNearLeftEdge={history.loadOlder} />
+          <CandleChart
+            key={history.restarts}
+            bars={history.bars}
+            market={instrument.market}
+            onNearLeftEdge={history.loadOlder}
+          />
           <Status
             market={instrument.market}
             isLoadingOlder={history.isLoadingOlder}

@@ -56,19 +56,26 @@ export type CandlePage = {
 // it asks for its last candles again instead and the history below it starts over.
 const SINCE_CANDLES = 2 * PAGE_SIZE;
 
+// The latest page as the API last sent it, and when it came (epoch seconds, browser clock).
+export type LastAnswer = { candles: Candles; at: number };
+
 // What a page asks for at `now`. A page of history is the last candles before its end. The
 // latest page, once older pages hang below it, asks for everything from `since`, so a refresh
-// cannot open a hole between it and the history. Every timeframe up to now counts as a candle
-// there (stocks have fewer), and a tenth of `maxCandles` is left for a browser clock that runs
-// behind the server's.
-export function pageRange({ timeframe, maxCandles, end, since }: CandlePage, now: number): CandleRange {
+// cannot open a hole between it and the history. How many candles that is comes from the last
+// answer, which reached down to `since`, plus every timeframe since it came (an upper bound for
+// that short time: stocks have fewer). A tenth of `maxCandles` is left for a browser clock that
+// runs behind the server's.
+export function pageRange(
+  { timeframe, maxCandles, end, since }: CandlePage,
+  now: number,
+  last?: LastAnswer,
+): CandleRange {
   const limit = Math.min(PAGE_SIZE, maxCandles);
   if (end !== undefined) return { limit, end };
-  const bound = Math.min(SINCE_CANDLES, Math.floor(maxCandles * 0.9));
-  if (since !== undefined && Math.ceil((now - since) / TIMEFRAME_SECONDS[timeframe]) + 1 <= bound) {
-    return { start: since };
-  }
-  return { limit };
+  if (since === undefined || last === undefined || last.candles.meta.start > since) return { limit };
+  const held = last.candles.t.length + last.candles.meta.gaps_total;
+  const estimate = held + Math.ceil((now - last.at) / TIMEFRAME_SECONDS[timeframe]) + 1;
+  return estimate <= Math.min(SINCE_CANDLES, Math.floor(maxCandles * 0.9)) ? { start: since } : { limit };
 }
 
 // One page of candles. Without `end` it is the latest page: it refreshes at most once a minute.
@@ -76,18 +83,21 @@ export function pageRange({ timeframe, maxCandles, end, since }: CandlePage, now
 // `since` is left out of the key on purpose: when it is first set it is the start of the cached
 // latest page, so that page is already right; it only changes what later refreshes ask for.
 export function candlePageQueryOptions(page: CandlePage) {
-  const { instrument, timeframe, end, maxCandles } = page;
+  const { instrument, timeframe, end } = page;
   return queryOptions({
     queryKey: ['candles', instrument, timeframe, end ?? 'latest'],
-    queryFn: async ({ signal }) => {
-      const range = pageRange(page, Math.floor(Date.now() / 1000));
+    queryFn: async ({ client, queryKey, signal }) => {
+      const now = Math.floor(Date.now() / 1000);
+      const state = client.getQueryState<Candles>(queryKey);
+      const last = state?.data && { candles: state.data, at: Math.floor(state.dataUpdatedAt / 1000) };
+      const range = pageRange(page, now, last);
       try {
         return await getCandles(instrument, timeframe, range, signal);
       } catch (error) {
         // The server counts up to its own clock, which may be ahead of the browser's: then the
         // latest page asks for its last candles, as after a long idle time.
         if ('start' in range && error instanceof ApiError && error.problem === 'too-many-candles') {
-          return getCandles(instrument, timeframe, { limit: Math.min(PAGE_SIZE, maxCandles) }, signal);
+          return getCandles(instrument, timeframe, pageRange({ ...page, since: undefined }, now), signal);
         }
         throw error;
       }

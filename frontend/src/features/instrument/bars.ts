@@ -25,20 +25,31 @@ export type History = {
   detached: boolean;
 };
 
-// Pages come newest first, each one ending where the one before it begins (`meta.start`, the
-// first candle the API counted, a missing one too). Overlaps are dropped, so the result is sorted
-// by time with every time once. An older page whose start is not below its end has nothing
-// before it: history ends there. The latest page reaches down to `since`, where the older pages
-// end; when it was refreshed by limit instead (`pageRange`), the older pages are not joined to it.
-export function mergePages(pages: readonly Candles[], since?: number): History {
-  const detached = since !== undefined && (pages[0]?.meta.start ?? since) > since;
+const EMPTY: History = { bars: [], nextEnd: undefined, gapsTotal: 0, detached: false };
+
+// The latest page, then the older pages, newest first; a page that has not arrived yet is
+// undefined, and the pages below it wait for it. Each older page ends where the one before it
+// begins (`meta.start`, the first candle the API counted, a missing one too). Overlaps are
+// dropped, so the result is sorted by time with every time once. The API skips the time without
+// sessions, so an older page without a candle has no data below it: history ends there. The
+// latest page reaches down to `since`, where the older pages end; when it was refreshed by limit
+// instead (`pageRange`), the older pages are not joined to it.
+export function mergePages(pages: readonly (Candles | undefined)[], since?: number): History {
+  const [latest, ...older] = pages;
+  if (latest === undefined) return EMPTY;
+  const detached = since !== undefined && latest.meta.start > since;
   const byTime = new Map<number, Bar>();
-  let nextEnd: number | undefined;
-  let gapsTotal = 0;
-  for (const page of detached ? pages.slice(0, 1) : pages) {
+  const add = (page: Candles) => {
     for (const bar of toBars(page)) if (!byTime.has(bar.time)) byTime.set(bar.time, bar);
+  };
+  add(latest);
+  let nextEnd: number | undefined = latest.meta.start;
+  let gapsTotal = latest.meta.gaps_total;
+  for (const page of detached ? [] : older) {
+    if (page === undefined) break;
+    add(page);
     gapsTotal += page.meta.gaps_total;
-    if (nextEnd !== undefined && page.meta.start >= nextEnd) {
+    if (page.t.length === 0) {
       nextEnd = undefined;
       break;
     }

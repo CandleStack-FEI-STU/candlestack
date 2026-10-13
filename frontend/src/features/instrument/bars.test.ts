@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { PAGE_SIZE, type Candles } from '@/api';
+import type { Candles } from '@/api';
 
 import { hasOlder, mergePages, toBars } from './bars';
+
+// Candles in one page of the chart.
+const PAGE_SIZE = 500;
 
 // A page as the API sends it: `start` is where it begins, the first candle unless it is missing.
 function page(times: number[], start = times[0] ?? 1000, gaps = 0): Candles {
@@ -85,10 +88,19 @@ describe('mergePages', () => {
     expect(hasOlder(history.nextEnd, 0)).toBe(false);
   });
 
-  it('goes on before an older page whose candles are all missing', () => {
+  it('ends history at an older page without candles, even one that counted missing ones', () => {
+    // The API skips nights and weekends, so there is no data below it: going on would ask for
+    // empty pages all the way down to the first candle.
     const history = mergePages([page([1000, 1001]), page([], 400, 600)], 1000);
-    expect(history.nextEnd).toBe(400);
+    expect(history.nextEnd).toBeUndefined();
     expect(history.gapsTotal).toBe(600);
+  });
+
+  it('waits for the latest page, and for an older page below which the next ones hang', () => {
+    expect(mergePages([undefined, page([998, 999])], 1000)).toEqual(mergePages([]));
+    const history = mergePages([page([1000, 1001]), undefined, page([10, 11])], 1000);
+    expect(history.bars.map((bar) => bar.time)).toEqual([1000, 1001]);
+    expect(history.nextEnd).toBe(1000);
   });
 
   it('adds up the gaps of every page and is empty without pages', () => {

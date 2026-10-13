@@ -13,6 +13,10 @@ export type CandleHistory = {
   // An older page is on its way; scrolling further left waits for it.
   isLoadingOlder: boolean;
   hasOlder: boolean;
+  // How often history started over below a refreshed latest page. The chart is keyed by it: a
+  // new chart opens on the newest candles, as on the first load, and keeps no view of bars
+  // that are gone.
+  restarts: number;
   error: Error | null;
   // When that error came: a new one restarts the Retry-After countdown.
   errorAt: number;
@@ -39,8 +43,10 @@ type Pages = {
 // the chart is not redrawn on every render. Detached, the older pages are on their way out
 // (useCandleHistory drops them), so they neither hold back nor fail anything.
 export function summarize(pages: UseQueryResult<Candles>[], since: number | undefined): Pages {
-  const loaded = pages.flatMap((page) => (page.data ? [page.data] : []));
-  const history = mergePages(loaded, since);
+  const history = mergePages(
+    pages.map((page) => page.data),
+    since,
+  );
   const shown = history.detached ? pages.slice(0, 1) : pages;
   return {
     history,
@@ -71,7 +77,7 @@ function useAutoRetries(lastSuccess: number, retry: () => void) {
 // and kept, and only the latest page ever refreshes. The caller mounts it anew for another
 // instrument or timeframe (a React key), which starts again from the latest page.
 export function useCandleHistory(instrument: InstrumentDetail, timeframe: Timeframe): CandleHistory {
-  const [olderEnds, setOlderEnds] = useState<number[]>([]);
+  const [{ olderEnds, restarts }, setChain] = useState({ olderEnds: [] as number[], restarts: 0 });
   // The latest page reaches down to where the first older page ends (see pageRange).
   const since = olderEnds[0];
   const base = { instrument: instrument.id, timeframe, maxCandles: instrument.max_candles };
@@ -88,12 +94,14 @@ export function useCandleHistory(instrument: InstrumentDetail, timeframe: Timefr
   const { nextEnd, busy, failed } = pages;
   const loadOlder = useCallback(() => {
     if (busy || failed || !more || nextEnd === undefined) return;
-    setOlderEnds((ends) => (ends.includes(nextEnd) ? ends : [...ends, nextEnd]));
+    setChain((chain) =>
+      chain.olderEnds.includes(nextEnd) ? chain : { ...chain, olderEnds: [...chain.olderEnds, nextEnd] },
+    );
   }, [busy, failed, more, nextEnd]);
 
   // The latest page begins above the older pages (pageRange): drop them right away, during
   // this render, and history starts again below the latest page.
-  if (pages.history.detached) setOlderEnds([]);
+  if (pages.history.detached) setChain((chain) => ({ olderEnds: [], restarts: chain.restarts + 1 }));
 
   const retry = useCallback(() => void failed?.refetch(), [failed]);
   const auto = useAutoRetries(pages.lastSuccess, retry);
@@ -104,6 +112,7 @@ export function useCandleHistory(instrument: InstrumentDetail, timeframe: Timefr
     isPending: pages.latestPending,
     isLoadingOlder: pages.olderBusy,
     hasOlder: more,
+    restarts,
     error: failed?.error ?? null,
     errorAt: failed?.errorUpdatedAt ?? 0,
     autoRetries: auto.count,
