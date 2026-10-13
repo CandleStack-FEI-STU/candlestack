@@ -38,8 +38,9 @@ class InstrumentOut(BaseModel):
         examples=["spot"],
     )
     exchange: str | None = Field(
-        description="Listing exchange of a stock (`NASDAQ`, `NYSE`, `ARCA`, ...); null for crypto.",
-        examples=[None],
+        description="Where it trades: the listing exchange of a stock (`NASDAQ`, `NYSE`, "
+        "`ARCA`, ...), `BINANCE` for a crypto pair.",
+        examples=["BINANCE"],
     )
     base: str | None = Field(
         description="Base asset of a crypto pair; null for stocks.", examples=["BTC"]

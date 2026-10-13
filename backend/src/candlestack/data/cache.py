@@ -27,8 +27,9 @@ logger = logging.getLogger(__name__)
 # The version of each key family's values (the first part of a name; 1 when not listed). Redis
 # keeps its contents across deploys, so a family gets a new version whenever the meaning or
 # format of its values changes: values stored under the old version are never read again and
-# expire. candles 2: archive candles off the timeframe's grid are taken from REST.
-VERSIONS = {"candles": 2}
+# expire. candles 2: archive candles off the timeframe's grid are taken from REST. catalog 2:
+# crypto pairs have the exchange BINANCE.
+VERSIONS = {"candles": 2, "catalog": 2}
 
 LOCK_PREFIX = "data:lock:"
 FAIL_PREFIX = "data:fail:"

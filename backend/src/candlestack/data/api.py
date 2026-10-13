@@ -271,8 +271,8 @@ async def search_instruments(
     exchange: Annotated[
         Exchange | None,
         Query(
-            description="Only stocks listed on this exchange; crypto pairs have none, so with "
-            "`market=crypto` nothing matches.",
+            description="Only instruments that trade on this exchange: `BINANCE` lists the "
+            "crypto pairs, the others stocks, so with the other `market` nothing matches.",
         ),
     ] = None,
     limit: Annotated[int, Query(ge=1, le=100, description="Most items to return.")] = 20,
@@ -287,7 +287,7 @@ async def search_instruments(
     first), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word
     in the name, substring of the symbol, substring of the name; ties go to the shorter symbol,
     then alphabetically. Without `q`, every instrument comes back in symbol order.
-    `exchange` narrows any of these to the stocks listed on it.
+    `exchange` narrows any of these to the instruments that trade on it.
     `total` counts all matches: page through them with `offset` and `limit`.
 
     When the instrument list of one market cannot be loaded, the other market is still

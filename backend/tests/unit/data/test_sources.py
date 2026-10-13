@@ -164,6 +164,7 @@ def test_exchange_info_lists_the_trading_pairs() -> None:
         "binance",
         "spot",
     )
+    assert {item.exchange for item in instruments} == {"BINANCE"}
 
 
 def test_exchange_info_skips_pairs_that_are_not_trading() -> None:

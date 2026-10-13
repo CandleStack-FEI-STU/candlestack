@@ -137,15 +137,15 @@ class DataService:
         """``limit`` instruments from ``offset`` on that match ``q``, best first (ranking in
         ``candlestack.data.catalog``), or of every instrument by symbol without ``q``, in the
         markets whose catalog can be loaded; ``unavailable`` names the others. Raises the
-        source's error when none can be loaded. ``exchange`` keeps only the stocks listed on
-        it."""
+        source's error when none can be loaded. ``exchange`` keeps only the instruments that
+        trade there."""
         if q is not None and not normalise_query(q):
             return SearchResult([], [], 0)
         if exchange is not None:
-            # Only stocks have an exchange: the crypto catalog is not needed.
-            if market is Market.CRYPTO:
+            # An exchange lists one market only: the other market's catalog is not needed.
+            if market not in (None, exchange.market):
                 return SearchResult([], [], 0)
-            market = Market.STOCK
+            market = exchange.market
         catalog = await self._catalogs.catalog(market)
         items, total = catalog.page(q, market, limit, offset, exchange=exchange)
         return SearchResult(items, self._catalogs.missing(market), total)

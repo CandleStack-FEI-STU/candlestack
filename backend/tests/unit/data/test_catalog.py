@@ -17,6 +17,7 @@ def crypto(symbol: str, base: str, quote: str) -> Instrument:
         name=f"{base}/{quote}",
         source="binance",
         feed="spot",
+        exchange="BINANCE",
         base=base,
         quote=quote,
     )
@@ -212,6 +213,13 @@ def test_filter_by_exchange(catalog: Catalog) -> None:
         "stock:AAPL"
     ]
     assert catalog.page(None, market=Market.CRYPTO, exchange=Exchange.NASDAQ) == ([], 0)
+    assert catalog.page(None, market=Market.STOCK, exchange=Exchange.BINANCE) == ([], 0)
+    assert ids(catalog.search("btc", exchange=Exchange.BINANCE)) == [
+        "crypto:BTCUSDT",
+        "crypto:BTCUSDC",
+        "crypto:ETHBTC",
+        "crypto:WBTCUSDT",
+    ]
     assert catalog.page(None, exchange=Exchange.BATS) == ([], 0)
     assert catalog.page(None, limit=1, offset=1, exchange=Exchange.ARCA) == ([INSTRUMENTS[11]], 2)
     assert ids(search(INSTRUMENTS, "a", exchange=Exchange.NYSE)) == ["stock:APLE", "stock:BRK.B"]

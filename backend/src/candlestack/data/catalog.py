@@ -7,7 +7,7 @@ BTCTRY); symbol prefix; prefix of a word in the name; substring of the symbol; s
 name. Other ties go to the shorter symbol, then alphabetically. Symbols are compared without
 separators and case (``btc/usdt`` finds ``BTCUSDT``, ``brkb`` finds ``BRK.B``), names word by
 word without case and punctuation. Without a query, every instrument comes back in symbol order.
-An exchange keeps only the stocks listed on it; crypto pairs have none.
+An exchange keeps only the instruments that trade on it (BINANCE: the crypto pairs).
 """
 
 import re

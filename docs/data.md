@@ -40,7 +40,7 @@ characters.
 | `name` | `BTC/USDT` (base/quote) | Alpaca asset name |
 | `source` | `binance` | `alpaca` |
 | `feed` | `spot` | `iex` |
-| `exchange` | `null` | Alpaca exchange (`NASDAQ`, `NYSE`, `ARCA`, ...) |
+| `exchange` | `BINANCE` | Alpaca exchange (`NASDAQ`, `NYSE`, `ARCA`, ...) |
 | `base`, `quote` | `BTC`, `USDT` | `null` |
 
 `GET /api/v1/data/instruments?q=&market=&exchange=&limit=&offset=` searches the cached catalogs of both
@@ -51,7 +51,7 @@ markets (no source call per item) and returns one page,
 | --- | --- |
 | `q` | optional, 1-50 characters; without it, every instrument in symbol order (equal symbols: crypto first). A query without letters or digits finds nothing. Case-insensitive; separators are ignored in symbols: `btc/usdt`, `btc-usdt` and `BTC USDT` all match `BTCUSDT`, `brkb` matches `BRK.B` |
 | `market` | optional, `crypto` or `stock` |
-| `exchange` | optional, `AMEX`, `ARCA`, `BATS`, `NASDAQ` or `NYSE` (upper case); only stocks listed there. Crypto pairs have no exchange, so with `market=crypto` nothing matches. Without `market` or with `market=stock`, only the stock catalog is searched: while it cannot be loaded, the answer is 503 `source-unavailable`, not 200 with `unavailable`. Works with `q`, `market` and paging. Alpaca exchanges outside this list are logged as a warning when the catalog is fetched from Alpaca |
+| `exchange` | optional, `AMEX`, `ARCA`, `BATS`, `BINANCE`, `NASDAQ` or `NYSE` (upper case); only the instruments that trade there. `BINANCE` lists the crypto pairs and the others stocks, so with the other `market` (`market=crypto&exchange=NYSE`) nothing matches. Only the catalog of the exchange's market is searched: while it cannot be loaded, the answer is 503 `source-unavailable`, not 200 with `unavailable`. Works with `q`, `market` and paging. Alpaca exchanges outside this list are logged as a warning when the catalog is fetched from Alpaca |
 | `limit` | default 20, max 100 |
 | `offset` | default 0; matches to skip. Past the end, `items` is empty and `total` still counts all matches |
 
@@ -339,7 +339,7 @@ again. Keys:
 
 | Key | Value | Lifetime |
 | --- | --- | --- |
-| `data:v1:catalog:<market>` | instrument list of the market with its fetch time (compact JSON) | 7 days; refreshed when older than 24 h, the old list is served while one background task refreshes it |
+| `data:v2:catalog:<market>` | instrument list of the market with its fetch time (compact JSON) | 7 days; refreshed when older than 24 h, the old list is served while one background task refreshes it |
 | `data:v1:calendar` | NYSE sessions from 2016 to the end of next year | 7 days |
 | `data:v2:candles:<instrument>:<base timeframe>:<chunk>` | one chunk of validated candles, Arrow IPC + zstd | see below |
 | `data:v1:first:<instrument>` | `available_from` | 7 days; 1 hour while the instrument has no candle |
@@ -373,7 +373,8 @@ again. Keys:
   values changes, because Redis keeps its contents across deploys: values under the old
   version are never read again and expire. `candles` is `v2` since archive candles off the
   grid are taken from REST (see [What is fetched](#what-is-fetched)); the chunks cached before
-  that hold them as delivered.
+  that hold them as delivered. `catalog` is `v2` since crypto pairs have the exchange
+  `BINANCE`; the lists cached before that have none.
 - `GET /api/health/sources` reports `ok` or `error` per source (Binance `GET /api/v3/ping`,
   Alpaca `GET /v2/clock`) from the 60 s health keys.
 

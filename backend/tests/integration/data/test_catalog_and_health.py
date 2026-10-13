@@ -105,6 +105,39 @@ async def test_filter_by_exchange_needs_only_the_stocks(service: DataService, up
     assert catalog.call_count == 0
 
 
+async def test_binance_lists_the_crypto_pairs_and_needs_only_them(service: DataService, upstream):
+    upstream.exchange_info()
+    assets = upstream.router.get(f"{upstream.ALPACA_API}/v2/assets").respond(503)
+
+    found = await service.search("btc", exchange=Exchange.BINANCE)
+    assert ids(found)[0] == "crypto:BTCUSDT"
+    assert {item.exchange for item in found.items} == {"BINANCE"}
+    assert (found.unavailable, found.total) == ([], len(found.items))
+    assert await service.search(None, Market.STOCK, exchange=Exchange.BINANCE) == SearchResult(
+        [], [], 0
+    )
+    assert assets.call_count == 0
+
+
+async def test_catalogs_cached_before_crypto_had_an_exchange_are_not_read(
+    service: DataService, upstream, redis
+):
+    # Such lists have no exchange for the crypto pairs; they are under data:v1:catalog and
+    # expire there, the new ones are under data:v2:catalog.
+    stale = {
+        "fetched_at": int(time.time()),
+        "items": [["BTCUSDT", "BTC/USDT", None, "BTC", "USDT"]],
+    }
+    await redis.set("data:v1:catalog:crypto", json.dumps(stale))
+    info = upstream.exchange_info()
+
+    found = await service.search("btcusdt", exchange=Exchange.BINANCE)
+
+    assert ids(found) == ["crypto:BTCUSDT"]
+    assert info.call_count == 1
+    assert json.loads(await redis.get("data:v2:catalog:crypto"))["items"][0][2] == "BINANCE"
+
+
 async def test_search_leaves_out_a_market_that_cannot_be_loaded(service: DataService, upstream):
     upstream.exchange_info()
     assets = upstream.router.get(f"{upstream.ALPACA_API}/v2/assets").respond(503)
@@ -154,14 +187,14 @@ async def test_search_does_not_wait_for_a_market_being_loaded(
 
 
 async def test_unreadable_stored_catalog_is_fetched_again(service: DataService, upstream, redis):
-    await redis.set("data:v1:catalog:crypto", b'{"fetched_at": "not a list"}')
+    await redis.set("data:v2:catalog:crypto", b'{"fetched_at": "not a list"}')
     info = upstream.exchange_info()
 
     found = await service.search("btcusdt", Market.CRYPTO)
 
     assert ids(found) == ["crypto:BTCUSDT"]
     assert info.call_count == 1
-    assert json.loads(await redis.get("data:v1:catalog:crypto"))["items"]
+    assert json.loads(await redis.get("data:v2:catalog:crypto"))["items"]
 
 
 async def test_stale_catalog_is_served_while_it_refreshes(
