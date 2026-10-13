@@ -32,12 +32,11 @@ export function searchInstruments(params: InstrumentSearchParams, signal?: Abort
 }
 
 // While the next page or query loads, the previous result stays on screen instead of a blank
-// table. A minute of freshness: the catalogs change once a day.
+// table. Fresh for the client's default minute: the catalogs change once a day.
 export function instrumentSearchQueryOptions(params: InstrumentSearchParams) {
   return queryOptions({
     queryKey: ['instruments', params],
     queryFn: ({ signal }) => searchInstruments(params, signal),
-    staleTime: 60_000,
     placeholderData: keepPreviousData,
   });
 }

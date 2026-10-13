@@ -9,7 +9,8 @@ const OPTIONS: { label: string; market: Market | undefined }[] = [
   { label: 'Crypto', market: 'crypto' },
 ];
 
-// Links, like the timeframe switch: the market is part of the URL. A new market starts at page 1.
+// Links, like the timeframe switch: the market is part of the URL, and Back undoes a change. A new
+// market starts at page 1.
 export function MarketFilter({ current }: { current: Market | undefined }) {
   return (
     <nav aria-label="Market" className="flex gap-1">
@@ -23,7 +24,6 @@ export function MarketFilter({ current }: { current: Market | undefined }) {
             // Crypto pairs have no exchange: switching to them drops it.
             exchange: market !== 'crypto' && 'exchange' in prev ? prev.exchange : undefined,
           })}
-          replace
           aria-current={market === current ? 'page' : undefined}
           className={cn(
             'rounded-md border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground',

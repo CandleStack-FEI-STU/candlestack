@@ -4,5 +4,12 @@ export { ApiError } from './client';
 export { useHealth, type Health } from './health';
 export { exchangeName, instrumentQueryOptions, type InstrumentDetail, type Market } from './instruments';
 export { queryClient } from './queryClient';
-export { EXCHANGES, hasNextPage, instrumentSearchQueryOptions, type Exchange, type Instrument } from './search';
+export {
+  EXCHANGES,
+  hasNextPage,
+  instrumentSearchQueryOptions,
+  type Exchange,
+  type Instrument,
+  type InstrumentSearchResult,
+} from './search';
 export { instrumentTimeframe, parseTimeframe, type Timeframe } from './timeframes';

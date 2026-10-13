@@ -18,7 +18,8 @@ Open http://localhost:5173. The dev server forwards `/api/*` to the prod API
 
 When `main` uses API changes that prod does not have yet, point the dev server at a backend
 that has them with `API_TARGET`, for example the local one from the repository root
-(`docker compose up`, see the root README):
+(`docker compose up`, see the root README). Set it in the shell or in the repository's `.env`
+(see `.env.example`):
 
 ```sh
 API_TARGET=http://localhost:8000 npm run dev

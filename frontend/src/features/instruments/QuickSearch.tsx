@@ -37,18 +37,22 @@ function onListKey(event: KeyboardEvent<HTMLAnchorElement>, input: RefObject<HTM
 // close the list before the click lands. Keeping the focus where it is lets the click through.
 const keepFocus = (event: MouseEvent) => event.preventDefault();
 
+// A Ctrl/Cmd-, Shift- or Alt-click opens the result elsewhere: this tab keeps its search.
+const opensElsewhere = (event: MouseEvent) =>
+  event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0;
+
 // What the list says above its links: searching, an error, or that nothing matched.
 type ResultsState = { searching: boolean; error: Error | null; items: readonly Instrument[] };
 
-function Note({ tone = 'muted', children }: { tone?: 'muted' | 'error'; children: ReactNode }) {
+function StatusItem({ tone = 'muted', children }: { tone?: 'muted' | 'error'; children: ReactNode }) {
   const color = tone === 'error' ? 'text-destructive' : 'text-muted-foreground';
   return <li className={`px-3 py-1.5 ${color}`}>{children}</li>;
 }
 
 function StatusNote({ searching, error, items }: ResultsState) {
-  if (searching) return <Note>Searching…</Note>;
-  if (error) return <Note tone="error">Search failed: {error.message}</Note>;
-  if (items.length === 0) return <Note>No instruments match.</Note>;
+  if (searching) return <StatusItem>Searching…</StatusItem>;
+  if (error) return <StatusItem tone="error">Search failed: {error.message}</StatusItem>;
+  if (items.length === 0) return <StatusItem>No instruments match.</StatusItem>;
   return null;
 }
 
@@ -61,13 +65,16 @@ type ResultsProps = ResultsState & {
 
 function Results({ q, tf, input, onPick, ...state }: ResultsProps) {
   const onKeyDown = (event: KeyboardEvent<HTMLAnchorElement>) => onListKey(event, input);
-  const link = { onClick: onPick, onKeyDown, onMouseDown: keepFocus };
+  const onClick = (event: MouseEvent) => {
+    if (!opensElsewhere(event)) onPick();
+  };
+  const link = { onClick, onKeyDown, onMouseDown: keepFocus };
   return (
     <ul className="absolute top-full right-0 z-20 mt-1 w-full max-w-[calc(100vw-2rem)] min-w-72 overflow-hidden rounded-md border bg-background py-1 text-sm shadow-lg">
       <StatusNote {...state} />
       {state.items.map((item) => (
         <li key={item.id}>
-          <Link to="/instrument/$id" params={{ id: item.id }} search={{ tf }} {...link} className={ITEM}>
+          <Link to="/instrument/$id" params={{ id: item.id }} search={{ tf }} {...link} data-result className={ITEM}>
             <span className="w-20 shrink-0 font-mono">{item.symbol}</span>
             <span className="truncate text-muted-foreground">{item.name}</span>
             <span className="ml-auto shrink-0 text-xs text-muted-foreground">{item.market}</span>
@@ -114,15 +121,15 @@ function useQuickSearch() {
   const onBlur = (event: FocusEvent<HTMLDivElement>) => {
     if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
   };
-  // ArrowDown goes into the list; Enter opens the first result, but not while searching, when
-  // the first link would not be a result of what was typed.
+  // ArrowDown goes into the list. Enter opens the first instrument and nothing else: not "All
+  // results" when nothing matched or the search failed, and not a row while still searching.
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Escape') return setOpen(false);
     if (event.key !== 'ArrowDown' && event.key !== 'Enter') return;
     event.preventDefault();
-    const first = event.currentTarget.parentElement?.querySelector('a');
-    if (event.key === 'ArrowDown') first?.focus();
-    else if (!results.searching) first?.click();
+    const list = event.currentTarget.parentElement;
+    if (event.key === 'ArrowDown') list?.querySelector('a')?.focus();
+    else if (!results.searching) list?.querySelector<HTMLAnchorElement>('a[data-result]')?.click();
   };
   // Clearing the box (Escape does that in a search input) closes the list at once.
   const onChange = (value: string) => {

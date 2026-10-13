@@ -28,10 +28,14 @@ describe('messages', () => {
       detail: "Server: query parameter 'q': Field required (HTTP 422)",
     });
     expect(describeListError(old, 'btc').title).toBe('The server did not accept this search.');
-    // A page far past the end is a 422 too, but not about `q`.
-    const pastTheEnd = describeListError(new ApiError(422, "query parameter 'offset': too large"), '');
-    expect(pastTheEnd.title).toBe('The server did not accept this search.');
-    expect(pastTheEnd.hint).toMatch(/^Start again from the plain list/);
+    // A page far past the end is a 422 too, about `offset`, with or without a query.
+    const offset = new ApiError(422, "query parameter 'offset': too large");
+    expect(describeListError(offset, '').title).toBe('This page does not exist.');
+    expect(describeListError(offset, 'apple').hint).toBe('Go back to page 1.');
+    expect(describeListError(new ApiError(422, "query parameter 'q': too long"), 'apple').hint).toMatch(
+      /shorter query/,
+    );
+    expect(describeListError(new ApiError(422, "query parameter 'market': bad"), '').hint).toMatch(/plain list/);
   });
 
   it('says how long to wait when the source is down', () => {
