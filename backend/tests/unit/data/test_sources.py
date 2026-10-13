@@ -244,6 +244,38 @@ def test_assets_warn_about_exchanges_outside_the_filter(caplog: pytest.LogCaptur
     assert "exchanges outside Exchange: IEX (1), NEWX (2)" in caplog.text
 
 
+def test_assets_warn_about_a_null_exchange_next_to_a_named_one(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    asset = {"name": "Some Corp", "tradable": True}
+    body = [
+        {**asset, "symbol": "NULA", "exchange": None},
+        {**asset, "symbol": "NEWA", "exchange": "NEWX"},
+    ]
+
+    with caplog.at_level(logging.WARNING):
+        instruments = parse_assets(json.dumps(body).encode())
+
+    assert [item.exchange for item in instruments] == [None, "NEWX"]
+    assert "exchanges outside Exchange: NEWX (1), None (1)" in caplog.text
+
+
+def test_assets_do_not_count_exchanges_of_skipped_symbols(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    asset = {"name": "Some Corp", "tradable": True}
+    body = [
+        {**asset, "symbol": "AAPL", "exchange": "NASDAQ"},
+        {**asset, "symbol": "brk.a", "exchange": "NEWX"},
+    ]
+
+    with caplog.at_level(logging.WARNING):
+        instruments = parse_assets(json.dumps(body).encode())
+
+    assert [str(item.id) for item in instruments] == ["stock:AAPL"]
+    assert "outside Exchange" not in caplog.text
+
+
 def test_assets_on_known_exchanges_do_not_warn(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.WARNING):
         parse_assets(fixture_bytes("alpaca/assets.json"))

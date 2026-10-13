@@ -89,14 +89,9 @@ def parse_assets(content: bytes) -> list[Instrument]:
         raise DataIntegrityError(
             f"Alpaca assets cannot be read: {type(exc).__name__} {exc}", source=NAME
         ) from None
-    unknown = Counter(exchange for _, _, exchange in assets if exchange not in Exchange)
-    if unknown:
-        # Still listed, but the exchange filter cannot find them until Exchange has the value.
-        logger.warning(
-            "Alpaca lists stocks on exchanges outside Exchange: %s",
-            ", ".join(f"{exchange} ({count})" for exchange, count in sorted(unknown.items())),
-        )
     instruments = []
+    # Counted by name, so that any value Alpaca sends (even null) sorts for the warning.
+    unknown: Counter[str] = Counter()
     for symbol, name, exchange in assets:
         try:
             instrument_id = InstrumentId.parse(f"stock:{symbol}")
@@ -105,8 +100,16 @@ def parse_assets(content: bytes) -> list[Instrument]:
         if instrument_id is None or instrument_id.symbol != symbol:
             logger.warning("Skipping Alpaca symbol %r: not a valid instrument symbol", symbol)
             continue
+        if str(exchange) not in Exchange:
+            unknown[str(exchange)] += 1
         instruments.append(
             Instrument(id=instrument_id, name=name, source=NAME, feed="iex", exchange=exchange)
+        )
+    if unknown:
+        # Still listed, but the exchange filter cannot find them until Exchange has the value.
+        logger.warning(
+            "Alpaca lists stocks on exchanges outside Exchange: %s",
+            ", ".join(f"{exchange} ({count})" for exchange, count in sorted(unknown.items())),
         )
     return instruments
 
