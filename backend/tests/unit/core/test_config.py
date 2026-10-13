@@ -35,7 +35,7 @@ def test_defaults() -> None:
 
 @pytest.mark.parametrize(
     ("app_env", "limit"),
-    [("prod", 150), ("stage", 60), ("pr-42", 30), ("local", 60), ("test", 60)],
+    [("prod", 150), ("stage", 100), ("pr-42", 30), ("local", 60), ("test", 60)],
 )
 def test_alpaca_rate_limit_default_depends_on_env(
     monkeypatch: pytest.MonkeyPatch, app_env: str, limit: int
