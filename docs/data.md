@@ -392,7 +392,7 @@ The former `/api/v1/data/candles?instrument=<id>` endpoint has been removed.
 | `timeframe` | required, one of `1m 5m 15m 30m 1h 4h 1d` |
 | `start` | inclusive; epoch seconds or ISO 8601 (see [Time](#time)). Without it, `limit` picks the start |
 | `end` | optional, exclusive, same formats; default the request time |
-| `limit` | optional, 1 to 5000, default 500: without `start`, the number of candles to return. With `start` it is a 422 `validation`; above 5000 it is a 422 `validation`, and above `CANDLES_MAX` (default 50000, so only when it is set below 5000) a 422 `too-many-candles` |
+| `limit` | optional, 1 to 5000, default 500 (`CANDLES_MAX` when that is lower): without `start`, the number of candles to return. With `start` it is a 422 `validation`; above 5000 it is a 422 `validation`, and above `CANDLES_MAX` (default 50000, so only when it is set below 5000) a 422 `too-many-candles` |
 
 Example: `/api/v1/data/instruments/stock:AAPL/candles?timeframe=1h&start=2024-06-03&end=2024-06-04`
 returns the 7 candles of that session.

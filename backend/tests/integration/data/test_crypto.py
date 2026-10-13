@@ -181,6 +181,37 @@ async def test_last_candles_count_what_the_live_chunk_has(
     assert candles.start == utc("2025-02-02T22:00")
 
 
+async def test_last_candles_after_the_live_chunk_is_fetched_again(
+    service: DataService, upstream, redis, monkeypatch: pytest.MonkeyPatch
+):
+    first_now, now = utc("2025-02-03T02:30"), utc("2025-02-03T03:10")
+    freeze(monkeypatch, first_now)
+    freeze_binance(monkeypatch, first_now)
+    upstream.exchange_info()
+    upstream.first_kline(LISTED_MS)
+    upstream.fixture_archive("monthly", "BTCUSDT-1h-2025-01.zip")
+    name = "BTCUSDT-1h-2025-02-01.zip"
+    opens = [(utc("2025-02-01") + hour * HOUR) * 10**6 for hour in range(24)]
+    upstream.archive("daily", name, upstream.make_archive(name, opens, HOUR * 10**6))
+    upstream.archive("daily", "BTCUSDT-1h-2025-02-02.zip", None)
+    upstream.klines(
+        utc("2025-02-02") * 1000,
+        [upstream.kline((utc("2025-02-02") + hour * HOUR) * 1000) for hour in range(24)],
+    )
+    upstream.klines(
+        utc("2025-02-03") * 1000,
+        [upstream.kline((utc("2025-02-03") + hour * HOUR) * 1000) for hour in range(3)],
+    )
+    await service.last_candles(BTC, Timeframe.H1, first_now, 4)
+    await redis.flushdb()  # the chunk expired: it is fetched again, now with the 02:00 candle
+    freeze(monkeypatch, now)
+    freeze_binance(monkeypatch, now)
+
+    candles = await service.last_candles(BTC, Timeframe.H1, now, 4)
+
+    assert candles.frame["ts"].to_list() == [utc("2025-02-02T23:00") + i * HOUR for i in range(4)]
+
+
 async def test_last_candles_never_ask_for_more_than_counted(
     service: DataService, upstream, monkeypatch: pytest.MonkeyPatch
 ):
@@ -188,10 +219,8 @@ async def test_last_candles_never_ask_for_more_than_counted(
     upstream.first_kline(LISTED_MS)
     monkeypatch.setattr(service_module, "first_of_last", lambda *_, **__: utc("2024-01-01"))
 
-    with pytest.raises(TooManyCandles, match="Use a smaller limit") as many:
+    with pytest.raises(RuntimeError, match="holds 336"):
         await service.last_candles(BTC, Timeframe.H1, utc("2024-01-15"), 3)
-
-    assert (many.value.requested, many.value.maximum) == (336, 50000)
 
 
 async def test_last_candles_over_the_available_history(service: DataService, upstream):

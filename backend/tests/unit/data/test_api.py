@@ -655,6 +655,16 @@ def test_last_candles_default_limit(
     assert service.calls == [("last_candles", (BTCUSDT.id, Timeframe.M15, DAY_END, 500))]
 
 
+def test_default_limit_fits_a_low_candles_max(
+    app: FastAPI, client: TestClient, service: FakeDataService
+) -> None:
+    app.state.settings = app.state.settings.model_copy(update={"candles_max": 120})
+
+    client.get("/api/v1/data/instruments/crypto:BTCUSDT/candles?timeframe=1h")
+
+    assert service.calls[0][1][3] == 120
+
+
 @pytest.mark.parametrize("limit", [1, 5000])
 def test_last_candles_before_end(client: TestClient, service: FakeDataService, limit: int) -> None:
     response = client.get(
