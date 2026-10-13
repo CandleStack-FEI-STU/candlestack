@@ -122,8 +122,10 @@ async def test_last_candles_before_end(service: DataService, upstream):
 
 
 async def test_last_candles_up_to_now_are_closed_ones(
-    service: DataService, upstream, monkeypatch: pytest.MonkeyPatch
+    settings: Settings, redis, http: httpx.AsyncClient, upstream, monkeypatch: pytest.MonkeyPatch
 ):
+    # A limit equal to the maximum works though the open candle makes the period one longer.
+    service = build_data_service(settings.model_copy(update={"candles_max": 4}), redis, http)
     now = utc("2025-02-03T02:30")
     freeze(monkeypatch, now)
     upstream.exchange_info()
@@ -172,6 +174,11 @@ async def test_last_candles_checks(service: DataService, upstream):
         await service.last_candles(BTC, Timeframe.H1, utc("2100-01-01"), 10)
     with pytest.raises(TooManyCandles, match="Use a limit of 50000 or less") as many:
         await service.last_candles(BTC, Timeframe.H1, utc("2024-01-01"), 50001)
+    # The checks keep their order: the instrument, the period, then the limit.
+    with pytest.raises(InstrumentNotFound):
+        await service.last_candles(InstrumentId.parse("crypto:NOPEUSDT"), Timeframe.H1, 3600, 10**6)
+    with pytest.raises(PeriodOutOfRange):
+        await service.last_candles(BTC, Timeframe.H1, utc("2100-01-01"), 10**6)
 
     assert early.value.available_from == utc("2017-08-17T04:00")
     assert "Set start" not in early.value.detail

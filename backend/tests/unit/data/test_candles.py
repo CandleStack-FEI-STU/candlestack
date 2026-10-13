@@ -583,6 +583,19 @@ def test_first_of_last_sessions_skip_the_weekend(sessions: list[Session]) -> Non
     )
 
 
+def test_first_of_last_stops_at_the_lower_bound(sessions: list[Session]) -> None:
+    now, lower = utc("2025-01-01"), utc("2024-06-03 14:30")
+    end = utc("2024-06-04 20:00")
+
+    assert first_of_last(end, now, Timeframe.H1, 100, sessions, lower=lower) == lower
+    assert first_of_last(end, now, Timeframe.H1, 3, sessions, lower=lower) == utc(
+        "2024-06-04 17:30"
+    )
+    assert first_of_last(end, now, Timeframe.D1, 3, sessions, lower=utc("2024-06-04 15:00")) is None
+    assert first_of_last(end, now, Timeframe.H1, 100, lower=lower) == lower
+    assert first_of_last(end, now, Timeframe.H1, 3, lower=lower) == utc("2024-06-04 17:00")
+
+
 def test_first_of_last_with_fewer_candles_than_asked(sessions: list[Session]) -> None:
     now = utc("2025-01-01")
     one_week = [session for session in sessions if session.date <= date(2024, 1, 5)]

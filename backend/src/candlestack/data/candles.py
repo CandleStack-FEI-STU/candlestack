@@ -294,21 +294,26 @@ def first_of_last(
     timeframe: Timeframe,
     count: int,
     sessions: Sequence[Session] | None = None,
+    *,
+    lower: int | None = None,
 ) -> int | None:
     """Open time of the earliest of the last ``count`` bins that open before ``end`` and are
     closed by ``now``; for stocks only session bins count, so nights, weekends and holidays are
-    skipped. With fewer bins than ``count`` in ``sessions``, the earliest one there is; ``None``
+    skipped. Only bins that open at or after ``lower`` count (the first available candle), so the
+    walk back stops there: with fewer bins than ``count``, the earliest one there is; ``None``
     when there is none."""
     step = timeframe.seconds
     if sessions is None:
         newest = min(end - 1, now - step) // step * step
-        return max(0, newest - (count - 1) * step)
+        return max(lower or 0, newest - (count - 1) * step)
     earliest, remaining = None, count
     for i in range(bisect.bisect_left(sessions, end, key=lambda session: session.open) - 1, -1, -1):
+        if lower is not None and sessions[i].close <= lower:
+            break
         opens = [
             opened
             for opened, closed in session_bins(sessions[i], timeframe)
-            if opened < end and closed <= now
+            if (lower is None or opened >= lower) and opened < end and closed <= now
         ]
         if len(opens) >= remaining:
             return opens[-remaining]

@@ -379,8 +379,10 @@ async def candles(
             description="Without `start`: how many of the newest candles before `end` to "
             f"return, default {DEFAULT_LIMIT}. Stocks count only candles of trading sessions "
             "(nights, weekends and holidays are skipped), crypto counts every candle. Fewer "
-            "come back when the data starts later. Not together with `start`. Above "
-            "`max_candles` (see the instrument detail) it is `too-many-candles`.",
+            "come back when the data starts later. Not together with `start` (422 "
+            "`validation`). Above 5000 it is a 422 `validation`; when the server's "
+            "`max_candles` (see the instrument detail) is below 5000, a `limit` above it is "
+            "`too-many-candles`.",
         ),
     ] = None,
 ) -> Response:
@@ -396,7 +398,7 @@ async def candles(
         raise RequestValidationError(
             [
                 {
-                    "type": "period",
+                    "type": "limit_with_start",
                     "loc": ("query", "limit"),
                     "msg": "limit cannot be combined with start: send start and end, or limit "
                     "and end",

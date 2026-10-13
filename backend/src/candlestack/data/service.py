@@ -195,6 +195,10 @@ class DataService:
             lookup.available_from is not None and start < lookup.available_from
         ):
             raise lookup.out_of_range(start=start, end=end)
+        requested = candle_count(start, end, timeframe, lookup.sessions)
+        if requested > self._candles_max:
+            hint = suggest(start, end, timeframe, self._candles_max, lookup.sessions)
+            raise TooManyCandles(requested, self._candles_max, hint)
         return await self._load(lookup, start, end)
 
     async def last_candles(
@@ -206,23 +210,25 @@ class DataService:
         first candle there is; when no candle opens before ``end`` it is empty and starts at
         ``end``.
 
-        Raises ``TooManyCandles`` when ``limit`` is above the maximum, ``PeriodOutOfRange``
-        when ``end`` is in the future or not after the first candle, and the other errors of
-        ``candles``.
+        Raises ``InstrumentNotFound``, ``PeriodOutOfRange`` when ``end`` is in the future or
+        not after the first candle, ``TooManyCandles`` when ``limit`` is above the maximum, and
+        the other errors of ``candles``.
         """
+        lookup = await self._lookup(instrument_id, timeframe)
+        if end > lookup.now or (lookup.available_from is not None and end <= lookup.available_from):
+            raise lookup.out_of_range(start=None, end=end)
         if limit > self._candles_max:
             raise TooManyCandles(
                 limit, self._candles_max, f"Use a limit of {self._candles_max} or less."
             )
-        lookup = await self._lookup(instrument_id, timeframe)
-        if end > lookup.now or (lookup.available_from is not None and end <= lookup.available_from):
-            raise lookup.out_of_range(start=None, end=end)
-        start = first_of_last(end, lookup.now, timeframe, limit, lookup.sessions)
-        if start is None or lookup.first is None:
-            start = end  # no candle yet: an empty period
-        elif lookup.available_from is not None:
-            start = max(start, lookup.available_from)
-        return await self._load(lookup, start, end)
+        start = first_of_last(
+            end, lookup.now, timeframe, limit, lookup.sessions, lower=lookup.available_from
+        )
+        # No candle yet: an empty period. The window holds at most ``limit`` closed candles
+        # (plus one still open), so it needs no count check: any limit up to the maximum works.
+        return await self._load(
+            lookup, end if start is None or lookup.first is None else start, end
+        )
 
     async def _lookup(self, instrument_id: InstrumentId, timeframe: Timeframe) -> _Lookup:
         instrument = await self._find(instrument_id)
@@ -241,13 +247,8 @@ class DataService:
         )
 
     async def _load(self, lookup: _Lookup, start: int, end: int) -> CandleSet:
-        """The candles of a checked period ``[start, end)``."""
+        """The candles of a checked period ``[start, end)`` (its size is checked by the caller)."""
         source, timeframe, sessions = lookup.source, lookup.timeframe, lookup.sessions
-        requested = candle_count(start, end, timeframe, sessions)
-        if requested > self._candles_max:
-            hint = suggest(start, end, timeframe, self._candles_max, sessions)
-            raise TooManyCandles(requested, self._candles_max, hint)
-
         base = source.base_timeframe(timeframe)
         periods = [] if lookup.first is None else source.periods(base, start, end, lookup.now)
         blobs = await self._chunks(source, lookup.instrument, base, periods)

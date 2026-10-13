@@ -634,6 +634,15 @@ def test_candles_validation(
     assert service.calls == []
 
 
+def test_start_with_limit_has_its_own_error_type(client: TestClient) -> None:
+    response = client.get(f"{CANDLES}&limit=10")
+
+    body = problem(response, 422, "validation")
+    assert [(e["loc"], e["type"]) for e in body["errors"]] == [
+        (["query", "limit"], "limit_with_start")
+    ]
+
+
 def test_last_candles_default_limit(
     client: TestClient, service: FakeDataService, monkeypatch: pytest.MonkeyPatch
 ) -> None:
