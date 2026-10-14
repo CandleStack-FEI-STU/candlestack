@@ -61,12 +61,16 @@ class CatalogStore:
         (``missing`` names the markets left out). Raises the source's error when no requested
         market can be loaded.
 
-        Markets are waited for only while none of the requested ones is loaded. Once one is, the
-        others are loaded in the background and left out until they are, so a source that is
-        down does not hold up a search over all markets for its timeout.
+        A market whose list failed to load is waited for only while none of the requested ones
+        is loaded: otherwise it is loaded in the background and left out until it is, so a
+        source that is down does not hold up a search over all markets for its timeout. A
+        market not tried yet is waited for, so the first search after a start finds every
+        market even when the background refresh of the stats loaded one of them first.
         """
         markets = [market] if market else list(self._sources)
-        waited = [each for each in markets if each in self._entries] or markets
+        waited = [
+            each for each in markets if each in self._entries or each not in self._failed
+        ] or markets
         for each in markets:
             if each not in waited:
                 self._load_in_background(each)
