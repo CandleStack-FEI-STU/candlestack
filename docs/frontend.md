@@ -118,6 +118,29 @@ minute.
   scrolls; the section stops at 64rem (the chart at about 60rem), and on a taller screen the
   space left stays below it. `chartHeight.test.tsx` checks every link of that chain.
 
+## Home page
+
+`/` is the public start page (#199), approved in the design repository (`mockups/home`).
+`src/pages/HomePage.tsx` puts together its parts from `src/features/home/`:
+
+- a headline with Try Backtest and Browse instruments over the pipeline of a run: market data,
+  the three layers (representation, model, decision) and the results;
+- the three layers you can swap, each with what it offers;
+- the markets with the five most traded instruments in the list's style (`TopInstruments.tsx`);
+- compare and public experiments, both shown as "Coming soon".
+
+The instrument list is on `/instruments`: the title, four facts, then the search, the filters
+and the table ([Instrument list](#instrument-list)). An instrument opened from the home page
+gets `from: 'home'` in its history state (`router.tsx`), so its back link says "Home" and returns
+to `/`; otherwise it says "Instruments" and returns to the list's last search (`BackToList.tsx`).
+
+The header links Product (`/`), Instruments and the API docs of the same host, so stage links
+to stage. Sign in and Try Backtest do nothing until the builder is designed. Below `sm` the nav
+goes, and Sign in below `md`: with the nav, the row needs about 675 px.
+
+The 40 px grid behind the pages is stronger than the website's (0.09 light, 0.075 dark). The
+footer, the cards and the list's table are solid on it, so it never shows through them.
+
 ## Instrument icons
 
 `src/components/InstrumentIcon.tsx` shows the icon of `GET /api/v1/data/instruments/{id}/icon`
@@ -126,7 +149,7 @@ minute.
 | Place | Size | Corner radius | Row |
 | --- | --- | --- | --- |
 | Instrument list, before the symbol | 32 px | 3.2 px | 41 px (4 px padding), as high as without it |
-| Header quick search, before the symbol | 32 px | 3.2 px | 44 px |
+| Home page, the five most traded, before the symbol | 32 px | 3.2 px | as in the list |
 | Instrument page header, next to the name | 64 px | 6.4 px | - |
 
 - The radius is 10 % of the size. The fallback SVG is square, so the frontend rounds it like a
@@ -140,13 +163,11 @@ minute.
 - When the image does not load at all (e.g. a 502 during a deploy), the tile draws the backend's
   fallback itself (Lucide's `chart-candlestick` in white on dark grey), never a broken image.
 - In the list, the icon is not a link of its own: the symbol's link still covers the whole row.
-- On phones (< 640 px) the quick-search list hangs from the header's bar (`Header.tsx`, its
-  positioning parent) with a 16 px gutter on both sides; from `sm` up it is right-aligned under
-  the search box and never wider than the screen.
 
 ## Instrument list
 
-The list (`src/features/instruments/InstrumentTable.tsx`, #184) opens with the most traded
+The list on `/instruments` (`src/pages/InstrumentsPage.tsx`, the table in
+`src/features/instruments/InstrumentTable.tsx`, #184) opens with the most traded
 instruments first and shows each one's 24 h stats from the API (`price`, `change_24h`,
 `volume_24h`, see [data.md](data.md#stats)) and its last 10 daily candles (`spark`, #189):
 
@@ -195,7 +216,8 @@ instruments first and shows each one's 24 h stats from the API (`price`, `change
 ## Instrument filters
 
 The list filters by type (the market) and exchange and sorts by 24 h volume, change or symbol,
-all in the URL (`/?market=stock&exchange=NYSE`, `/?exchange=BINANCE`, `/?sort=gainers`), behind one
+all in the URL (`/instruments?market=stock&exchange=NYSE`, `/instruments?exchange=BINANCE`,
+`/instruments?sort=gainers`), behind one
 **Filters** button (`src/features/instruments/Filters.tsx`, rules in `filterRules.ts` and
 `sorting.ts`, #182, #184):
 
@@ -217,9 +239,9 @@ all in the URL (`/?market=stock&exchange=NYSE`, `/?exchange=BINANCE`, `/?sort=ga
 - Changing the type keeps an exchange it has and drops one it does not; picking an exchange
   never changes the type, and an order changes neither. Every pick starts at page 1 and adds a history entry, so Back undoes
   it; the panel stays open for the second pick.
-- A link the panel cannot make (`/?market=crypto&exchange=NYSE`) shows an empty list that says
-  why ("No crypto pairs on NYSE", "NYSE lists stocks only.") with a "Show all exchanges" link,
-  and the panel shows NYSE chosen but disabled.
+- A link the panel cannot make (`/instruments?market=crypto&exchange=NYSE`) shows an empty list
+  that says why ("No crypto pairs on NYSE", "NYSE lists stocks only.") with a "Show all
+  exchanges" link, and the panel shows NYSE chosen but disabled.
 - Keyboard: Enter, Space or ArrowDown on the button opens the panel on the chosen type. The
   arrows follow the layout and skip disabled entries: from `sm` up, ArrowUp, ArrowDown, Home
   and End move within a column (Type and Sort by on the left, Exchange on the right) and
