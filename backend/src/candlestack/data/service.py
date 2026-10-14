@@ -159,6 +159,9 @@ class DataService:
                 return SearchResult([], [], 0, [])
             market = exchange.market
         catalog = await self._catalogs.catalog(market)
+        # Taken with the catalog, before anything else is awaited: a market that finishes loading
+        # meanwhile is not in this catalog, so it must still count as unavailable.
+        unavailable = self._catalogs.missing(market)
         stats = await self._stats.table()
         # Sorting about 15k instruments takes a few ms: in a thread, off the event loop.
         found = await to_thread.run_sync(
@@ -166,7 +169,7 @@ class DataService:
                 catalog.page, q, market, limit, offset, exchange=exchange, sort=sort, stats=stats
             )
         )
-        return SearchResult(found.items, self._catalogs.missing(market), found.total, found.stats)
+        return SearchResult(found.items, unavailable, found.total, found.stats)
 
     async def keep_stats_fresh(self) -> None:
         """Refreshes the stats of every market when they are due, checking once a minute, until

@@ -79,21 +79,22 @@ class CatalogStore:
                 raise error
         if len(errors) == len(markets):
             raise errors[0]
-        if self._catalog is not None:
-            return self._catalog
-        version = self._version
-        catalog = await to_thread.run_sync(
-            Catalog,
-            [
-                item
-                for each in Market
-                if each in self._entries
-                for item in self._entries[each].instruments
-            ],
-        )
-        if version == self._version:  # no newer entry arrived while it was built
-            self._catalog = catalog
-        return catalog
+        # Built again when a newer entry arrived while it was built, so that the catalog holds
+        # exactly the markets ``missing`` leaves out.
+        while self._catalog is None:
+            version = self._version
+            catalog = await to_thread.run_sync(
+                Catalog,
+                [
+                    item
+                    for each in Market
+                    if each in self._entries
+                    for item in self._entries[each].instruments
+                ],
+            )
+            if version == self._version:
+                self._catalog = catalog
+        return self._catalog
 
     def missing(self, market: Market | None = None) -> list[Market]:
         """The requested markets (all without ``market``) whose list is not loaded, which a
