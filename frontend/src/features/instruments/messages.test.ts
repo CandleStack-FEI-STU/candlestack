@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ApiError } from '@/api';
 
-import { describeListError, emptyMessage, mismatchMessage, quickSearchError, unavailableMessage } from './messages';
+import { describeListError, emptyMessage, mismatchMessage, unavailableMessage } from './messages';
 
 describe('messages', () => {
   it('names the query and the market when nothing matches', () => {
@@ -52,6 +52,10 @@ describe('messages', () => {
     expect(down.title).toBe('The instrument catalog is unavailable right now.');
     expect(down.hint).toBe('The data source did not answer. Try again in 30 s.');
     expect(down.canRetry).toBe(true);
+    expect(describeListError(new ApiError(429, 'Too many requests', { retryAfter: 12 }), 'btc')).toMatchObject({
+      title: 'Too many requests.',
+      hint: 'Try again in 12 s.',
+    });
     expect(describeListError(new ApiError(500, 'Boom.'), '').title).toBe('The server ran into a problem.');
   });
 
@@ -62,14 +66,5 @@ describe('messages', () => {
     const bug = describeListError(new TypeError('x is undefined'), '');
     expect(bug.title).toBe('Something went wrong in the app.');
     expect(bug.detail).toBe('x is undefined');
-  });
-
-  it('gives the header search the hint as well as the title', () => {
-    expect(quickSearchError(new ApiError(429, 'Too many requests', { retryAfter: 12 }), 'btc')).toBe(
-      'Too many requests. Try again in 12 s.',
-    );
-    expect(quickSearchError(new ApiError(422, "query parameter 'q': too long"), 'btc')).toBe(
-      'The server did not accept this search. Try a shorter query: a symbol like btc or a name like apple.',
-    );
   });
 });

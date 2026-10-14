@@ -88,7 +88,7 @@ function PastTheEnd() {
 function Mismatch({ market, exchange }: { market: Market; exchange: Exchange }) {
   const { title, hint } = mismatchMessage(market, exchange);
   return (
-    <div className="flex flex-col items-center gap-1.5 rounded-lg border px-3 py-10 text-center text-sm">
+    <div className="flex flex-col items-center gap-1.5 rounded-lg border bg-background px-3 py-10 text-center text-sm">
       <p className="font-medium">{title}</p>
       <p className="text-muted-foreground">{hint}</p>
       <Button asChild variant="outline" size="sm" className="mt-1.5">
@@ -151,15 +151,18 @@ export function InstrumentList(props: Props) {
   const unavailable = unavailableMessage(data.unavailable);
   return (
     <>
-      {unavailable && <p className="mb-3 rounded-md border px-3 py-2 text-sm text-warn">{unavailable}</p>}
-      <div className={result.isPlaceholderData ? 'rounded-lg border opacity-60' : 'rounded-lg border'}>
-        <ListBody
-          items={data.items}
-          sort={shown}
-          waiting={result.isPlaceholderData || clamping}
-          page={page}
-          empty={emptyMessage(query, market, exchange)}
-        />
+      {unavailable && <p className="mb-3 rounded-md border bg-background px-3 py-2 text-sm text-warn">{unavailable}</p>}
+      {/* Solid under the rows, also while they fade for the next page: no grid shows through. */}
+      <div className="rounded-lg bg-background">
+        <div className={result.isPlaceholderData ? 'rounded-lg border opacity-60' : 'rounded-lg border'}>
+          <ListBody
+            items={data.items}
+            sort={shown}
+            waiting={result.isPlaceholderData || clamping}
+            page={page}
+            empty={emptyMessage(query, market, exchange)}
+          />
+        </div>
       </div>
       <Pager
         page={page}

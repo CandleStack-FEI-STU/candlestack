@@ -19,7 +19,7 @@
   --accent: #0f766e;
   --warn: #a15c07;
   --down: #b42318;
-  --grid: rgb(28 25 23 / 0.045);
+  --grid: rgb(28 25 23 / 0.09);
 
   /* A rising 24 h change in the instrument list (#184), as text: the grass green of the candles,
      darkened to 4.9:1 on the background. Falling uses --down. */
@@ -47,7 +47,7 @@
   --accent: #3cc7a6;
   --warn: #e8b45a;
   --down: #f0616d;
-  --grid: rgb(230 232 234 / 0.045);
+  --grid: rgb(230 232 234 / 0.075);
 
   /* 6.8:1 on the dark background. */
   --up: #43b049;

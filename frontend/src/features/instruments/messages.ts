@@ -103,13 +103,6 @@ function apiText(error: ApiError, query: string): Text {
   };
 }
 
-// The header search's error in one line: what happened and what to do, e.g. "Too many
-// requests. Try again in 12 s."
-export function quickSearchError(error: Error, query: string): string {
-  const { title, hint } = describeListError(error, query);
-  return `${title} ${hint}`;
-}
-
 // The list's error for the query it was loading.
 export function describeListError(error: Error, query: string): ListError {
   if (!(error instanceof ApiError)) {

@@ -1,12 +1,12 @@
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useCallback, useEffect } from 'react';
 
-import { PageTitle } from '@/components/PageTitle';
-import { Filters, InstrumentList, SearchBox, rememberListSearch } from '@/features/instruments';
+import { Filters, InstrumentFacts, InstrumentList, SearchBox, rememberListSearch } from '@/features/instruments';
 import { usePageTitle } from '@/lib/usePageTitle';
 
 // Every stock and crypto pair, searchable, the most traded first.
 // /instruments?q=apple&market=stock&exchange=NASDAQ&sort=gainers&page=2
+// The column is as wide as the header's (72rem), so both line up on a wide screen.
 export function InstrumentsPage() {
   const search = useSearch({ from: '/instruments' });
   const { q = '', market, exchange, sort, page = 1 } = search;
@@ -23,13 +23,20 @@ export function InstrumentsPage() {
   );
 
   return (
-    <>
-      <PageTitle title="Instruments" description="US stocks and crypto pairs. Open one to see its candles." />
+    <div className="mx-auto w-full max-w-[72rem]">
+      <div className="mb-8">
+        <h1 className="text-3xl font-semibold tracking-tight">Instruments</h1>
+        <p className="mt-2 max-w-[64ch] text-sm text-muted-foreground">
+          Everything you can run a backtest on: US stocks and ETFs from every exchange, and Binance spot pairs. Open one
+          to see its candles.
+        </p>
+        <InstrumentFacts />
+      </div>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <SearchBox query={q} onSearch={onSearch} />
         <Filters market={market} exchange={exchange} sort={sort} />
       </div>
       <InstrumentList query={q} market={market} exchange={exchange} sort={sort} page={page} />
-    </>
+    </div>
   );
 }
