@@ -47,6 +47,11 @@ _REDIS_ERRORS = (RedisError, OSError)
 _RELEASE = (
     "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) end return 0"
 )
+# Extends the lock's expiry only if it is still ours.
+_EXTEND = (
+    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+    "return redis.call('pexpire', KEYS[1], ARGV[2]) end return 0"
+)
 _HEADER = struct.Struct(">q")
 
 # Patched by tests to avoid real waiting.
@@ -190,8 +195,34 @@ class Cache:
             return token
         return token if taken else None
 
+    async def extend(self, name: str, token: str, ttl_ms: int) -> bool:
+        """Sets the lock of ``name`` to expire ``ttl_ms`` from now if ``token`` still holds it;
+        ``False`` when another holds it now (or nobody). Without Redis it is granted."""
+        if self._is_down():
+            return True
+        try:
+            return bool(await self._redis.eval(_EXTEND, 1, lock_key(name), token, ttl_ms))
+        except _REDIS_ERRORS as exc:
+            self._failed(exc)
+            return True
+
     async def unlock(self, name: str, token: str) -> None:
+        """Gives the lock back, only if ``token`` still holds it (it may have expired and been
+        taken by another)."""
         await self._release(lock_key(name), token)
+
+    async def head(self, name: str, size: int) -> bytes | None:
+        """The first ``size`` bytes of a value (``GETRANGE``), or ``None`` on a miss or when
+        Redis fails: a large value's header without reading all of it."""
+        if self._is_down():
+            return None
+        try:
+            # redis-py types values as bytes | str; this client never decodes (create_redis).
+            value: bytes = await self._redis.getrange(key(name), 0, size - 1)  # ty: ignore[invalid-assignment]
+        except _REDIS_ERRORS as exc:
+            self._failed(exc)
+            return None
+        return value or None
 
     async def _store(self, key: str, value: bytes, ttl: int) -> None:
         if self._is_down():
@@ -251,8 +282,12 @@ def encode_chunk(frame: pl.DataFrame, fetched_at: int) -> bytes:
     return buffer.getvalue()
 
 
+HEADER_SIZE = _HEADER.size
+
+
 def decode_fetched_at(blob: bytes) -> int:
-    """The fetch time of an ``encode_chunk`` blob, without decoding its frame."""
+    """The fetch time of an ``encode_chunk`` blob (its first ``HEADER_SIZE`` bytes are enough),
+    without decoding its frame."""
     return _HEADER.unpack_from(blob)[0]
 
 

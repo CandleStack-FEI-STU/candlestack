@@ -6,6 +6,7 @@ import { useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefOb
 
 import type { Exchange, Market } from '@/api';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
 import type { ListSort } from '@/routes/instrumentsSearch';
 
@@ -133,6 +134,8 @@ function Sections({ options, render }: SectionsProps) {
 // the second filter. The entry with the focus is never one the type has just disabled.
 function useFiltersPanel(options: FilterOption[]) {
   const navigate = useNavigate({ from: '/' });
+  // The arrows follow the layout, which changes at sm (640 px).
+  const layout = useMediaQuery('(min-width: 640px)') ? 'wide' : 'phone';
   const [open, setOpen] = useState(false);
   const [focused, setActive] = useState(0);
   const active = usableActive(options, focused);
@@ -160,7 +163,7 @@ function useFiltersPanel(options: FilterOption[]) {
       event.preventDefault();
       return pick(options[active]);
     }
-    const next = nextActive(options, active, event.key);
+    const next = nextActive(options, active, event.key, layout);
     if (next === undefined) return;
     event.preventDefault();
     focus(next);

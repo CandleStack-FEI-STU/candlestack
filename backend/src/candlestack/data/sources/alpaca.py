@@ -13,6 +13,7 @@ import math
 import time
 from collections import Counter
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from itertools import batched
 from typing import Any
@@ -42,6 +43,7 @@ from candlestack.data.models import (
     Market,
     Source,
     SourceHealth,
+    SourceStats,
     Timeframe,
 )
 from candlestack.data.sessions import NEW_YORK, Session, parse_calendar
@@ -168,6 +170,19 @@ def _positive(value: Any) -> float | None:
     return float(value) if math.isfinite(value) and value > 0 else None
 
 
+def _part(snapshot: Any, key: str) -> dict[str, Any]:
+    """A part of a snapshot (``latestTrade``, ``dailyBar``, ...): an object, ``{}`` when it is
+    missing or null."""
+    if not isinstance(snapshot, dict):
+        raise TypeError("the snapshot is not an object")
+    part = snapshot.get(key)
+    if part is None:
+        return {}
+    if not isinstance(part, dict):
+        raise TypeError(f"{key} is not an object")
+    return part
+
+
 def snapshot_stats(snapshot: Any, now: int) -> tuple[float, float | None, float | None] | None:
     """Price, 24 h change in percent and 24 h volume in USD of one snapshot, or ``None``
     without a price.
@@ -175,13 +190,14 @@ def snapshot_stats(snapshot: Any, now: int) -> tuple[float, float | None, float 
     The price is the latest trade (the daily bar's close without one), the change is against
     the previous daily bar's close, and the volume is the daily bar's volume times its
     volume-weighted price (its close without one). On the IEX feed both cover IEX trades only.
-    A daily bar older than ``STALE_BAR_SECONDS`` gives no change and a volume of 0.
+    A daily bar older than ``STALE_BAR_SECONDS`` gives no change and a volume of 0. Raises
+    ``TypeError`` for a snapshot, trade or bar that is not an object (``null`` is none).
     """
-    if not isinstance(snapshot, dict):
+    if snapshot is None:
         return None
-    trade = snapshot.get("latestTrade") or {}
-    daily = snapshot.get("dailyBar") or {}
-    previous = snapshot.get("prevDailyBar") or {}
+    trade, daily, previous = (
+        _part(snapshot, key) for key in ("latestTrade", "dailyBar", "prevDailyBar")
+    )
     price = _positive(trade.get("p")) or _positive(daily.get("c"))
     if price is None:
         return None
@@ -202,9 +218,10 @@ def snapshot_stats(snapshot: Any, now: int) -> tuple[float, float | None, float 
     return price, change, volume
 
 
-def parse_snapshots(content: bytes, now: int) -> pl.DataFrame:
-    """The stats (``STATS_SCHEMA``) of a ``GET /v2/stocks/snapshots`` body, an object by symbol;
-    symbols without a snapshot or a price have none (``snapshot_stats``)."""
+def parse_snapshots(content: bytes, now: int) -> tuple[pl.DataFrame, int]:
+    """The stats (``STATS_SCHEMA``) of a ``GET /v2/stocks/snapshots`` body, an object by symbol,
+    and the number of malformed snapshots skipped; symbols without a snapshot or a price have
+    none (``snapshot_stats``)."""
     try:
         body = orjson.loads(content)
     except orjson.JSONDecodeError as exc:
@@ -213,12 +230,16 @@ def parse_snapshots(content: bytes, now: int) -> pl.DataFrame:
         ) from None
     if not isinstance(body, dict):
         raise DataIntegrityError("Alpaca snapshots response is not an object.", source=NAME)
-    rows = []
+    rows, malformed = [], 0
     for symbol, snapshot in body.items():
-        stats = snapshot_stats(snapshot, now)
+        try:
+            stats = snapshot_stats(snapshot, now)
+        except TypeError:
+            malformed += 1
+            continue
         if stats is not None:
             rows.append((symbol, *stats))
-    return pl.DataFrame(rows, schema=STATS_SCHEMA, orient="row")
+    return pl.DataFrame(rows, schema=STATS_SCHEMA, orient="row"), malformed
 
 
 def relabel_daily(frame: pl.DataFrame, sessions: list[Session]) -> pl.DataFrame:
@@ -262,6 +283,16 @@ def regular_candles(
 
 def _rfc3339(ts: int) -> str:
     return f"{utc(ts):%Y-%m-%dT%H:%M:%SZ}"
+
+
+@dataclass
+class _Snapshots:
+    """What the snapshot requests of one stats refresh got so far."""
+
+    frames: list[pl.DataFrame] = field(default_factory=list)
+    malformed: int = 0
+    response: httpx.Response | None = None
+    error: DataError | None = None
 
 
 class AlpacaSource:
@@ -350,29 +381,73 @@ class AlpacaSource:
             ok=True, latency_ms=round((time.perf_counter() - started) * 1000), detail=None
         )
 
-    async def stats(self, instruments: Sequence[Instrument]) -> pl.DataFrame:
+    async def stats(self, instruments: Sequence[Instrument]) -> SourceStats:
         """Snapshots of ``SNAPSHOT_SYMBOLS`` stocks per request, one after another, each within
-        the stats share of the budget (waiting for it as long as needed) and our whole budget.
-        Logs Alpaca's rate-limit headers of the last answer next to our own count once."""
-        frames, response = [], None
-        symbols_of = (instrument.symbol for instrument in instruments)
-        for symbols in batched(symbols_of, SNAPSHOT_SYMBOLS, strict=False):
+        the stats share of the budget (waiting for it as long as needed) and our whole budget. A
+        request that fails is tried once more after the others; the symbols that still fail
+        keep their last stats. Logs Alpaca's rate-limit headers of the last answer next to our
+        own count, once."""
+        batches = list(batched((i.symbol for i in instruments), SNAPSHOT_SYMBOLS, strict=False))
+        got = _Snapshots()
+        failed = await self._snapshots(batches, got)
+        if failed:
+            # The whole budget may have been spent by chart requests: wait as it says, once.
+            if isinstance(got.error, SourceUnavailable) and got.error.retry_after:
+                await pause(min(got.error.retry_after, 60))
+            failed = await self._snapshots(failed, got)
+        if failed and got.error is not None:
+            if not got.frames:
+                raise got.error
+            logger.warning(
+                "Alpaca snapshots of %d of %d stocks failed (%s): their last stats stay",
+                sum(len(batch) for batch in failed),
+                len(instruments),
+                got.error.detail,
+            )
+        if got.malformed:
+            logger.warning("Skipped %d malformed Alpaca snapshots", got.malformed)
+        await self._log_rate_limit(got)
+        return SourceStats(
+            pl.concat(got.frames) if got.frames else pl.DataFrame(schema=STATS_SCHEMA),
+            frozenset(symbol for batch in failed for symbol in batch),
+        )
+
+    async def _snapshots(
+        self, batches: list[tuple[str, ...]], got: _Snapshots
+    ) -> list[tuple[str, ...]]:
+        """Asks for the snapshots of each batch into ``got``; returns the batches that failed."""
+        failed = []
+        for symbols in batches:
             await self._stats_turn()
-            response = await self._request(
-                f"{self._data}/v2/stocks/snapshots", {"symbols": ",".join(symbols), "feed": "iex"}
-            )
-            frames.append(await to_thread.run_sync(parse_snapshots, response.content, int(_time())))
-        if response is not None:
-            logger.info(
-                "Alpaca stats refreshed in %d requests: X-RateLimit-Limit %s, "
-                "X-RateLimit-Remaining %s; our count this minute %s of %d",
-                len(frames),
-                response.headers.get("x-ratelimit-limit", "-"),
-                response.headers.get("x-ratelimit-remaining", "-"),
-                await self._limiter.used(RATE_KEY),
-                self._limit,
-            )
-        return pl.concat(frames) if frames else pl.DataFrame(schema=STATS_SCHEMA)
+            try:
+                response = await self._request(
+                    f"{self._data}/v2/stocks/snapshots",
+                    {"symbols": ",".join(symbols), "feed": "iex"},
+                )
+                frame, malformed = await to_thread.run_sync(
+                    parse_snapshots, response.content, int(_time())
+                )
+            except DataError as exc:
+                failed.append(symbols)
+                got.error = exc
+                continue
+            got.frames.append(frame)
+            got.malformed += malformed
+            got.response = response
+        return failed
+
+    async def _log_rate_limit(self, got: _Snapshots) -> None:
+        if got.response is None:
+            return
+        logger.info(
+            "Alpaca stats refreshed in %d requests: X-RateLimit-Limit %s, "
+            "X-RateLimit-Remaining %s; our count this minute %s of %d",
+            len(got.frames),
+            got.response.headers.get("x-ratelimit-limit", "-"),
+            got.response.headers.get("x-ratelimit-remaining", "-"),
+            await self._limiter.used(RATE_KEY),
+            self._limit,
+        )
 
     async def _stats_turn(self) -> None:
         """Waits until the stats share of this minute has room for one more request."""

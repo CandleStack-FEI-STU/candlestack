@@ -167,7 +167,8 @@ instruments first and shows each one's 24 h stats from the API (`price`, `change
 - Phones (below `md`, 768 px): two columns. The symbol over "exchange · volume" (12/14; "NYSE ·
   no stats yet"), and in 100 px the price over the change with its sign (+1.51%, −0.71%; "No
   stats yet"). The header says "Symbol · by volume ↓", "Symbol ↑", "Price", or "Price · 24h ↓/↑"
-  when sorted by change. Cells have 8 px between the columns and 12 px at the sides.
+  when sorted by change; those two headers are their own cells, so their `aria-sort` names
+  the order a phone shows. Cells have 8 px between the columns and 12 px at the sides.
 - From `md` to `lg` the Type column is left out, so the name keeps about 100 px at 768 px; from
   `lg` every column shows. Nothing scrolls sideways at any width.
 - The formats are pure functions with unit tests (`numbers.ts`).
@@ -202,8 +203,11 @@ all in the URL (`/?market=stock&exchange=NYSE`, `/?exchange=BINANCE`, `/?sort=ga
   why ("No crypto pairs on NYSE", "NYSE lists stocks only.") with a "Show all exchanges" link,
   and the panel shows NYSE chosen but disabled.
 - Keyboard: Enter, Space or ArrowDown on the button opens the panel on the chosen type. The
-  arrows, Home and End move through the sections (Type, Sort by, Exchange) and skip disabled
-  entries, ArrowLeft and ArrowRight go to the previous or next section, a letter jumps to the next entry starting with it, and
+  arrows follow the layout and skip disabled entries: from `sm` up, ArrowUp, ArrowDown, Home
+  and End move within a column (Type and Sort by on the left, Exchange on the right) and
+  ArrowLeft and ArrowRight go between the columns; on phones ArrowLeft and ArrowRight go
+  between Type and Sort by, ArrowDown from either goes on into Exchange and ArrowUp from the
+  top of Exchange into Type; a letter jumps to the next entry starting with it, and
   Enter or Space picks. Escape closes the panel and the focus returns to the button; Tab and
   Shift+Tab close it and move on to the element after or before the button, like leaving any
   other control; a click outside closes it too. Each section is an ARIA listbox; the focus

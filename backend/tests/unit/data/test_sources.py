@@ -676,7 +676,8 @@ SNAPSHOTS_AT = utc("2026-10-14T00:00")
 
 
 def test_snapshots_give_price_change_and_iex_volume_in_usd() -> None:
-    stats = stats_rows(parse_snapshots(fixture_bytes("alpaca/snapshots-sample.json"), SNAPSHOTS_AT))
+    frame, malformed = parse_snapshots(fixture_bytes("alpaca/snapshots-sample.json"), SNAPSHOTS_AT)
+    stats = stats_rows(frame)
 
     assert stats == {
         "AAPL": (247.85, pytest.approx(0.458, abs=1e-4), pytest.approx(1375210 * 247.42)),
@@ -687,6 +688,7 @@ def test_snapshots_give_price_change_and_iex_volume_in_usd() -> None:
         # no trade: the daily close; no previous bar: no change
         "UUU": (2.15, None, pytest.approx(300 * 2.12)),
     }
+    assert malformed == 0
 
 
 @pytest.mark.parametrize(
@@ -709,7 +711,7 @@ def test_snapshots_give_price_change_and_iex_volume_in_usd() -> None:
             },
             (10.0, 25.0, 50.0),
         ),
-        ([], None),
+        (None, None),
     ],
 )
 def test_snapshot_stats_of_odd_snapshots(snapshot: Any, stats: tuple[Any, ...] | None) -> None:
@@ -723,7 +725,39 @@ def test_malformed_snapshots_are_a_data_integrity_error(body: bytes) -> None:
 
 
 def test_empty_snapshots_have_no_stats() -> None:
-    assert parse_snapshots(b"{}", SNAPSHOTS_AT).schema == STATS_SCHEMA
+    frame, malformed = parse_snapshots(b"{}", SNAPSHOTS_AT)
+    assert (frame.schema, frame.height, malformed) == (STATS_SCHEMA, 0, 0)
+
+
+@pytest.mark.parametrize(
+    "snapshot",
+    [
+        [],
+        "AAPL",
+        {"latestTrade": [], "dailyBar": None},
+        {"latestTrade": {"p": 1.0}, "dailyBar": "today"},
+        {"latestTrade": {"p": 1.0}, "prevDailyBar": 5},
+    ],
+)
+def test_a_malformed_snapshot_is_an_error_of_its_own(snapshot: Any) -> None:
+    with pytest.raises(TypeError, match="not an object"):
+        snapshot_stats(snapshot, SNAPSHOTS_AT)
+
+
+def test_malformed_snapshots_are_skipped_and_counted() -> None:
+    body = json.dumps(
+        {
+            "GOOD": {"latestTrade": {"p": 10.0}},
+            "LIST": [],
+            "BADBAR": {"latestTrade": {"p": 10.0}, "dailyBar": "x"},
+            "NONE": None,
+        }
+    ).encode()
+
+    frame, malformed = parse_snapshots(body, SNAPSHOTS_AT)
+
+    assert stats_rows(frame) == {"GOOD": (10.0, None, None)}
+    assert malformed == 2
 
 
 def crypto_pair(symbol: str, base_asset: str, quote: str) -> Instrument:

@@ -13,7 +13,15 @@ import polars as pl
 
 from candlestack.core import RateLimiter, request_with_retry, retry_after
 from candlestack.data.errors import DataIntegrityError, SourceUnavailable
-from candlestack.data.models import Feed, Instrument, Market, Source, SourceHealth, Timeframe
+from candlestack.data.models import (
+    Feed,
+    Instrument,
+    Market,
+    Source,
+    SourceHealth,
+    SourceStats,
+    Timeframe,
+)
 from candlestack.data.sessions import Session
 
 DAY = 86_400
@@ -80,10 +88,11 @@ class DataSource(Protocol):
         """Whether the source answers its cheapest request."""
         ...
 
-    async def stats(self, instruments: Sequence[Instrument]) -> pl.DataFrame:
+    async def stats(self, instruments: Sequence[Instrument]) -> SourceStats:
         """The 24 h stats (``STATS_SCHEMA``) of the given instruments of the catalog, one row
-        per instrument the source has numbers for. Runs in the background, never for a
-        request: it may wait for its share of the request budget."""
+        per instrument the source has numbers for, and the symbols it could not ask for. Runs
+        in the background, never for a request: it may wait for its share of the request
+        budget. Raises the source's error when it got nothing."""
         ...
 
 

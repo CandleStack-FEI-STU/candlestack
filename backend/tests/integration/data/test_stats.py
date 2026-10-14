@@ -2,6 +2,7 @@
 instrument list sorted by them."""
 
 import asyncio
+import json
 import logging
 import time
 from datetime import UTC, datetime
@@ -23,8 +24,8 @@ from candlestack.data import (
 )
 from candlestack.data import service as service_module
 from candlestack.data.cache import Cache, encode_chunk
-from candlestack.data.models import STATS_SCHEMA
-from candlestack.data.sources import alpaca
+from candlestack.data.models import STATS_SCHEMA, SourceStats
+from candlestack.data.sources import alpaca, base
 from candlestack.data.stats_store import StatsStore
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]
@@ -199,7 +200,8 @@ async def test_old_stats_are_dropped_and_the_list_still_works(
 async def test_unreadable_stored_stats_are_dropped(service: DataService, redis: Redis, caplog):
     await redis.set("data:v1:stats:crypto", b"not arrow")
     await redis.set(
-        "data:v1:stats:stock", encode_chunk(pl.DataFrame(schema=STATS_SCHEMA).drop("price"), 1)
+        "data:v1:stats:stock",
+        encode_chunk(pl.DataFrame(schema=STATS_SCHEMA).drop("price"), int(time.time())),
     )
     store = fresh_store(service)
 
@@ -217,7 +219,7 @@ async def test_older_stored_stats_are_not_adopted(service: DataService, redis: R
     now = int(time.time())
 
     async def fetch():
-        return frame
+        return SourceStats(frame)
 
     await store.refresh(Market.CRYPTO, fetch)
     await redis.set("data:v1:stats:crypto", encode_chunk(frame.clear(), now - 60))
@@ -269,14 +271,12 @@ async def test_snapshots_are_paced_to_their_share_of_the_budget(
 
 
 async def test_keep_stats_fresh_runs_rounds_until_cancelled(
-    service: DataService, monkeypatch: pytest.MonkeyPatch, caplog
+    service: DataService, monkeypatch: pytest.MonkeyPatch
 ):
     rounds = []
 
     async def refresh_stats():
         rounds.append(1)
-        if len(rounds) == 1:
-            raise RuntimeError("boom")
 
     async def sleep(seconds: float) -> None:
         assert seconds == service_module.STATS_CHECK_SECONDS
@@ -284,13 +284,32 @@ async def test_keep_stats_fresh_runs_rounds_until_cancelled(
             raise asyncio.CancelledError
 
     monkeypatch.setattr(service, "refresh_stats", refresh_stats)
-    monkeypatch.setattr(service_module, "_sleep", sleep)
+    monkeypatch.setattr(base, "_sleep", sleep)
 
-    with caplog.at_level(logging.ERROR), pytest.raises(asyncio.CancelledError):
+    with pytest.raises(asyncio.CancelledError):
         await service.keep_stats_fresh()
 
     assert len(rounds) == 3
-    assert caplog.text.count("Refreshing the instrument stats failed") == 1
+
+
+async def test_an_unexpected_failure_of_one_market_does_not_stop_the_other(
+    service: DataService, upstream, monkeypatch: pytest.MonkeyPatch, caplog
+):
+    upstream.exchange_info()
+    upstream.assets()
+    snapshots = upstream.snapshots()
+
+    async def broken(_instruments):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(service._sources[Market.CRYPTO], "stats", broken)
+    with caplog.at_level(logging.ERROR):
+        await service.refresh_stats()
+
+    assert "Refreshing the crypto stats failed" in caplog.text
+    assert "RuntimeError: boom" in caplog.text
+    assert snapshots.call_count == 1
+    assert ids(await service.search(None, limit=1)) == ["stock:SPY"]
 
 
 async def test_an_empty_store_has_the_columns_to_sort_by(redis: Redis):
@@ -300,24 +319,206 @@ async def test_an_empty_store_has_the_columns_to_sort_by(redis: Redis):
     assert table.height == 0
 
 
-async def test_the_refresh_lock_outlasts_a_slow_refresh(service: DataService, redis: Redis):
+async def test_the_refresh_lock_outlasts_a_slow_refresh(
+    service: DataService, redis: Redis, monkeypatch: pytest.MonkeyPatch
+):
     held = []
 
     async def fetch():
-        held.append(await redis.pttl("data:lock:v1:stats:stock"))
-        return pl.DataFrame(schema=STATS_SCHEMA)
+        # Longer than the lock lasts: it is renewed meanwhile.
+        for _ in range(4):
+            await asyncio.sleep(0.15)
+            held.append(await redis.pttl("data:lock:v1:stats:stock"))
+        return SourceStats(pl.DataFrame(schema=STATS_SCHEMA))
 
+    monkeypatch.setattr(stats_store, "LOCK_MS", 200)
+    monkeypatch.setattr(stats_store, "RENEW_SECONDS", 0.05)
     await fresh_store(service).refresh(Market.STOCK, fetch)
 
-    assert 30_000 < held[0] <= stats_store.LOCK_MS
+    assert all(0 < ttl <= 200 for ttl in held)
     assert await redis.exists("data:lock:v1:stats:stock") == 0
+
+
+async def test_a_lock_taken_over_is_neither_renewed_nor_released(
+    service: DataService, redis: Redis, monkeypatch: pytest.MonkeyPatch, caplog
+):
+    async def fetch():
+        # The lock expired and another process took it.
+        await redis.set("data:lock:v1:stats:stock", "another-process")
+        await asyncio.sleep(0.15)
+        return SourceStats(pl.DataFrame(schema=STATS_SCHEMA))
+
+    monkeypatch.setattr(stats_store, "RENEW_SECONDS", 0.05)
+    with caplog.at_level(logging.WARNING):
+        await fresh_store(service).refresh(Market.STOCK, fetch)
+
+    assert await redis.get("data:lock:v1:stats:stock") == b"another-process"
+    assert caplog.text.count("was lost while it ran") == 1
 
 
 async def test_no_stocks_need_no_snapshots(settings: Settings, redis: Redis, http, upstream):
     snapshots = upstream.snapshots()
     source = alpaca.AlpacaSource(settings, http, RateLimiter(redis), Cache(redis))
 
-    frame = await source.stats([])
+    found = await source.stats([])
 
-    assert (frame.schema, frame.height) == (STATS_SCHEMA, 0)
+    assert (found.frame.schema, found.frame.height, found.failed) == (STATS_SCHEMA, 0, frozenset())
     assert snapshots.call_count == 0
+
+
+def stocks_service(settings: Settings, redis: Redis, http) -> DataService:
+    return build_data_service(settings, redis, http)
+
+
+async def test_a_failed_snapshot_batch_keeps_the_others_and_the_last_stats(
+    service: DataService, upstream, redis: Redis, monkeypatch: pytest.MonkeyPatch, caplog
+):
+    monkeypatch.setattr(alpaca, "SNAPSHOT_SYMBOLS", 1)  # AAPL, SPY, BRK.B: a request each
+    upstream.exchange_info()
+    upstream.assets()
+    upstream.ticker()
+    snapshots = upstream.snapshots()
+    await service.refresh_stats()
+    first = {item.symbol: stats for item, stats in _stocks(await service.search(None, limit=100))}
+
+    # Ten minutes later SPY's request fails twice (the round tries it once more) and AAPL's
+    # answer has a new price.
+    sample = json.loads(upstream.fixture_bytes("alpaca/snapshots-sample.json"))
+    sample["AAPL"]["latestTrade"]["p"] = 250.0
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        symbol = request.url.params["symbols"]
+        if symbol == "SPY":
+            return httpx.Response(404)
+        return httpx.Response(200, json={symbol: sample[symbol]})
+
+    snapshots.mock(side_effect=answer)
+    later(monkeypatch, 601)
+    with caplog.at_level(logging.WARNING):
+        await service.refresh_stats()
+
+    now = {item.symbol: stats for item, stats in _stocks(await service.search(None, limit=100))}
+    assert now["AAPL"] is not None
+    assert now["AAPL"].price == 250.0
+    assert now["SPY"] == first["SPY"]  # its last stats stay
+    assert now["BRK.B"] == first["BRK.B"]
+    assert [call.request.url.params["symbols"] for call in snapshots.calls[3:]] == [
+        "AAPL",
+        "SPY",
+        "BRK.B",
+        "SPY",
+    ]
+    assert "Alpaca snapshots of 1 of 3 stocks failed" in caplog.text
+    # Stored that way too: another process sees the same.
+    table = await fresh_store(service).table()
+    assert set(table.filter(market="stock")["symbol"]) == {"AAPL", "SPY", "BRK.B"}
+
+
+def _stocks(found: SearchResult):
+    return [
+        (item, stats)
+        for item, stats in zip(found.items, found.stats, strict=True)
+        if item.market is Market.STOCK
+    ]
+
+
+async def test_when_every_snapshot_batch_fails_the_last_stats_stay(
+    service: DataService, upstream, monkeypatch: pytest.MonkeyPatch, caplog
+):
+    upstream.exchange_info()
+    upstream.assets()
+    upstream.ticker()
+    snapshots = upstream.snapshots()
+    await service.refresh_stats()
+    first = await service.search(None, Market.STOCK)
+
+    snapshots.mock(
+        side_effect=None, return_value=httpx.Response(429, headers={"Retry-After": "30"})
+    )
+    later(monkeypatch, 601)
+    with caplog.at_level(logging.WARNING):
+        await service.refresh_stats()
+
+    assert (await service.search(None, Market.STOCK)).stats == first.stats
+    assert "Refreshing the stock stats failed: Alpaca is rate limiting our requests" in caplog.text
+
+
+async def test_malformed_snapshots_are_logged_once_per_round(
+    service: DataService, upstream, caplog
+):
+    upstream.exchange_info()
+    upstream.assets()
+    upstream.ticker()
+    upstream.router.get(f"{upstream.ALPACA_DATA}/v2/stocks/snapshots").respond(
+        200, json={"AAPL": {"latestTrade": []}, "SPY": [], "BRK.B": {"latestTrade": {"p": 1.0}}}
+    )
+
+    with caplog.at_level(logging.WARNING):
+        await service.refresh_stats()
+
+    assert caplog.text.count("Skipped 2 malformed Alpaca snapshots") == 1
+    found = await service.search(None, Market.STOCK)
+    with_stats = {item.symbol for item, stats in _stocks(found) if stats is not None}
+    assert with_stats == {"BRK.B"}
+
+
+async def test_a_process_reads_only_the_fetch_time_of_stats_it_has(
+    service: DataService, upstream, redis: Redis, monkeypatch: pytest.MonkeyPatch
+):
+    upstream.exchange_info()
+    upstream.assets()
+    upstream.ticker()
+    upstream.snapshots()
+    await service.refresh_stats()
+    store = fresh_store(service)
+    await store.table()
+    commands = []
+    monitor = store._cache._redis
+
+    for name in ("get", "getrange"):
+        original = getattr(monitor, name)
+
+        async def spy(*args, _name=name, _original=original, **kwargs):
+            commands.append(_name)
+            return await _original(*args, **kwargs)
+
+        monkeypatch.setattr(monitor, name, spy)
+    store._reload_at.clear()
+    await store.table()
+
+    assert commands == ["getrange", "getrange"]  # unchanged: no blob read
+
+
+async def test_redis_keeps_the_stats_as_long_as_the_process(
+    service: DataService, redis: Redis, monkeypatch: pytest.MonkeyPatch
+):
+    # The fetch took 20 minutes: Redis keeps the stats until KEEP_SECONDS after it began.
+    began = time.time()
+    clock = [began]
+    monkeypatch.setattr(stats_store, "_time", lambda: clock[0])
+
+    async def fetch():
+        clock[0] = began + 1200
+        return SourceStats(
+            pl.DataFrame([("BTCUSDT", 1.0, 1.0, 1.0)], schema=STATS_SCHEMA, orient="row")
+        )
+
+    await fresh_store(service).refresh(Market.CRYPTO, fetch)
+
+    ttl = await redis.ttl("data:v1:stats:crypto")
+    assert stats_store.KEEP_SECONDS - 1200 - 2 <= ttl <= stats_store.KEEP_SECONDS - 1200
+
+
+async def test_stats_too_old_to_keep_are_not_read(
+    service: DataService, redis: Redis, monkeypatch: pytest.MonkeyPatch
+):
+    old = int(time.time()) - stats_store.KEEP_SECONDS
+    await redis.set(
+        "data:v1:stats:crypto",
+        encode_chunk(
+            pl.DataFrame([("BTCUSDT", 1.0, 1.0, 1.0)], schema=STATS_SCHEMA, orient="row"), old
+        ),
+    )
+
+    assert (await fresh_store(service).table()).height == 0
+    assert await redis.exists("data:v1:stats:crypto") == 1  # left to expire, not decoded

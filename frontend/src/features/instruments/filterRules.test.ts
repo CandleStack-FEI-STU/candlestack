@@ -16,6 +16,7 @@ import {
   withSort,
   withType,
   type FilterOption,
+  type PanelLayout,
 } from './filterRules';
 
 const STOCK_EXCHANGES: Exchange[] = ['NASDAQ', 'NYSE', 'ARCA', 'AMEX', 'BATS'];
@@ -245,38 +246,57 @@ describe('nextActive', () => {
   const crypto = filterOptions('crypto', undefined);
   const stock = filterOptions('stock', 'NYSE');
   const at = (options: FilterOption[], label: string) => indexOf(options, label);
-  const move = (options: FilterOption[], from: string, key: string) => {
-    const next = nextActive(options, at(options, from), key);
+  const move = (options: FilterOption[], from: string, key: string, layout?: PanelLayout) => {
+    const next = nextActive(options, at(options, from), key, layout);
     return next === undefined ? undefined : options[next]?.label;
   };
 
-  it('moves through the sections with the arrows and stops at the ends', () => {
+  // Wide (from sm up): Type over Sort by in the left column, Exchange on the right.
+  it('moves up and down within a column of the wide panel and stops at its ends', () => {
     expect(move(all, 'All types', 'ArrowDown')).toBe('Stocks');
     expect(move(all, 'Crypto', 'ArrowDown')).toBe('Volume');
-    expect(move(all, 'Symbol', 'ArrowDown')).toBe('All exchanges');
-    expect(move(all, 'All exchanges', 'ArrowUp')).toBe('Symbol');
+    expect(move(all, 'Volume', 'ArrowUp')).toBe('Crypto');
+    expect(move(all, 'Symbol', 'ArrowDown')).toBe('Symbol');
+    expect(move(all, 'All exchanges', 'ArrowUp')).toBe('All exchanges');
     expect(move(all, 'Binance', 'ArrowDown')).toBe('Binance');
     expect(move(all, 'All types', 'ArrowUp')).toBe('All types');
-    expect(move(all, 'NYSE', 'Home')).toBe('All types');
-    expect(move(all, 'Stocks', 'End')).toBe('Binance');
+    expect(move(all, 'NYSE', 'Home')).toBe('All exchanges');
+    expect(move(all, 'Stocks', 'End')).toBe('Symbol');
+    expect(move(all, 'Volume', 'Home')).toBe('All types');
   });
 
   it('skips disabled entries', () => {
     expect(move(crypto, 'All exchanges', 'ArrowDown')).toBe('Binance');
     expect(move(crypto, 'Binance', 'ArrowUp')).toBe('All exchanges');
     expect(move(stock, 'BATS', 'ArrowDown')).toBe('BATS');
-    expect(move(stock, 'Crypto', 'End')).toBe('BATS');
+    expect(move(stock, 'NASDAQ', 'End')).toBe('BATS');
   });
 
-  it('goes to the previous or next section with ArrowLeft and ArrowRight', () => {
-    expect(move(stock, 'All types', 'ArrowRight')).toBe('Volume');
+  it('goes between the columns of the wide panel with ArrowLeft and ArrowRight', () => {
+    expect(move(stock, 'All types', 'ArrowRight')).toBe('NYSE');
     expect(move(stock, 'Top losers', 'ArrowRight')).toBe('NYSE');
-    expect(move(stock, 'ARCA', 'ArrowLeft')).toBe('Volume');
-    expect(move(stock, 'Symbol', 'ArrowLeft')).toBe('Stocks');
-    expect(move(all, 'Crypto', 'ArrowRight')).toBe('Volume');
-    // at the ends it stays
+    expect(move(stock, 'ARCA', 'ArrowLeft')).toBe('Stocks');
+    expect(move(all, 'Crypto', 'ArrowRight')).toBe('All exchanges');
+    // at the sides it stays
     expect(move(stock, 'ARCA', 'ArrowRight')).toBe('ARCA');
     expect(move(stock, 'Crypto', 'ArrowLeft')).toBe('Crypto');
+    expect(move(stock, 'Symbol', 'ArrowLeft')).toBe('Symbol');
+  });
+
+  // Phone: Type and Sort by side by side, Exchange below them.
+  it('follows the phone panel: Type and Sort by side by side, Exchange below', () => {
+    expect(move(all, 'Stocks', 'ArrowRight', 'phone')).toBe('Volume');
+    expect(move(all, 'Top losers', 'ArrowLeft', 'phone')).toBe('All types');
+    expect(move(all, 'Crypto', 'ArrowLeft', 'phone')).toBe('Crypto');
+    expect(move(all, 'Symbol', 'ArrowRight', 'phone')).toBe('Symbol');
+    expect(move(all, 'NYSE', 'ArrowLeft', 'phone')).toBe('NYSE');
+    // down from either column into Exchange, up from Exchange into Type
+    expect(move(all, 'Crypto', 'ArrowDown', 'phone')).toBe('All exchanges');
+    expect(move(all, 'Symbol', 'ArrowDown', 'phone')).toBe('All exchanges');
+    expect(move(all, 'Top gainers', 'ArrowDown', 'phone')).toBe('Top losers');
+    expect(move(all, 'All exchanges', 'ArrowUp', 'phone')).toBe('Crypto');
+    expect(move(all, 'Stocks', 'End', 'phone')).toBe('Binance');
+    expect(move(stock, 'Volume', 'Home', 'phone')).toBe('Volume');
   });
 
   it('jumps to the next entry that starts with a typed letter, round the end', () => {

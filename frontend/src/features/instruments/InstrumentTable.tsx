@@ -48,30 +48,25 @@ function Label({ right, arrow, children }: { right?: boolean; arrow?: ReactNode;
   );
 }
 
-// The first two headers, which change on a phone: the symbol says when the list is by volume,
-// whose column a phone hides, and the price when it is by change ("Price · 24h").
+// The two headers of a phone, each a header of its own (hidden from md up) so that its aria-sort
+// can name the order the phone shows: the symbol column stands for the volume column a phone
+// hides ("Symbol · by volume ↓") and for the symbol, the price column for the change ("Price ·
+// 24h ↓").
 function PhoneHeads({ sorted }: { sorted: SortedColumn }) {
   const { column, direction } = sorted;
   const arrow = <Arrow direction={direction} />;
   return (
     <>
-      <Head className={cn(PHONE_FIRST, 'text-left md:w-[168px]')} sorted={column === 'symbol' ? direction : undefined}>
-        <span className={cn('md:hidden', column !== 'change' && 'text-foreground')}>
-          <Label arrow={column !== 'change' && arrow}>{column === 'volume' ? 'Symbol · by volume' : 'Symbol'}</Label>
-        </span>
-        <span className="hidden md:block">
-          <Label arrow={column === 'symbol' && arrow}>Symbol</Label>
-        </span>
+      <Head className={cn(PHONE_FIRST, 'text-left md:hidden')} sorted={column === 'change' ? undefined : direction}>
+        <Label arrow={column !== 'change' && arrow}>{column === 'volume' ? 'Symbol · by volume' : 'Symbol'}</Label>
       </Head>
-      <Head className={cn(PHONE_LAST, 'w-[100px] text-right md:w-[128px]')}>
-        <span className={cn('md:hidden', column === 'change' && 'text-foreground')}>
-          <Label right arrow={column === 'change' && arrow}>
-            {column === 'change' ? 'Price · 24h' : 'Price'}
-          </Label>
-        </span>
-        <span className="hidden md:block">
-          <Label right>Price</Label>
-        </span>
+      <Head
+        className={cn(PHONE_LAST, 'w-[100px] text-right md:hidden')}
+        sorted={column === 'change' ? direction : undefined}
+      >
+        <Label right arrow={column === 'change' && arrow}>
+          {column === 'change' ? 'Price · 24h' : 'Price'}
+        </Label>
       </Head>
     </>
   );
@@ -85,6 +80,12 @@ function Header({ sort }: { sort: ListSort | undefined }) {
     <thead className="border-b">
       <tr>
         <PhoneHeads sorted={sorted} />
+        <Head className={cn(WIDE, 'w-[168px] text-left')} sorted={on('symbol')}>
+          <Label arrow={arrow('symbol')}>Symbol</Label>
+        </Head>
+        <Head className={cn(WIDE, 'w-[128px] text-right')}>
+          <Label right>Price</Label>
+        </Head>
         <Head className={cn(WIDE, 'w-[104px] text-right')} sorted={on('change')}>
           <Label right arrow={arrow('change')}>
             24h

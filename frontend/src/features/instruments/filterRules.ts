@@ -146,21 +146,53 @@ function typeAhead(options: readonly FilterOption[], usable: readonly number[], 
   return after.find((index) => options[index]?.label.toLowerCase().startsWith(letter));
 }
 
-const SECTIONS: readonly FilterOption['section'][] = ['type', 'sort', 'exchange'];
+type Section = FilterOption['section'];
 
-// ArrowLeft and ArrowRight go to the previous or next section (Type, Sort by, Exchange, the order
-// of the page), stopping at the ends.
-function jumpSection(options: readonly FilterOption[], active: number, key: string): number {
-  const at = SECTIONS.indexOf(options[active]?.section ?? 'type');
-  const to = SECTIONS[Math.min(Math.max(at + (key === 'ArrowLeft' ? -1 : 1), 0), SECTIONS.length - 1)] ?? 'type';
-  return to === options[active]?.section ? active : sectionStart(options, to);
-}
+// How the panel lays out its sections: `wide` (from sm up) has Type over Sort by in the left
+// column and Exchange on the right; `phone` has Type and Sort by side by side, Exchange below.
+export type PanelLayout = 'wide' | 'phone';
 
-// Which entry gets the focus after a key press, or undefined when the key does not move it.
-// Disabled entries are skipped; ArrowLeft and ArrowRight jump to the previous or next section.
-export function nextActive(options: readonly FilterOption[], active: number, key: string): number | undefined {
-  if (key === 'ArrowLeft' || key === 'ArrowRight') return jumpSection(options, active, key);
+// The sections the vertical arrows (and Home and End) go through from a section: its column.
+const COLUMNS: Record<PanelLayout, Record<Section, readonly Section[]>> = {
+  wide: { type: ['type', 'sort'], sort: ['type', 'sort'], exchange: ['exchange'] },
+  phone: { type: ['type', 'exchange'], sort: ['sort', 'exchange'], exchange: ['type', 'exchange'] },
+};
+
+// Where ArrowLeft and ArrowRight go from a section: the section on that side, or itself.
+const SIDES: Record<PanelLayout, Record<Section, { ArrowLeft: Section; ArrowRight: Section }>> = {
+  wide: {
+    type: { ArrowLeft: 'type', ArrowRight: 'exchange' },
+    sort: { ArrowLeft: 'sort', ArrowRight: 'exchange' },
+    exchange: { ArrowLeft: 'type', ArrowRight: 'exchange' },
+  },
+  phone: {
+    type: { ArrowLeft: 'type', ArrowRight: 'sort' },
+    sort: { ArrowLeft: 'type', ArrowRight: 'sort' },
+    exchange: { ArrowLeft: 'exchange', ArrowRight: 'exchange' },
+  },
+};
+
+// Which entry gets the focus after a key press, or undefined when the key does not move it. The
+// arrows follow the layout: ArrowLeft and ArrowRight go to the section on that side, the others
+// move through the column of the entry. Disabled entries are skipped; a letter goes to the next
+// entry that starts with it anywhere in the panel.
+export function nextActive(
+  options: readonly FilterOption[],
+  active: number,
+  key: string,
+  layout: PanelLayout = 'wide',
+): number | undefined {
+  const section = options[active]?.section ?? 'type';
+  if (key === 'ArrowLeft' || key === 'ArrowRight') {
+    const to = SIDES[layout][section][key];
+    return to === section ? active : sectionStart(options, to);
+  }
+  const column = COLUMNS[layout][section];
+  const inColumn = options.flatMap((option, index) =>
+    canPick(option) && column.includes(option.section) ? [index] : [],
+  );
+  const moved = moveInList(inColumn, Math.max(0, inColumn.indexOf(active)), key);
+  if (moved !== undefined) return moved;
   const usable = options.flatMap((option, index) => (canPick(option) ? [index] : []));
-  const at = Math.max(0, usable.indexOf(active));
-  return moveInList(usable, at, key) ?? typeAhead(options, usable, at, key);
+  return typeAhead(options, usable, Math.max(0, usable.indexOf(active)), key);
 }

@@ -130,17 +130,22 @@ in Redis, so a search never waits for a source; the other environments have none
 - Stocks: `GET /v2/stocks/snapshots?symbols=<500 symbols>&feed=iex` for every stock of the
   catalog, every 10 minutes: about 27 requests, one after another, at most a fifth of
   `ALPACA_RATE_LIMIT` a minute and never more than 20 (prod and stage 20, previews 6), so chart
-  requests keep the rest; each also counts against `ALPACA_RATE_LIMIT`. A stock without a
-  snapshot or a price has no stats. A daily bar more than 5 days old (no IEX trade since) gives
+  requests keep the rest; each also counts against `ALPACA_RATE_LIMIT`. A request that fails
+  (our whole budget spent by chart requests, an Alpaca error) is tried once more after the
+  others; the stocks of a request that still fails keep their last stats, the others get new
+  ones. A malformed snapshot is skipped (one warning per refresh). A stock without a snapshot or
+  a price has no stats. A daily bar more than 5 days old (no IEX trade since) gives
   no change and a volume of 0.
 - **The stock volume is IEX volume only**, about 1% of the market (the plan has no SIP data).
   It ranks stocks by popularity, it is not their full turnover, and it is the volume of the
   latest session, not a rolling 24 hours. Crypto volume is Binance's whole spot volume, so in a
   mixed list stocks rank lower than their real turnover.
 - Each market's stats are one Redis value (`data:v1:stats:<market>`, see [Cache](#cache)) kept
-  2 hours. A refresh runs once per environment at a time (a lock in Redis), and when a source
-  fails the last stats stay until they are 2 hours old. A process reads the stored stats at
-  most once a minute and keeps its own copy, so stats Redis has evicted still serve until then.
+  until 2 hours after their fetch began. A refresh runs once per environment at a time (a lock
+  in Redis, renewed while the refresh runs), and when a source fails the last stats stay until
+  they are 2 hours old. A process checks the stored stats at most once a minute, reading only
+  their 8-byte fetch time unless they changed, and keeps its own copy, so stats Redis has
+  evicted still serve until then.
   Without stats (a new environment, a long outage) every instrument has `null` stats and sorts
   last, by symbol: the list still works.
 - After each stock refresh the backend logs Alpaca's `X-RateLimit-Limit` and
@@ -392,9 +397,9 @@ again. Keys:
 | `data:v2:candles:<instrument>:<base timeframe>:<chunk>` | one chunk of validated candles, Arrow IPC + zstd | see below |
 | `data:v1:first:<instrument>` | `available_from` | 7 days; 1 hour while the instrument has no candle |
 | `data:v1:health:<source>` | reachability of the source | 60 s |
-| `data:v1:stats:<market>` | the 24 h stats of the market's instruments (symbol, price, change, volume): their fetch time (8 bytes), then Arrow IPC + zstd, as a candle chunk | 2 hours; replaced every 5 (crypto) or 10 (stocks) minutes by the background refresh |
+| `data:v1:stats:<market>` | the 24 h stats of the market's instruments (symbol, price, change, volume): their fetch time (8 bytes), then Arrow IPC + zstd, as a candle chunk | until 2 hours after the fetch began; replaced every 5 (crypto) or 10 (stocks) minutes by the background refresh |
 | `data:v1:icon:ticker/<symbol>`, `data:v1:icon:crypto/<base asset>` | the logo (`<media type>` + newline + image), `none` or `failed` | 30 days; `none` 7 days; `failed` 60 s |
-| `data:lock:vN:<key without data:vN:>` | single-flight lock for a key being fetched, with the key's version (`data:lock:v2:catalog:crypto`) | 30 s; 10 minutes for a stats refresh |
+| `data:lock:vN:<key without data:vN:>` | single-flight lock for a key being fetched, with the key's version (`data:lock:v2:catalog:crypto`) | 30 s; 2 minutes for a stats refresh, renewed every 40 s while it runs |
 | `data:fail:vN:<key without data:vN:>` | the error of a failed fetch of that key (source unavailable or invalid data) | 10 s, or the error's `Retry-After` when shorter |
 | `data:rl:client:<ip>:<minute>`, `data:rl:alpaca:<minute>`, `data:rl:alpaca-stats:<minute>` (the stats' share), `data:rl:binance:<minute>`, `data:rl:logodev:<minute>` | fixed-window counters; `<ip>` is an IPv4 address or an IPv6 /64 network, `<minute>` is Unix time // 60 | 61 s |
 

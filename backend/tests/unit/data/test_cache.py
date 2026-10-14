@@ -234,3 +234,24 @@ def test_locks_and_kept_errors_are_versioned_with_their_values() -> None:
     assert cache_module.lock_key("catalog:crypto") == "data:lock:v2:catalog:crypto"
     assert cache_module.fail_key("catalog:crypto") == "data:fail:v2:catalog:crypto"
     assert cache_module.lock_key("calendar") == "data:lock:v1:calendar"
+
+
+async def test_a_lock_is_kept_without_redis(error: Exception, caplog: pytest.LogCaptureFixture):
+    # Without Redis nobody else can take it: renewing it succeeds, now and while Redis is skipped.
+    cache = FailingRedis(error).cache()
+
+    assert await cache.extend("stats:stock", "token", 1000) is True
+    assert await cache.extend("stats:stock", "token", 1000) is True
+    assert warned(caplog, error) == 1
+
+
+async def test_a_header_is_not_read_without_redis(
+    error: Exception, caplog: pytest.LogCaptureFixture
+):
+    redis = FailingRedis(error)
+    cache = redis.cache()
+
+    assert await cache.head("stats:stock", 8) is None
+    assert await cache.head("stats:stock", 8) is None
+    assert redis.calls == ["getrange"]
+    assert warned(caplog, error) == 1

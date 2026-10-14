@@ -34,6 +34,7 @@ from candlestack.data.models import (
     Market,
     Source,
     SourceHealth,
+    SourceStats,
     Timeframe,
 )
 from candlestack.data.sessions import Session
@@ -315,11 +316,11 @@ class BinanceSource:
             return SourceHealth(ok=False, latency_ms=None, detail=exc.detail)
         return SourceHealth(ok=True, latency_ms=_since(started), detail=None)
 
-    async def stats(self, instruments: Sequence[Instrument]) -> pl.DataFrame:
+    async def stats(self, instruments: Sequence[Instrument]) -> SourceStats:
         response = await self._rest(
             "/api/v3/ticker/24hr", {"symbolStatus": "TRADING"}, TICKER_WEIGHT
         )
-        return await to_thread.run_sync(parse_ticker, response.content, instruments)
+        return SourceStats(await to_thread.run_sync(parse_ticker, response.content, instruments))
 
     async def _month(self, symbol: str, timeframe: Timeframe, period: Period) -> pl.DataFrame:
         try:

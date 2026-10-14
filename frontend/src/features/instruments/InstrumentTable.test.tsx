@@ -136,14 +136,22 @@ describe('InstrumentTable', () => {
   it('fits every width: fixed columns, the name takes the rest, phones get two columns', async () => {
     const html = await render();
     expect(classes(html, /<table [^>]*>/)).toContain('table-fixed');
-    const [symbol = '', price = '', change = '', volume = '', name = '', type = '', exchange = ''] = headers(html);
-    expect(classes(symbol, /<th [^>]*>/)).toContain('md:w-[168px]');
-    expect(classes(price, /<th [^>]*>/)).toEqual(expect.arrayContaining(['w-[100px]', 'md:w-[128px]']));
-    expect(classes(change, /<th [^>]*>/)).toEqual(expect.arrayContaining(['hidden', 'md:table-cell', 'w-[104px]']));
-    expect(classes(volume, /<th [^>]*>/)).toEqual(expect.arrayContaining(['hidden', 'md:table-cell', 'w-[112px]']));
-    expect(classes(name, /<th [^>]*>/).some((name) => name.startsWith('w-'))).toBe(false);
-    expect(classes(type, /<th [^>]*>/)).toEqual(expect.arrayContaining(['hidden', 'lg:table-cell', 'w-[88px]']));
-    expect(classes(exchange, /<th [^>]*>/)).toEqual(expect.arrayContaining(['hidden', 'md:table-cell', 'w-[104px]']));
+    const th = (index: number) => classes(headers(html)[index] ?? '', /<th [^>]*>/);
+    const [phoneSymbol, phonePrice, symbol, price, change, volume, name, type, exchange] = [
+      0, 1, 2, 3, 4, 5, 6, 7, 8,
+    ].map(th);
+    // a phone: the symbol takes the rest, the price 100 px
+    expect(phoneSymbol).toContain('md:hidden');
+    expect(phoneSymbol?.some((each) => each.startsWith('w-'))).toBe(false);
+    expect(phonePrice).toEqual(expect.arrayContaining(['md:hidden', 'w-[100px]']));
+    // from md up
+    expect(symbol).toEqual(expect.arrayContaining(['hidden', 'md:table-cell', 'w-[168px]']));
+    expect(price).toEqual(expect.arrayContaining(['hidden', 'md:table-cell', 'w-[128px]']));
+    expect(change).toEqual(expect.arrayContaining(['hidden', 'md:table-cell', 'w-[104px]']));
+    expect(volume).toEqual(expect.arrayContaining(['hidden', 'md:table-cell', 'w-[112px]']));
+    expect(name?.some((each) => each.startsWith('w-'))).toBe(false);
+    expect(type).toEqual(expect.arrayContaining(['hidden', 'lg:table-cell', 'w-[88px]']));
+    expect(exchange).toEqual(expect.arrayContaining(['hidden', 'md:table-cell', 'w-[104px]']));
     const [btc = ''] = rows(html);
     expect(classes(btc, /<span [^>]*>Bitcoin/)).toContain('truncate');
     expect(classes(btc, /<a [^>]*>BTCUSDT</)).toContain('truncate');
@@ -174,10 +182,13 @@ describe('InstrumentTable header', () => {
       return `${text(th)}${arrow}${th.match(/aria-sort="(\w+)"/)?.[1] === 'none' ? '' : ' (sorted)'}`;
     });
 
-  it('marks Volume 24h by default; a phone says "by volume" next to the symbol', async () => {
+  // The phone's two headers come first (hidden from md up), then the columns from md up.
+  it('marks Volume 24h by default; on a phone the symbol header, which says "by volume"', async () => {
     expect(await sorted()).toEqual([
-      'Symbol · by volumeSymbol ↓',
-      'PricePrice',
+      'Symbol · by volume ↓ (sorted)',
+      'Price',
+      'Symbol',
+      'Price',
       '24h',
       'Volume 24h ↓ (sorted)',
       'Name',
@@ -186,27 +197,37 @@ describe('InstrumentTable header', () => {
     ]);
   });
 
-  it('marks 24h when sorted by change, down for gainers and up for losers, also in the phone price header', async () => {
-    expect((await sorted('gainers')).slice(0, 4)).toEqual([
-      'SymbolSymbol',
-      'Price · 24hPrice ↓',
+  it('marks 24h when sorted by change, down for gainers and up for losers; on a phone the price header', async () => {
+    expect((await sorted('gainers')).slice(0, 6)).toEqual([
+      'Symbol',
+      'Price · 24h ↓ (sorted)',
+      'Symbol',
+      'Price',
       '24h ↓ (sorted)',
       'Volume 24h',
     ]);
-    expect((await sorted('losers')).slice(0, 3)).toEqual(['SymbolSymbol', 'Price · 24hPrice ↑', '24h ↑ (sorted)']);
+    expect((await sorted('losers')).slice(0, 5)).toEqual([
+      'Symbol',
+      'Price · 24h ↑ (sorted)',
+      'Symbol',
+      'Price',
+      '24h ↑ (sorted)',
+    ]);
   });
 
   it('marks Symbol going up when sorted by symbol', async () => {
-    expect((await sorted('symbol')).slice(0, 4)).toEqual([
-      'SymbolSymbol ↑ (sorted)',
-      'PricePrice',
+    expect((await sorted('symbol')).slice(0, 6)).toEqual([
+      'Symbol ↑ (sorted)',
+      'Price',
+      'Symbol ↑ (sorted)',
+      'Price',
       '24h',
       'Volume 24h',
     ]);
   });
 
   it('turns the sorted header ink', async () => {
-    const [, , change = ''] = headers(await render('gainers', [BTC]));
+    const [, , , , change = ''] = headers(await render('gainers', [BTC]));
     expect(classes(change, /<th [^>]*>/)).toContain('text-foreground');
   });
 });

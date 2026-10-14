@@ -199,6 +199,15 @@ STATS_SCHEMA = pl.Schema(
 )
 
 
+@dataclass(frozen=True, eq=False)
+class SourceStats:
+    """What a source reports for a market's stats: ``frame`` (``STATS_SCHEMA``) and the symbols
+    it could not ask for this time (a failed request), whose last stats are kept."""
+
+    frame: pl.DataFrame
+    failed: frozenset[str] = frozenset()
+
+
 @dataclass(frozen=True, slots=True)
 class InstrumentStats:
     """An instrument's last price, its 24 h change in percent and its 24 h volume in USD (see

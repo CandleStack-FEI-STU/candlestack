@@ -50,7 +50,6 @@ from candlestack.data.errors import (
 )
 from candlestack.data.icons import FALLBACK_AFTER_FAILURE, Icon, Icons
 from candlestack.data.models import (
-    STATS_SCHEMA,
     CandleSet,
     Exchange,
     Instrument,
@@ -60,12 +59,13 @@ from candlestack.data.models import (
     Market,
     SearchResult,
     SourceHealth,
+    SourceStats,
     Timeframe,
     empty_candles,
 )
 from candlestack.data.sessions import Session, sessions_between
 from candlestack.data.sources.alpaca import AlpacaSource
-from candlestack.data.sources.base import DAY, DataSource, Period
+from candlestack.data.sources.base import DAY, DataSource, Period, pause
 from candlestack.data.sources.binance import BinanceSource
 from candlestack.data.stats_store import StatsStore
 
@@ -81,9 +81,8 @@ HEALTH_TTL = 60
 # How often the background task looks for stats that are due (StatsStore.REFRESH_SECONDS).
 STATS_CHECK_SECONDS = 60
 
-# Patched by tests to move the clock and to avoid real waiting.
+# Patched by tests to move the clock.
 _time = time.time
-_sleep = asyncio.sleep
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,25 +165,24 @@ class DataService:
 
     async def keep_stats_fresh(self) -> None:
         """Refreshes the stats of every market when they are due, checking once a minute, until
-        cancelled (the app's lifespan runs it in prod and stage, ``STATS_REFRESH``). A failed
-        round is logged and the next one tries again."""
+        cancelled (the app's lifespan runs it in prod and stage, ``STATS_REFRESH``)."""
         while True:
-            try:
-                await self.refresh_stats()
-            except Exception:
-                logger.exception("Refreshing the instrument stats failed")
-            await _sleep(STATS_CHECK_SECONDS)
+            await self.refresh_stats()
+            await pause(STATS_CHECK_SECONDS)
 
     async def refresh_stats(self) -> None:
         """One round: each market whose stats are due is fetched from its source for the
-        instruments of its catalog (``StatsStore.refresh``)."""
+        instruments of its catalog (``StatsStore.refresh``). A market whose refresh fails
+        unexpectedly is logged for a developer, and the others still run."""
         for market in self._sources:
-            await self._stats.refresh(market, partial(self._fetch_stats, market))
+            try:
+                await self._stats.refresh(market, partial(self._fetch_stats, market))
+            except Exception:
+                logger.exception("Refreshing the %s stats failed", market)
 
-    async def _fetch_stats(self, market: Market) -> pl.DataFrame:
+    async def _fetch_stats(self, market: Market) -> SourceStats:
         catalog = await self._catalogs.catalog(market)
-        frame = await self._sources[market].stats(catalog.instruments(market))
-        return frame.select(*STATS_SCHEMA)
+        return await self._sources[market].stats(catalog.instruments(market))
 
     async def instrument(self, instrument_id: InstrumentId) -> InstrumentInfo:
         """The instrument and its available period. ``available_from`` is ``None`` when the
