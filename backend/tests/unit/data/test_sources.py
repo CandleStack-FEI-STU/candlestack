@@ -811,7 +811,7 @@ def test_parse_daily_bars_of_many_symbols(sessions: list[Session]) -> None:
     assert parse_daily_bars({"bars": {}}, days).schema == SPARK_SCHEMA
 
 
-@pytest.mark.parametrize("bars", [[], {"AAPL": {"t": "x"}}])
+@pytest.mark.parametrize("bars", [["AAPL"], {"AAPL": {"t": "x"}}])
 def test_parse_daily_bars_refuses_a_body_without_lists(bars: Any, sessions: list[Session]) -> None:
     with pytest.raises(DataIntegrityError, match="no list of bars"):
         parse_daily_bars({"bars": bars}, sessions)
