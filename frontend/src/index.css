@@ -123,6 +123,10 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* A link to a section (/#markets) stops below the 56 px sticky header, as in the design. */
+  html {
+    scroll-padding-top: 72px;
+  }
   body {
     @apply min-h-screen bg-background text-foreground font-sans antialiased;
     /* The same 40 px grid as the website. */
