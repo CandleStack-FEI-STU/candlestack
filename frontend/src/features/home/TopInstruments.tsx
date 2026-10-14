@@ -4,10 +4,7 @@ import type { ReactNode } from 'react';
 
 import { exchangeName, instrumentSearchQueryOptions, type Instrument } from '@/api';
 import { InstrumentIcon } from '@/components/InstrumentIcon';
-// The list's index does not export these two: the home rows draw the list's candles and word its
-// errors and its empty result like the list does.
-import { emptyMessage, quickSearchError } from '@/features/instruments/messages';
-import { MiniCandles } from '@/features/instruments/MiniCandles';
+import { MiniCandles, describeListError, emptyMessage } from '@/features/instruments';
 import { changeTone, formatChange, formatPrice, formatSignedChange } from '@/lib/numbers';
 import { cn } from '@/lib/utils';
 
@@ -211,7 +208,8 @@ function Body() {
       </Table>
     );
   }
-  if (result.isError) return <Note tone="error">{quickSearchError(result.error, '')}</Note>;
+  // Only the title: the list's hints talk about a search, and the home page has none.
+  if (result.isError) return <Note tone="error">{describeListError(result.error, '').title}</Note>;
   return (
     <>
       <p className="sr-only">Loading instruments…</p>

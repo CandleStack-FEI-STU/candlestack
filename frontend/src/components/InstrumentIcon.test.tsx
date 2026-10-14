@@ -10,7 +10,7 @@ function element(html: string, tag: string): string {
   return attributes;
 }
 
-// #179: the same icon in the list, the header search and on the instrument page.
+// #179: the same icon in the list, the home page's top five and on the instrument page.
 describe('InstrumentIcon', () => {
   it("shows the instrument's icon from the API", () => {
     const img = element(renderToStaticMarkup(<InstrumentIcon id="stock:BRK.B" size={32} />), 'img');

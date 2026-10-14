@@ -6,7 +6,7 @@ import { EXCHANGES, type Exchange, type Market } from '@/api';
 export type ListSort = 'gainers' | 'losers' | 'symbol';
 
 // The list page keeps the query, the market, the exchange, the order and the page in the URL, so
-// a search can be shared and Back returns to it: /?q=apple&market=stock&exchange=NASDAQ&sort=gainers&page=2.
+// a search can be shared and Back returns to it: /instruments?q=apple&market=stock&exchange=NASDAQ&sort=gainers&page=2.
 export type InstrumentsSearch = { q?: string; market?: Market; exchange?: Exchange; sort?: ListSort; page?: number };
 
 const SORTS: readonly ListSort[] = ['gainers', 'losers', 'symbol'];

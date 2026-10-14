@@ -6,7 +6,6 @@ import { usePageTitle } from '@/lib/usePageTitle';
 
 // Every stock and crypto pair, searchable, the most traded first.
 // /instruments?q=apple&market=stock&exchange=NASDAQ&sort=gainers&page=2
-// The column is as wide as the header's (72rem), so both line up on a wide screen.
 export function InstrumentsPage() {
   const search = useSearch({ from: '/instruments' });
   const { q = '', market, exchange, sort, page = 1 } = search;
@@ -23,7 +22,7 @@ export function InstrumentsPage() {
   );
 
   return (
-    <div className="mx-auto w-full max-w-[72rem]">
+    <div>
       <div className="mb-8">
         <h1 className="text-3xl font-semibold tracking-tight">Instruments</h1>
         <p className="mt-2 max-w-[64ch] text-sm text-muted-foreground">

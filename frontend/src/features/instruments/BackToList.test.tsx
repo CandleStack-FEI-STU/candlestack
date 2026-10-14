@@ -23,8 +23,8 @@ describe('BackToList', () => {
     expect(await render()).toEqual({ href: '/instruments?q=btc&amp;page=2', label: 'Instruments' });
   });
 
-  it('returns home when the instrument was opened from the home page', async () => {
+  it("returns to the home page's instruments when the instrument was opened from there", async () => {
     rememberListSearch({ q: 'btc' });
-    expect(await render({ from: 'home' })).toEqual({ href: '/', label: 'Home' });
+    expect(await render({ from: 'home' })).toEqual({ href: '/#markets', label: 'Home' });
   });
 });

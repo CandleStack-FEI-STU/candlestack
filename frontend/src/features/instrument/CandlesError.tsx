@@ -44,7 +44,7 @@ type Props = { error: Error; errorAt: number; autoRetries: number; onRetry: () =
 export function CandlesError({ error, errorAt, autoRetries, onRetry, onAutoRetry }: Props) {
   const wait = error instanceof ApiError ? error.retryAfter : undefined;
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-md border border-destructive/40 px-4 py-3 text-sm">
+    <div className="flex flex-wrap items-center gap-3 rounded-md border border-destructive/40 bg-background px-4 py-3 text-sm">
       {shouldAutoRetry(wait, autoRetries) ? (
         <Countdown key={errorAt} seconds={wait} message={error.message} onRetry={onAutoRetry} />
       ) : (

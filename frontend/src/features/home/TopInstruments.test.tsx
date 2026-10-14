@@ -215,7 +215,8 @@ describe('TopInstruments states', () => {
       client.prefetchQuery({ queryKey, queryFn: () => Promise.reject(new ApiError(0, 'Cannot reach the server.')) }),
     );
     expect(html).not.toContain('<table');
-    expect(text(html)).toBe('No connection to the CandleStack server. Check your internet connection, then try again.');
+    // The title only: the list's hint talks about a search.
+    expect(text(html)).toBe('No connection to the CandleStack server.');
     expect(classes(html, /<p [^>]*>/)).toContain('text-destructive');
   });
 
