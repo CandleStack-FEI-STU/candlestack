@@ -21,6 +21,7 @@ from candlestack.data.models import (
     Market,
     Source,
     SourceHealth,
+    Spark,
     Timeframe,
 )
 
@@ -72,8 +73,8 @@ def _instrument_fields(instrument: Instrument) -> dict[str, Any]:
 
 
 class InstrumentItemOut(InstrumentOut):
-    """An instrument of the list with its 24 h stats, refreshed every few minutes; null while
-    there are none (yet)."""
+    """An instrument of the list with its 24 h stats, refreshed every few minutes, and its mini
+    chart of the last daily candles, refreshed once a day; null while there are none (yet)."""
 
     price: float | None = Field(
         description="Last price: in the quote asset for a crypto pair, in USD for a stock "
@@ -92,9 +93,20 @@ class InstrumentItemOut(InstrumentOut):
         examples=[1258811866.0],
     )
 
+    spark: list[tuple[int, float, float, float, float] | None] | None = Field(
+        description="The last 10 daily candles of the instrument's market, oldest first, each "
+        "`[open time, open, high, low, close]` (open time in UTC epoch seconds: 00:00 UTC for "
+        "crypto, the session open for stocks), or null for a day without a candle of this "
+        "instrument. Null when it has none of them. Refreshed once a day after the market's "
+        "daily close.",
+        examples=[[[1760313600, 115271.8, 115950.1, 113000.4, 115166.0], None]],
+    )
+
     @classmethod
-    def of_item(cls, instrument: Instrument, stats: InstrumentStats | None) -> Self:
-        return cls(**_instrument_fields(instrument), **asdict(stats or NO_STATS))
+    def of_item(
+        cls, instrument: Instrument, stats: InstrumentStats | None, spark: Spark | None
+    ) -> Self:
+        return cls(**_instrument_fields(instrument), **asdict(stats or NO_STATS), spark=spark)
 
 
 class InstrumentSearchOut(BaseModel):

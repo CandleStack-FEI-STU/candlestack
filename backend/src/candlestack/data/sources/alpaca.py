@@ -4,7 +4,8 @@ Intraday timeframes are built from regular-session 1m bars; 1d is Alpaca's 1Day 
 IEX covers exactly the regular session, relabelled from 00:00 New York to the session open.
 Trading days come from ``GET /v2/calendar``. Every request spends our budget
 (``ALPACA_RATE_LIMIT``); Alpaca allows 200 per minute per key. The 24 h stats come from
-``GET /v2/stocks/snapshots``, many symbols per request, paced to a share of the budget.
+``GET /v2/stocks/snapshots`` and the daily candles of the mini charts from the 1Day bars,
+many symbols per request, paced to a share of the budget.
 """
 
 import bisect
@@ -12,9 +13,10 @@ import logging
 import math
 import time
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from functools import partial
 from itertools import batched
 from typing import Any
 
@@ -35,6 +37,8 @@ from candlestack.data.candles import (
 from candlestack.data.errors import DataError, DataIntegrityError, InvalidRequest, SourceUnavailable
 from candlestack.data.models import (
     CANDLE_SCHEMA,
+    SPARK_DAYS,
+    SPARK_SCHEMA,
     STATS_SCHEMA,
     Exchange,
     Feed,
@@ -80,6 +84,11 @@ SNAPSHOT_SYMBOLS = 500
 STATS_RATE_KEY = "data:rl:alpaca-stats"
 STATS_SHARE_MAX = 20
 STATS_SHARE_DIVISOR = 5
+# The daily bars of the mini charts (about 27 requests once a day after the close) have their own,
+# smaller share, so they do not slow the stats refresh (prod 150: 5, stage 100: 5, previews 30: 1).
+SPARK_RATE_KEY = "data:rl:alpaca-spark"
+SPARK_SHARE_MAX = 5
+SPARK_SHARE_DIVISOR = 20
 # A daily bar older than this is from a stock without IEX trades lately: it has no 24 h change
 # and no 24 h volume (0) rather than those of an old session. Covers a long weekend.
 STALE_BAR_SECONDS = 5 * DAY
@@ -244,7 +253,7 @@ def parse_snapshots(content: bytes, now: int) -> tuple[pl.DataFrame, int]:
 
 def relabel_daily(frame: pl.DataFrame, sessions: list[Session]) -> pl.DataFrame:
     """1Day bars (stamped 00:00 New York) labelled with the open of that day's session; bars of
-    days without a session are dropped."""
+    days without a session are dropped, other columns (``symbol``) kept."""
     opens = pl.DataFrame(
         {
             "date": [session.date for session in sessions],
@@ -257,9 +266,50 @@ def relabel_daily(frame: pl.DataFrame, sessions: list[Session]) -> pl.DataFrame:
         frame.with_columns(date=moment.dt.convert_time_zone(NEW_YORK.key).dt.date())
         .join(opens, on="date", how="inner")
         .with_columns(ts="open_ts")
-        .select(_COLUMNS)
+        .drop("date", "open_ts")
         .sort("ts")
     )
+
+
+def _daily_bar(bar: Any) -> tuple[int, float, float, float, float] | None:
+    """Open time and prices of a 1Day bar, or ``None`` when it is malformed."""
+    if not isinstance(bar, dict):
+        return None
+    prices = [bar.get(key) for key in ("o", "h", "l", "c")]
+    if not all(
+        isinstance(price, int | float) and not isinstance(price, bool) and math.isfinite(price)
+        for price in prices
+    ):
+        return None
+    try:
+        opened = datetime.fromisoformat(bar["t"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if opened.tzinfo is None:
+        return None
+    open_, high, low, close = (float(price) for price in prices)
+    return int(opened.timestamp()), open_, high, low, close
+
+
+def parse_daily_bars(body: dict[str, Any], days: list[Session]) -> tuple[pl.DataFrame, int]:
+    """The daily candles (``SPARK_SCHEMA``) of a ``GET /v2/stocks/bars`` page of 1Day bars of
+    many symbols, labelled with the open of their session in ``days`` (``relabel_daily``), and
+    the number of malformed bars skipped: one bad bar costs only itself."""
+    by_symbol = body.get("bars") or {}
+    if not isinstance(by_symbol, dict) or not all(
+        isinstance(bars, list) for bars in by_symbol.values() if bars is not None
+    ):
+        raise DataIntegrityError("Alpaca bars response has no list of bars.", source=NAME)
+    rows, malformed = [], 0
+    for symbol, bars in by_symbol.items():
+        for bar in bars or ():
+            parsed = _daily_bar(bar)
+            if parsed is None:
+                malformed += 1
+            else:
+                rows.append((symbol, *parsed))
+    frame = pl.DataFrame(rows, schema=SPARK_SCHEMA, orient="row")
+    return relabel_daily(frame, days).select(*SPARK_SCHEMA), malformed
 
 
 def regular_candles(
@@ -285,20 +335,65 @@ def _rfc3339(ts: int) -> str:
     return f"{utc(ts):%Y-%m-%dT%H:%M:%SZ}"
 
 
-@dataclass
-class _Snapshots:
-    """What the snapshot requests of one stats refresh got so far."""
+@dataclass(frozen=True)
+class _Job:
+    """What a refresh in batches asks for, as its log lines name it."""
 
+    what: str  # what Alpaca answers: "snapshots"
+    kept: str  # what the stocks have: "stats"
+
+
+_SNAPSHOTS = _Job("snapshots", "stats")
+_DAILY_BARS = _Job("daily bars", "daily candles")
+
+Batch = tuple[str, ...]
+"""Symbols asked for in one request of a refresh in batches."""
+
+
+@dataclass
+class _Batches:
+    """What the requests of one refresh in batches got so far."""
+
+    total: int
     frames: list[pl.DataFrame] = field(default_factory=list)
     malformed: int = 0
     response: httpx.Response | None = None
     error: DataError | None = None
     # Symbols Alpaca refused even alone (a 4xx for a request of just that symbol).
     refused: list[str] = field(default_factory=list)
+    # Batches that failed otherwise, twice: their stocks keep what they had.
+    unanswered: list[Batch] = field(default_factory=list)
+
+    def result(self, schema: pl.Schema) -> SourceStats:
+        return SourceStats(
+            pl.concat(self.frames) if self.frames else pl.DataFrame(schema=schema),
+            frozenset(symbol for batch in self.unanswered for symbol in batch),
+        )
+
+    def log(self, job: _Job) -> None:
+        if self.unanswered and self.error is not None:
+            logger.warning(
+                "Alpaca %s of %d of %d stocks failed (%s): their last %s stay",
+                job.what,
+                sum(len(batch) for batch in self.unanswered),
+                self.total,
+                self.error.detail,
+                job.kept,
+            )
+        if self.refused:
+            logger.warning(
+                "Alpaca refused the %s of %s: no %s for them",
+                job.what,
+                ", ".join(self.refused),
+                job.kept,
+            )
+        if self.malformed:
+            logger.warning("Skipped %d malformed Alpaca %s", self.malformed, job.what)
 
 
-Batch = tuple[str, ...]
-"""Symbols asked for in one snapshots request."""
+Ask = Callable[[Batch], Awaitable[tuple[pl.DataFrame, int, httpx.Response | None]]]
+"""Asks for a batch: its rows, the number of malformed items skipped, and the response whose
+rate-limit headers are logged (or ``None``)."""
 
 
 def _refused(error: DataError) -> bool:
@@ -331,6 +426,7 @@ class AlpacaSource:
         self._limiter = limiter
         self._limit = settings.alpaca_rate_limit
         self._stats_limit = max(1, min(STATS_SHARE_MAX, self._limit // STATS_SHARE_DIVISOR))
+        self._spark_limit = max(1, min(SPARK_SHARE_MAX, self._limit // SPARK_SHARE_DIVISOR))
         self._cache = cache
         self._sessions: list[Session] = []
         self._sessions_until = 0.0
@@ -394,58 +490,66 @@ class AlpacaSource:
         )
 
     async def stats(self, instruments: Sequence[Instrument]) -> SourceStats:
-        """Snapshots of ``SNAPSHOT_SYMBOLS`` stocks per request, one after another, each within
-        the stats share of the budget (waiting for it as long as needed) and our whole budget. A
-        request that fails is tried once more after the others; one Alpaca still refuses (a
-        4xx) is split in halves until the symbols it refuses are found, which get no stats. The
-        stocks of a request that still fails otherwise keep their last stats. Logs Alpaca's
+        """Snapshots of ``SNAPSHOT_SYMBOLS`` stocks per request (``_in_batches``). Logs Alpaca's
         rate-limit headers of the last answer next to our own count, once."""
+        got = await self._in_batches(instruments, self._snapshot_batch, _SNAPSHOTS)
+        await self._log_rate_limit(got)
+        return got.result(STATS_SCHEMA)
+
+    async def daily_candles(self, instruments: Sequence[Instrument], closed_at: int) -> SourceStats:
+        """The 1Day bars of the last ``SPARK_DAYS`` sessions that closed by ``closed_at``, of
+        ``SNAPSHOT_SYMBOLS`` stocks per request (``_in_batches``), labelled with the session
+        open as the 1d candles are."""
+        sessions = await self.sessions()
+        last = bisect.bisect_right(sessions, closed_at, key=lambda session: session.close)
+        days = sessions[max(0, last - SPARK_DAYS) : last]
+        if not days:
+            return SourceStats(pl.DataFrame(schema=SPARK_SCHEMA))
+        # The UTC midnight of the first day: its bar is stamped 00:00 New York, a few hours later.
+        start = days[0].open // DAY * DAY
+        ask = partial(self._daily_batch, start, closed_at, days)
+        return (await self._in_batches(instruments, ask, _DAILY_BARS)).result(SPARK_SCHEMA)
+
+    async def _in_batches(self, instruments: Sequence[Instrument], ask: Ask, job: _Job) -> _Batches:
+        """Asks for the stocks in batches of ``SNAPSHOT_SYMBOLS``, one after another, each within
+        its share of the budget (waiting for it as long as needed) and our whole budget. A
+        request that fails is tried once more after the others; one Alpaca still refuses (a
+        4xx) is split in halves until the symbols it refuses are found, which get nothing. The
+        stocks of a request that still fails otherwise keep what they had."""
         batches = list(batched((i.symbol for i in instruments), SNAPSHOT_SYMBOLS, strict=False))
-        got = _Snapshots()
-        failed = await self._snapshots(batches, got)
+        got = _Batches(total=len(instruments))
+        failed = await self._batches(batches, got, ask)
         if failed:
             # The whole budget may have been spent by chart requests: wait as it says, once.
             if isinstance(got.error, SourceUnavailable) and got.error.retry_after:
                 await pause(min(got.error.retry_after, 60))
-            failed = await self._snapshots([batch for batch, _ in failed], got)
-        unanswered: list[Batch] = []
+            failed = await self._batches([batch for batch, _ in failed], got, ask)
         for batch, error in failed:
-            unanswered += await self._narrow(batch, got) if _refused(error) else [batch]
-        if not got.frames and got.error is not None and (unanswered or got.refused):
+            got.unanswered += await self._narrow(batch, got, ask) if _refused(error) else [batch]
+        if not got.frames and got.error is not None and (got.unanswered or got.refused):
             raise got.error
-        self._log_stats(got, unanswered, len(instruments))
-        await self._log_rate_limit(got)
-        return SourceStats(
-            pl.concat(got.frames) if got.frames else pl.DataFrame(schema=STATS_SCHEMA),
-            frozenset(symbol for batch in unanswered for symbol in batch),
-        )
+        got.log(job)
+        return got
 
-    async def _snapshots(
-        self, batches: list[Batch], got: _Snapshots
+    async def _batches(
+        self, batches: list[Batch], got: _Batches, ask: Ask
     ) -> list[tuple[Batch, DataError]]:
-        """Asks for the snapshots of each batch into ``got``; returns the batches that failed,
-        each with its error."""
+        """Asks for each batch into ``got``; returns the batches that failed, each with its
+        error."""
         failed = []
         for symbols in batches:
-            await self._stats_turn()
             try:
-                response = await self._request(
-                    f"{self._data}/v2/stocks/snapshots",
-                    {"symbols": ",".join(symbols), "feed": "iex"},
-                )
-                frame, malformed = await to_thread.run_sync(
-                    parse_snapshots, response.content, int(_time())
-                )
+                frame, malformed, response = await ask(symbols)
             except DataError as exc:
                 failed.append((symbols, exc))
                 got.error = exc
                 continue
             got.frames.append(frame)
             got.malformed += malformed
-            got.response = response
+            got.response = response or got.response
         return failed
 
-    async def _narrow(self, batch: Batch, got: _Snapshots) -> list[Batch]:
+    async def _narrow(self, batch: Batch, got: _Batches, ask: Ask) -> list[Batch]:
         """Asks for the two halves of a batch Alpaca refused, and so on down to single symbols,
         which go to ``got.refused``; returns the parts that failed for another reason."""
         if len(batch) == 1:
@@ -453,28 +557,41 @@ class AlpacaSource:
             return []
         half = len(batch) // 2
         unanswered: list[Batch] = []
-        for part, error in await self._snapshots([batch[:half], batch[half:]], got):
-            unanswered += await self._narrow(part, got) if _refused(error) else [part]
+        for part, error in await self._batches([batch[:half], batch[half:]], got, ask):
+            unanswered += await self._narrow(part, got, ask) if _refused(error) else [part]
         return unanswered
 
-    @staticmethod
-    def _log_stats(got: _Snapshots, unanswered: list[Batch], total: int) -> None:
-        if unanswered and got.error is not None:
-            logger.warning(
-                "Alpaca snapshots of %d of %d stocks failed (%s): their last stats stay",
-                sum(len(batch) for batch in unanswered),
-                total,
-                got.error.detail,
-            )
-        if got.refused:
-            logger.warning(
-                "Alpaca refused the snapshots of %s: no stats for them",
-                ", ".join(got.refused),
-            )
-        if got.malformed:
-            logger.warning("Skipped %d malformed Alpaca snapshots", got.malformed)
+    async def _snapshot_batch(self, symbols: Batch) -> tuple[pl.DataFrame, int, httpx.Response]:
+        await self._turn(STATS_RATE_KEY, self._stats_limit)
+        response = await self._request(
+            f"{self._data}/v2/stocks/snapshots", {"symbols": ",".join(symbols), "feed": "iex"}
+        )
+        frame, malformed = await to_thread.run_sync(parse_snapshots, response.content, int(_time()))
+        return frame, malformed, response
 
-    async def _log_rate_limit(self, got: _Snapshots) -> None:
+    async def _daily_batch(
+        self, start: int, end: int, days: list[Session], symbols: Batch
+    ) -> tuple[pl.DataFrame, int, None]:
+        """The daily candles (``SPARK_SCHEMA``) of ``[start, end)`` of the stocks, following
+        ``next_page_token``."""
+        params: dict[str, str | int] = {
+            "start": _rfc3339(start),
+            "end": _rfc3339(end - 1),  # Alpaca's end is inclusive
+            "limit": BARS_LIMIT,
+        }
+        pages, malformed = [], 0
+        while True:
+            await self._turn(SPARK_RATE_KEY, self._spark_limit)
+            body = await self._bars_page(",".join(symbols), "1Day", params)
+            frame, skipped = await to_thread.run_sync(parse_daily_bars, body, days)
+            pages.append(frame)
+            malformed += skipped
+            token = body.get("next_page_token")
+            if not token:
+                return pl.concat(pages), malformed, None
+            params["page_token"] = token
+
+    async def _log_rate_limit(self, got: _Batches) -> None:
         if got.response is None:
             return
         logger.info(
@@ -487,9 +604,9 @@ class AlpacaSource:
             self._limit,
         )
 
-    async def _stats_turn(self) -> None:
-        """Waits until the stats share of this minute has room for one more request."""
-        while (wait := await self._limiter.hit(STATS_RATE_KEY, self._stats_limit)) > 0:
+    async def _turn(self, key: str, limit: int) -> None:
+        """Waits until the share ``key`` of this minute has room for one more request."""
+        while (wait := await self._limiter.hit(key, limit)) > 0:
             await pause(wait)
 
     async def _fetch_calendar(self) -> tuple[bytes, int]:

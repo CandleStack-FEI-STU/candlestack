@@ -58,7 +58,8 @@ export interface paths {
          * Search instruments
          * @description Searches the instruments of both markets: every Binance spot pair that is trading and
          *     every active tradable US stock and ETF at Alpaca (without OTC). Each item carries its last
-         *     price, 24 h change and 24 h volume in USD, refreshed every few minutes (null without them).
+         *     price, 24 h change and 24 h volume in USD, refreshed every few minutes, and its last 10 daily
+         *     candles (`spark`), refreshed once a day (null without them).
          *
          *     Ranking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`
          *     first), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word
@@ -409,8 +410,8 @@ export interface components {
         };
         /**
          * InstrumentItemOut
-         * @description An instrument of the list with its 24 h stats, refreshed every few minutes; null while
-         *     there are none (yet).
+         * @description An instrument of the list with its 24 h stats, refreshed every few minutes, and its mini
+         *     chart of the last daily candles, refreshed once a day; null while there are none (yet).
          */
         InstrumentItemOut: {
             /**
@@ -470,6 +471,27 @@ export interface components {
              * @enum {string}
              */
             source: "binance" | "alpaca";
+            /**
+             * Spark
+             * @description The last 10 daily candles of the instrument's market, oldest first, each `[open time, open, high, low, close]` (open time in UTC epoch seconds: 00:00 UTC for crypto, the session open for stocks), or null for a day without a candle of this instrument. Null when it has none of them. Refreshed once a day after the market's daily close.
+             * @example [
+             *       [
+             *         1760313600,
+             *         115271.8,
+             *         115950.1,
+             *         113000.4,
+             *         115166
+             *       ],
+             *       null
+             *     ]
+             */
+            spark: ([
+                number,
+                number,
+                number,
+                number,
+                number
+            ] | null)[] | null;
             /**
              * Symbol
              * @description Symbol as the source spells it.

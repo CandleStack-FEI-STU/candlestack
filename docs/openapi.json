@@ -454,7 +454,7 @@
         "type": "object"
       },
       "InstrumentItemOut": {
-        "description": "An instrument of the list with its 24 h stats, refreshed every few minutes; null while\nthere are none (yet).",
+        "description": "An instrument of the list with its 24 h stats, refreshed every few minutes, and its mini\nchart of the last daily candles, refreshed once a day; null while there are none (yet).",
         "properties": {
           "base": {
             "anyOf": [
@@ -576,6 +576,59 @@
             "title": "Source",
             "type": "string"
           },
+          "spark": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "maxItems": 5,
+                      "minItems": 5,
+                      "prefixItems": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ],
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The last 10 daily candles of the instrument's market, oldest first, each `[open time, open, high, low, close]` (open time in UTC epoch seconds: 00:00 UTC for crypto, the session open for stocks), or null for a day without a candle of this instrument. Null when it has none of them. Refreshed once a day after the market's daily close.",
+            "examples": [
+              [
+                [
+                  1760313600,
+                  115271.8,
+                  115950.1,
+                  113000.4,
+                  115166.0
+                ],
+                null
+              ]
+            ],
+            "title": "Spark"
+          },
           "symbol": {
             "description": "Symbol as the source spells it.",
             "examples": [
@@ -612,7 +665,8 @@
           "quote",
           "price",
           "change_24h",
-          "volume_24h"
+          "volume_24h",
+          "spark"
         ],
         "title": "InstrumentItemOut",
         "type": "object"
@@ -905,7 +959,7 @@
     },
     "/api/v1/data/instruments": {
       "get": {
-        "description": "Searches the instruments of both markets: every Binance spot pair that is trading and\nevery active tradable US stock and ETF at Alpaca (without OTC). Each item carries its last\nprice, 24 h change and 24 h volume in USD, refreshed every few minutes (null without them).\n\nRanking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`\nfirst), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word\nin the name, substring of the symbol, substring of the name; ties go to `sort`, then to the\nshorter symbol, then alphabetically. Without `q`, every instrument comes back in `sort`:\nthe most traded first by default.\n`exchange` narrows any of these to the instruments that trade on it.\n`total` counts all matches: page through them with `offset` and `limit`.\n\nWhen the instrument list of one market cannot be loaded, the other market is still\nsearched and `unavailable` names the missing one; 503 when no market can be searched.",
+        "description": "Searches the instruments of both markets: every Binance spot pair that is trading and\nevery active tradable US stock and ETF at Alpaca (without OTC). Each item carries its last\nprice, 24 h change and 24 h volume in USD, refreshed every few minutes, and its last 10 daily\ncandles (`spark`), refreshed once a day (null without them).\n\nRanking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`\nfirst), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word\nin the name, substring of the symbol, substring of the name; ties go to `sort`, then to the\nshorter symbol, then alphabetically. Without `q`, every instrument comes back in `sort`:\nthe most traded first by default.\n`exchange` narrows any of these to the instruments that trade on it.\n`total` counts all matches: page through them with `offset` and `limit`.\n\nWhen the instrument list of one market cannot be loaded, the other market is still\nsearched and `unavailable` names the missing one; 503 when no market can be searched.",
         "operationId": "search_instruments_api_v1_data_instruments_get",
         "parameters": [
           {

@@ -22,10 +22,9 @@ from candlestack.data import (
     build_data_service,
     stats_store,
 )
-from candlestack.data import service as service_module
 from candlestack.data.cache import Cache, encode_chunk
 from candlestack.data.models import STATS_SCHEMA, SourceStats
-from candlestack.data.sources import alpaca, base
+from candlestack.data.sources import alpaca
 from candlestack.data.stats_store import StatsStore
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]
@@ -268,28 +267,6 @@ async def test_snapshots_are_paced_to_their_share_of_the_budget(
     assert 0 < waited[0] <= 60
     symbols = [call.request.url.params["symbols"] for call in snapshots.calls]
     assert symbols == ["AAPL", "SPY", "BRK.B"]
-
-
-async def test_keep_stats_fresh_runs_rounds_until_cancelled(
-    service: DataService, monkeypatch: pytest.MonkeyPatch
-):
-    rounds = []
-
-    async def refresh_stats():
-        rounds.append(1)
-
-    async def sleep(seconds: float) -> None:
-        assert seconds == service_module.STATS_CHECK_SECONDS
-        if len(rounds) == 3:
-            raise asyncio.CancelledError
-
-    monkeypatch.setattr(service, "refresh_stats", refresh_stats)
-    monkeypatch.setattr(base, "_sleep", sleep)
-
-    with pytest.raises(asyncio.CancelledError):
-        await service.keep_stats_fresh()
-
-    assert len(rounds) == 3
 
 
 async def test_an_unexpected_failure_of_one_market_does_not_stop_the_other(

@@ -148,13 +148,14 @@ minute.
 
 The list (`src/features/instruments/InstrumentTable.tsx`, #184) opens with the most traded
 instruments first and shows each one's 24 h stats from the API (`price`, `change_24h`,
-`volume_24h`, see [data.md](data.md#stats)):
+`volume_24h`, see [data.md](data.md#stats)) and its last 10 daily candles (`spark`, #189):
 
 | Column | Width | Content |
 | --- | --- | --- |
 | Symbol | 168 px | 32 px icon, 10 px gap, the symbol (the row's link) |
 | Price | 128 px, right | 2 decimals from 10 (83,249.35), 4 between 1 and 10 (1.3662), up to 4 significant digits below 1 (0.08438, 0.0000042) |
 | 24h | 104 px, right | an 8 px triangle and the change without a sign, 2 decimals (1.51%); up `--up` (#1a7f37, dark #43b049), down `--down`, 0.00% muted without a triangle |
+| 10d | 136 px | the last 10 daily candles in 112 × 32 px; from `lg` (1024 px) |
 | Volume 24h | 112 px, right | USD with 3 significant digits ($1.26B, $685M, $62K) |
 | Name | the rest | muted, one line with an ellipsis |
 | Type | 88 px | Stock or Crypto, muted; from `lg` (1024 px) |
@@ -164,13 +165,24 @@ instruments first and shows each one's 24 h stats from the API (`price`, `change
   volume are "—". No market open or closed hint: a stock shows its last price.
 - The header is 12/16 medium and muted; the sorted column's header is ink with a 12 px arrow:
   Volume 24h ↓ (default), 24h ↓ (Top gainers) or ↑ (Top losers), Symbol ↑.
-- Phones (below `md`, 768 px): two columns. The symbol over "exchange · volume" (12/14; "NYSE ·
-  no stats yet"), and in 100 px the price over the change with its sign (+1.51%, −0.71%; "No
-  stats yet"). The header says "Symbol · by volume ↓", "Symbol ↑", "Price", or "Price · 24h ↓/↑"
+- Mini candles (`MiniCandles.tsx`, `candlePaths.ts`): an SVG with one path per colour, a slot
+  per day (11.2 px for 10 in 112 px), 5 px bodies (odd, so the 1 px wick sits in the middle; at
+  least 1 px high), scaled to the days' low and high with 1 px padding. Up (close ≥ open)
+  `--candle-up` (#2e9e44, dark #43b049), down `--candle-down` (#f23645), as on the chart. A day
+  without a candle (`null`) is an empty slot; no candles at all is a 1.5 px dashed line (3/3,
+  muted at 45 %). Hovering a day shows a 1 px hairline and "Oct 9 · close 82,635.55" (UTC date,
+  the list's price format) above it, Geist Mono 11/16 on ink. The hover layer lies over the
+  row's stretched link, so it is a link to the instrument too, with `tabindex="-1"` and
+  `aria-hidden`: the symbol stays the row's one tab stop. Screen readers hear "10 daily candles,
+  +1.25%" (first open to last close) or "No chart yet".
+- Phones (below `md`, 768 px): three columns. The symbol over "exchange · volume" (12/14; "NYSE ·
+  no stats yet"), "7d" in 60 px with the last 7 candles in 44 × 24 (3 px bodies, no hover), and
+  in 100 px the price over the change with its sign (+1.51%, −0.71%; "No stats yet"). The header says "Symbol · by volume ↓", "Symbol ↑", "Price", or "Price · 24h ↓/↑"
   when sorted by change; those two headers are their own cells, so their `aria-sort` names
   the order a phone shows. Cells have 8 px between the columns and 12 px at the sides.
-- From `md` to `lg` the Type column is left out, so the name keeps about 100 px at 768 px; from
-  `lg` every column shows. Nothing scrolls sideways at any width.
+- From `md` to `lg` the Type and 10d columns are left out, so the name keeps about 100 px at
+  768 px (with 10d it would have none); from `lg` every column shows. Nothing scrolls sideways at
+  any width.
 - While the previous page stands in for the next one, the header's arrow stays with the rows on
   screen and moves when the new rows arrive.
 - The formats are pure functions with unit tests in `src/lib/numbers.ts`, which the chart legend
