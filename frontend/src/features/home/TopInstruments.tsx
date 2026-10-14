@@ -92,8 +92,9 @@ function PriceCell({ instrument }: { instrument: Instrument }) {
 }
 
 // The icon and the symbol, the row's link, stretched over the whole row as in the list, so the row
-// is one click target and one tab stop. It tells the instrument page that it was opened from home,
-// so that page's back link returns here.
+// is one click target and one tab stop. The symbol's text lies above the stretched part, so it is
+// underlined only under the pointer, as in the design, not whenever the row is. The link tells the
+// instrument page that it was opened from home, so that page's back link returns here.
 function SymbolCell({ instrument }: { instrument: Instrument }) {
   return (
     <td className={cn(CELL, FIRST)}>
@@ -104,9 +105,9 @@ function SymbolCell({ instrument }: { instrument: Instrument }) {
           params={{ id: instrument.id }}
           state={{ from: 'home' }}
           title={instrument.symbol}
-          className="min-w-0 truncate font-mono leading-[18px] font-medium underline-offset-3 outline-none after:absolute after:inset-0 hover:underline focus-visible:text-primary sm:leading-5"
+          className="min-w-0 truncate font-mono leading-[18px] font-medium outline-none after:absolute after:inset-0 focus-visible:text-primary sm:leading-5"
         >
-          {instrument.symbol}
+          <span className="relative z-1 underline-offset-3 hover:underline">{instrument.symbol}</span>
         </Link>
       </div>
     </td>

@@ -1,12 +1,23 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider, createMemoryHistory, createRootRoute, createRouter } from '@tanstack/react-router';
+import type { ComponentType } from 'react';
 import { renderToString } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError, instrumentSearchQueryOptions, type Instrument, type InstrumentSearchResult } from '@/api';
 import { classes } from '@/test/markup';
 
 import { TopInstruments } from './TopInstruments';
+
+// A server render leaves a link's history state out of the markup: here the router's Link writes
+// it into a data attribute too, so the tests see what a row tells the instrument page.
+vi.mock('@tanstack/react-router', async (importOriginal) => {
+  const router = await importOriginal<{ Link: ComponentType<Record<string, unknown>> }>();
+  const { createElement } = await import('react');
+  const Link = (props: { state?: unknown }) =>
+    createElement(router.Link, { ...props, 'data-state': JSON.stringify(props.state) });
+  return { ...router, Link };
+});
 
 const DAY = 86_400;
 const OCT_4 = 1_759_536_000; // 2025-10-04 00:00 UTC
@@ -115,14 +126,28 @@ describe('TopInstruments', () => {
       '/instrument/crypto%3ASOLUSDT',
       '/instrument/stock%3ATSLA',
     ]);
-    // stretched over the whole row
+    // stretched over the whole row, the symbol's text above it, so only the symbol under the pointer
+    // is underlined
     expect(classes(all[0] ?? '', /<a [^>]*>/)).toEqual(expect.arrayContaining(['after:absolute', 'after:inset-0']));
     expect(classes(html, /<tr class="[^"]*border-b[^>]*>/)).toContain('relative');
+    expect(classes(all[0] ?? '', /<span [^>]*>BTCUSDT</)).toEqual(
+      expect.arrayContaining(['relative', 'z-1', 'hover:underline', 'underline-offset-3']),
+    );
+    expect(classes(all[0] ?? '', /<a [^>]*>/)).not.toContain('hover:underline');
+  });
+
+  it('tells the instrument page that it was opened from home, so its back link returns there', async () => {
+    const links = [...(await render(loaded(TOP))).matchAll(/<a [^>]*>/g)].map((match) => match[0]);
+    expect(links.map((link) => link.match(/data-state="([^"]*)"/)?.[1]?.replaceAll('&quot;', '"'))).toEqual(
+      Array.from({ length: 5 }, () => '{"from":"home"}'),
+    );
   });
 
   it('shows the icon, the exchange, the candles, the price and the 24 h change', async () => {
     const [btc = '', , nvda = ''] = rows(await render(loaded(TOP)));
-    expect(btc).toMatch(/<img [^>]*src="\/api\/v1\/data\/instruments\/crypto%3ABTCUSDT\/icon"[^>]*>.*>BTCUSDT<\/a>/);
+    expect(btc).toMatch(
+      /<img [^>]*src="\/api\/v1\/data\/instruments\/crypto%3ABTCUSDT\/icon"[^>]*>.*>BTCUSDT<\/span><\/a>/,
+    );
     expect(cells(btc).map(text)).toEqual([
       'BTCUSDT',
       'Binance',
@@ -149,7 +174,7 @@ describe('TopInstruments', () => {
 
   it('writes the symbol and the numbers in Geist Mono', async () => {
     const [btc = ''] = rows(await render(loaded(TOP)));
-    expect(classes(btc, /<a [^>]*>BTCUSDT/)).toEqual(expect.arrayContaining(['font-mono', 'font-medium']));
+    expect(classes(btc, /<a [^>]*><span [^>]*>BTCUSDT/)).toEqual(expect.arrayContaining(['font-mono', 'font-medium']));
     expect(classes(btc, /<span [^>]*>83,249.35/)).toContain('font-mono');
     expect(classes(btc, /<span [^>]*>\+1.51%/)).toContain('font-mono');
   });
@@ -167,7 +192,7 @@ describe('TopInstruments', () => {
     const [btc = ''] = rows(html);
     expect(btc).toContain('style="width:112px;height:32px"');
     expect(btc).toContain('style="width:44px;height:24px"');
-    expect(classes(btc, /<a [^>]*>BTCUSDT</)).toContain('truncate');
+    expect(classes(btc, /<a [^>]*><span [^>]*>BTCUSDT</)).toContain('truncate');
   });
 
   it('sits on a solid background, so the page grid does not show through', async () => {
