@@ -10,15 +10,19 @@ and for the code behind them. Architecture and configuration: [architecture.md](
 | Market | Source | Feed | Instruments | Candles | Auth |
 | --- | --- | --- | --- | --- | --- |
 | `crypto` | Binance spot | `spot` | `GET /api/v3/exchangeInfo?symbolStatus=TRADING&showPermissionSets=false`: every symbol with `status` `TRADING` | kline archives on `data.binance.vision`, newest days from `GET /api/v3/klines` | none |
-| `stock` | Alpaca, paper account | `iex` | `GET /v2/assets?status=active&asset_class=us_equity`: `tradable` true, `exchange` not `OTC` (US equities and ETFs) | `GET /v2/stocks/bars` with `feed=iex` and `adjustment=all`; trading days from `GET /v2/calendar` | `APCA-API-KEY-ID`, `APCA-API-SECRET-KEY` headers |
+| `stock` | Alpaca, paper account | `sip` | `GET /v2/assets?status=active&asset_class=us_equity`: `tradable` true, `exchange` not `OTC` (US equities and ETFs) | `GET /v2/stocks/bars` with `feed=sip` and `adjustment=all`, up to 15 minutes ago; trading days from `GET /v2/calendar` | `APCA-API-KEY-ID`, `APCA-API-SECRET-KEY` headers |
 
 - One source per market; sources are never mixed within one series.
-- History: Binance from each pair's listing; Alpaca IEX from 2020-07-27, when the IEX feed
-  starts (per instrument: its first `1Day` bar). Paper accounts are entitled to IEX data only,
-  so the SIP feed, which starts in 2016, is not used.
+- History: Binance from each pair's listing; Alpaca SIP from 2016 (per instrument: its first
+  `1Day` bar, 2016-01-04 for most stocks listed then).
 - Binance: spot only (no futures, no margin). Volume is in the base asset (BTC for BTCUSDT).
-- Alpaca IEX is the free feed: prices are IEX trades and volume is IEX volume only, a small
-  share of the consolidated volume. `feed=iex` is always sent explicitly.
+- Alpaca SIP is the consolidated feed of every US exchange: prices and volumes are the whole
+  market's. The free Basic plan, the default of paper accounts, serves it only for a query whose
+  `end` is at least 15 minutes old, so **stock data is 15 minutes behind**: no request reaches
+  into the last 15 minutes, and their candles come once they are that old (see
+  [What is fetched](#what-is-fetched)). The stats come from the snapshots of `feed=delayed_sip`,
+  SIP delayed by 15 minutes. `feed=sip` is always sent explicitly. Until #194 stocks came from
+  the IEX feed (IEX trades only, from 2020-07-27).
 - `adjustment=all` applies splits and dividends to the whole history, so past stock candles
   change after a corporate action (see [Fingerprint](#fingerprint)).
 - Instrument icons come from a third source, logo.dev (see [Icons](#icons)); without an icon
@@ -43,7 +47,7 @@ characters.
 | `symbol` | `BTCUSDT` | `AAPL` |
 | `name` | `BTC/USDT` (base/quote) | Alpaca asset name |
 | `source` | `binance` | `alpaca` |
-| `feed` | `spot` | `iex` |
+| `feed` | `spot` | `sip` |
 | `exchange` | `BINANCE` (`null` before #182) | Alpaca exchange (`NASDAQ`, `NYSE`, `ARCA`, ...); `null` for one outside the `exchange` filter's list |
 | `base`, `quote` | `BTC`, `USDT` | `null` |
 
@@ -93,12 +97,12 @@ source:
   "symbol": "AAPL",
   "name": "Apple Inc. Common Stock",
   "source": "alpaca",
-  "feed": "iex",
+  "feed": "sip",
   "exchange": "NASDAQ",
   "base": null,
   "quote": null,
   "timeframes": ["1m", "5m", "15m", "30m", "1h", "4h", "1d"],
-  "available_from": 1595856600,
+  "available_from": 1451917800,
   "available_to": 1790380620,
   "max_candles": 50000
 }
@@ -109,7 +113,8 @@ source:
   no candle yet or cannot be asked. For a longer timeframe the first candle opens at the start
   of the bin that holds this moment (BTCUSDT: 1m from 2017-08-17T04:00Z, 1d from 00:00Z).
 - `available_to`: open time of the newest closed 1m bin when the answer was made; for stocks
-  the last minute of the latest session that has begun (15:59 New York after the close).
+  the last minute of the latest session that has begun (15:59 New York after the close). A
+  stock's candles of the last 15 minutes are not there yet: they are neither returned nor gaps.
 - `max_candles`: `CANDLES_MAX`.
 
 Values in the examples of this document are illustrative.
@@ -121,16 +126,16 @@ background task of the backend refreshes them (prod and stage, `STATS_REFRESH`) 
 in Redis, so a search never waits for a source; the other environments have none unless
 `STATS_REFRESH=true`.
 
-| Field | Crypto (Binance) | Stock (Alpaca, IEX) |
+| Field | Crypto (Binance) | Stock (Alpaca, SIP 15 minutes delayed) |
 | --- | --- | --- |
-| `price` | `lastPrice`, in the quote asset (USDT for BTCUSDT, BTC for ETHBTC) | the latest IEX trade (the daily bar's close without one), USD, also while the market is closed |
+| `price` | `lastPrice`, in the quote asset (USDT for BTCUSDT, BTC for ETHBTC) | the latest trade (the daily bar's close without one), USD, also while the market is closed |
 | `change_24h` | `priceChangePercent`: against the price 24 hours ago (rolling) | against the previous daily bar's close: today's session, or the latest one while the market is closed |
-| `volume_24h` | `quoteVolume` of the last 24 hours in USD: as is for USDT pairs, otherwise at the USDT price of the quote asset (`<quote>USDT`, or the inverse of `USDT<quote>` such as USDTTRY); `null` for a quote asset without one | the daily bar's volume times its volume-weighted price (its close without one), USD |
+| `volume_24h` | `quoteVolume` of the last 24 hours in USD: as is for USDT pairs, otherwise at the USDT price of the quote asset (`<quote>USDT`, or the inverse of `USDT<quote>` such as USDTTRY); `null` for a quote asset without one | the daily bar's volume times its volume-weighted price (its close without one), USD; pre-market and after-hours included |
 
 - Crypto: one `GET /api/v3/ticker/24hr?symbolStatus=TRADING` (weight 80, 0.7 MB) every 5
   minutes for every pair; only the pairs of the catalog are kept. A pair without a positive last
   price has no stats.
-- Stocks: `GET /v2/stocks/snapshots?symbols=<500 symbols>&feed=iex` for every stock of the
+- Stocks: `GET /v2/stocks/snapshots?symbols=<500 symbols>&feed=delayed_sip` for every stock of the
   catalog, every 10 minutes: about 27 requests, one after another, at most a fifth of
   `ALPACA_RATE_LIMIT` a minute and never more than 20 (prod and stage 20, previews 6), so chart
   requests keep the rest; each also counts against `ALPACA_RATE_LIMIT`. A request that fails
@@ -140,15 +145,15 @@ in Redis, so a search never waits for a source; the other environments have none
   stocks of a request that still fails otherwise keep their last stats, each row until 2 hours
   after it was fetched, and the others get new ones. A malformed snapshot is skipped (one
   warning per refresh). A stock without a snapshot or
-  a price has no stats. A daily bar more than 5 days old (no IEX trade since) gives
-  no change and a volume of 0.
-- **The stock volume is IEX volume only**, about 1% of the market (the plan has no SIP data).
-  It ranks stocks by popularity, it is not their full turnover, and it is the volume of the
-  latest session, not a rolling 24 hours. Crypto volume is Binance's whole spot volume, so in a
-  mixed list stocks rank lower than their real turnover.
+  a price has no stats. A daily bar more than 5 days old (no trade on any exchange since, a
+  halted or suspended stock) gives no change and a volume of 0.
+- **The stock stats are 15 minutes behind**: the free plan has SIP snapshots only with that
+  delay (`delayed_sip`); a refused snapshot request is logged as an error and never answered
+  from another feed. The stock volume is the whole market's (SIP) of the latest session,
+  pre-market and after-hours included, not a rolling 24 hours.
 - Both markets refresh at the same time, so crypto never waits for the paced stock requests;
   an unexpected failure of one is logged as an error and the other still refreshes.
-- Each market's stats are one Redis value (`data:v1:stats:<market>`, see [Cache](#cache)) kept
+- Each market's stats are one Redis value (`data:v<N>:stats:<market>`, see [Cache](#cache)) kept
   until 2 hours after their refresh began; every row carries its own fetch time. A refresh runs once per environment at a time (a lock
   in Redis, renewed while the refresh runs), and when a source fails the last stats stay until
   they are 2 hours old. A process checks the stored stats at most once a minute, reading only
@@ -174,8 +179,8 @@ it) is `null`; `spark` is `null` when the instrument has none of them. About 0.5
 
 The same background task as the stats (`STATS_REFRESH`) refreshes them once a day per market,
 15 minutes after its daily close (crypto at 00:15 UTC, stocks 15 minutes after the New York
-close), checking once a minute in its own loop, so the stats never wait for it. A market without
-stored candles (a new environment, the key evicted from Redis) or with candles from before its
+close, when Alpaca serves the session's SIP bars), checking once a minute in its own loop, so
+the stats never wait for it. A market without stored candles (a new environment, the key evicted from Redis) or with candles from before its
 last daily close is refreshed at once, on the next check:
 
 - Crypto: `GET /api/v3/klines?symbol=<pair>&interval=1d&startTime=&endTime=&limit=10` for
@@ -184,7 +189,7 @@ last daily close is refreshed at once, on the next check:
   2800 weight once a day, each also counting against `BINANCE_WEIGHT_LIMIT`. A pair whose
   request fails is asked once more after the others; one Binance refuses (a 4xx) gets none.
   After 5 failures in a row the pairs left are not asked this time.
-- Stocks: `GET /v2/stocks/bars?symbols=<500 symbols>&timeframe=1Day&feed=iex&adjustment=all`
+- Stocks: `GET /v2/stocks/bars?symbols=<500 symbols>&timeframe=1Day&feed=sip&adjustment=all`
   of the last 10 sessions (about 27 requests), within their own share of the Alpaca budget
   (`data:rl:alpaca-spark`: a twentieth of `ALPACA_RATE_LIMIT`, at most 5 a minute; prod and
   stage 5, previews 1), so they never slow the stats' share, with the same retry and splitting
@@ -194,7 +199,7 @@ last daily close is refreshed at once, on the next check:
   them and is tried again 30 minutes later.
 - Candles are shown until 12 hours after the market's next daily close settled: about 36 hours
   for crypto, over weekends and holidays until the next session for stocks.
-- Each market's candles are one Redis value (`data:v1:spark:<market>`, about 4 MB for both
+- Each market's candles are one Redis value (`data:v<N>:spark:<market>`, about 4 MB for both
   markets), kept and reloaded as the stats are (at most 7 days); a process keeps its own copy
   (about 7 MB), sorted by symbol, with an index built once per stored frame, so a search looks
   up only the candles of the page it returns.
@@ -286,15 +291,18 @@ Both markets have the same list.
 | | Crypto | Stock |
 | --- | --- | --- |
 | `4h` | native Binance 4h, six UTC bins per day | 09:30-13:30 and 13:30-close; one candle on early-close days |
-| `1d` | native Binance 1d, 00:00-24:00 UTC | Alpaca `1Day` (IEX), one candle per session, labelled with the session open in UTC |
+| `1d` | native Binance 1d, 00:00-24:00 UTC | Alpaca `1Day` (SIP), one candle per session, labelled with the session open in UTC |
 
-Stock `1d` is Alpaca's `1Day` bar: on the IEX feed its prices equal the regular-session
-aggregate of the 1m bars (checked on 20 days, see [Facts](#facts-verified-against-the-sources)),
-and one request returns years of them. Alpaca stamps it 00:00 New York; it is relabelled to the
-open of that day's session (2024-06-03 -> `1717421400`, 09:30 EDT), so the 1d label equals the
-label of the day's first 1m, 1h and 4h candle. Its volume is 0.01-0.85% higher than the sum of
-the 1m volumes: the daily bar counts trades that form no minute bar. On the SIP feed this would
-not hold (SIP `1Day` includes extended hours), and 1d would have to be built from 1m.
+Stock `1d` is Alpaca's `1Day` bar, because one request returns years of them. Alpaca stamps
+it 00:00 New York; it is relabelled to the open of that day's session (2024-06-03 ->
+`1717421400`, 09:30 EDT), so the 1d label equals the label of the day's first 1m, 1h and 4h
+candle. On the SIP feed it is the day as the exchanges report it, not the aggregate of the
+day's 1m candles: its open and close are the official opening and closing auction prices, and
+its volume includes pre-market and after-hours trades, which the 1m candles (regular session
+only) leave out. So a 1d candle can differ from the 4h candles of its session in open, close
+and volume. Building 1d from the 1m bars instead would cost two or three requests per month of
+history rather than one for years. On the IEX feed (before #194) the `1Day` bar equalled the
+regular-session aggregate (see [Facts](#facts-verified-against-the-sources)).
 
 ## What is fetched
 
@@ -305,9 +313,9 @@ and cached (see [Cache](#cache)); the chunks are joined, resampled for stocks an
 
 | Chunk | Crypto | Stock |
 | --- | --- | --- |
-| closed month (1m) or year (1d) | monthly archive; while it is not published yet, built from the daily archives | one request (1m: a month of IEX bars is under 10000) |
+| closed month (1m) or year (1d) | monthly archive; while it is not published yet, built from the daily archives | one request per 10000 bars (1m: a month of SIP bars with extended hours is about 20000, so 2 or 3) |
 | current month or year before today | one chunk per day: daily archive, `GET /api/v3/klines` while it is not published | one chunk for all days so far |
-| today up to the request (live tail) | `GET /api/v3/klines` | one request |
+| today up to the request (live tail) | `GET /api/v3/klines` | one request, up to 15 minutes before the request |
 
 **Crypto** (`BINANCE_DATA_URL`, `BINANCE_API_URL`)
 
@@ -334,15 +342,22 @@ and cached (see [Cache](#cache)); the chunks are joined, resampled for stocks an
 
 **Stocks** (`ALPACA_DATA_URL`, `ALPACA_API_URL`)
 
-- `GET /v2/stocks/bars` with `feed=iex`, `adjustment=all`, `timeframe=1Min` (or `1Day` for
+- `GET /v2/stocks/bars` with `feed=sip`, `adjustment=all`, `timeframe=1Min` (or `1Day` for
   1d), `limit=10000`, following `next_page_token`. Alpaca's `end` is inclusive: a chunk
   `[start, end)` sends `end - 1 s`.
-- 1m bars outside the sessions of the calendar are dropped before anything is built (IEX has
-  sparse pre-market and after-hours prints).
+- No request has an `end` within the last 15 minutes (the free plan refuses it): the chunks are
+  planned as of 15 minutes before the request, so the live tail ends there and holds the
+  candles complete until then, and a day becomes part of a chunk cached for a day only once it
+  ended 15 minutes ago (00:15 UTC). Every bars request's `end` is also capped at 15 minutes ago.
+- A `1Day` bar counts the volume of extended hours, which end at 20:00 New York (01:00 UTC at
+  the latest): a chunk of 1Day bars fetched before 01:15 UTC after its last day is cached only
+  until then and fetched again. The regular sessions' 1m bars are final long before.
+- 1m bars outside the sessions of the calendar are dropped before anything is built (SIP has
+  pre-market and after-hours bars).
 - Unknown symbols are answered with 200 and no bars, so unknown instruments are recognised by
   the catalog, before any bar request.
-- `available_from`: the first `1Day` bar from 2016-01-01 (`limit=1`), labelled with its
-  session open.
+- `available_from`: the first `1Day` bar from 2016-01-01 (`limit=1`, `end` 15 minutes ago),
+  labelled with its session open.
 
 ## Gaps
 
@@ -353,8 +368,8 @@ and cached (see [Cache](#cache)); the chunks are joined, resampled for stocks an
   number of missing candles. Consecutive missing candles form one range, for stocks also
   across a night or weekend; a range ends where its last missing candle ends (at most the
   session close).
-- Typical causes: exchange maintenance and trading halts; minutes without any IEX trade
-  (common for illiquid stocks at 1m, rare at 1h and above).
+- Typical causes: exchange maintenance and trading halts; minutes without any trade (illiquid
+  stocks at 1m, rare at 1h and above).
 - Candles with zero volume are kept as delivered.
 
 ## Validation
@@ -396,7 +411,8 @@ reproducible on current data.
 
 - Format: `sha256:<64 hex digits>`.
 - Input: source, feed, instrument id, timeframe, `start`, `end`, then `t`, open, high, low,
-  close and volume of every candle in time order. The exact byte layout is documented on
+  close and volume of every candle in time order. So every stock fingerprint changed with the
+  switch from the IEX to the SIP feed (#194). The exact byte layout is documented on
   `fingerprint()` in `backend/src/candlestack/data/candles.py`.
 
 ## Limits
@@ -423,9 +439,10 @@ requested timeframe.
   within 5 s; otherwise it gets 503 `source-unavailable` with `Retry-After`.
 - Alpaca allows 200 requests per minute per key. Prod has its own key; stage and previews
   share one, so stage plus four previews stay within it.
-- Intraday stock candles need one Alpaca request per month of 1m bars, so a cold request for
-  years of them can need more than a minute's budget. It then gets 503 with `Retry-After`; the
-  months fetched so far stay cached and the retry continues from there.
+- Intraday stock candles need two or three Alpaca requests per month of 1m bars (SIP has
+  extended hours), so a cold request for years of them can need more than a minute's budget.
+  It then gets 503 with `Retry-After`; the months fetched so far stay cached and the retry
+  continues from there.
 - Binance limits request weight to 6000 per minute per IP, and all environments on the VM
   share one IP. When `X-MBX-USED-WEIGHT-1M` reaches 5000, REST calls pause until the minute
   ends. Weights: `exchangeInfo` 20, `ticker/24hr` of every pair 80, `klines` 2 (any `limit`),
@@ -444,11 +461,11 @@ again. Keys:
 | --- | --- | --- |
 | `data:v2:catalog:<market>` | instrument list of the market with its fetch time (compact JSON) | 7 days; refreshed when older than 24 h, the old list is served while one background task refreshes it |
 | `data:v1:calendar` | NYSE sessions from 2016 to the end of next year | 7 days |
-| `data:v2:candles:<instrument>:<base timeframe>:<chunk>` | one chunk of validated candles, Arrow IPC + zstd | see below |
-| `data:v1:first:<instrument>` | `available_from` | 7 days; 1 hour while the instrument has no candle |
+| `data:v2:candles:crypto:<symbol>:<base timeframe>:<chunk>`, `data:v3:candles:stock:<symbol>:...` | one chunk of validated candles, Arrow IPC + zstd | see below |
+| `data:v1:first:crypto:<symbol>`, `data:v2:first:stock:<symbol>` | `available_from` | 7 days; 1 hour while the instrument has no candle |
 | `data:v1:health:<source>` | reachability of the source | 60 s |
-| `data:v1:stats:<market>` | the 24 h stats of the market's instruments (symbol, price, change, volume): their fetch time (8 bytes), then Arrow IPC + zstd, as a candle chunk | until 2 hours after the fetch began; replaced every 5 (crypto) or 10 (stocks) minutes by the background refresh |
-| `data:v1:spark:<market>` | the last 10 daily candles of the market's instruments (symbol, open time, open, high, low, close), as the stats | until 7 days after the fetch began; replaced once a day after the market's daily close |
+| `data:v1:stats:crypto`, `data:v2:stats:stock` | the 24 h stats of the market's instruments (symbol, price, change, volume): their fetch time (8 bytes), then Arrow IPC + zstd, as a candle chunk | until 2 hours after the fetch began; replaced every 5 (crypto) or 10 (stocks) minutes by the background refresh |
+| `data:v1:spark:crypto`, `data:v2:spark:stock` | the last 10 daily candles of the market's instruments (symbol, open time, open, high, low, close), as the stats | until 7 days after the fetch began; replaced once a day after the market's daily close |
 | `data:v1:icon:ticker/<symbol>`, `data:v1:icon:crypto/<base asset>` | the logo (`<media type>` + newline + image), `none` or `failed` | 30 days; `none` 7 days; `failed` 60 s |
 | `data:lock:vN:<key without data:vN:>` | single-flight lock for a key being fetched, with the key's version (`data:lock:v2:catalog:crypto`) | 30 s; 2 minutes for a stats or daily candles refresh, renewed every 40 s while it runs |
 | `data:fail:vN:<key without data:vN:>` | the error of a failed fetch of that key (source unavailable or invalid data) | 10 s, or the error's `Retry-After` when shorter |
@@ -458,8 +475,8 @@ again. Keys:
 | --- | --- | --- | --- |
 | closed month or year | `2024-06`, `2024` | 30 days | 1 day |
 | closed day of the current month | `2026-09-25` | 7 days | |
-| current month or year before today | `2026-09-01..2026-09-26` (end exclusive) | | 1 day |
-| today up to the request | `2026-09-26-live` | 60 s | 60 s |
+| current month or year before today | `2026-09-01..2026-09-26` (end exclusive) | | 1 day; 1d fetched before 01:15 UTC: until then |
+| today up to the request | `2026-09-26-live` | 60 s | 60 s; it ends 15 minutes before the request, so a day is today until 00:15 UTC the next day |
 
 - Stock chunks live one day because `adjustment=all` rewrites past bars after every dividend or
   split.
@@ -474,12 +491,14 @@ again. Keys:
   a few ms). A process whose copy is older than 24 h first adopts a newer list from Redis.
 - When Redis fails, values are fetched from the source and not cached for 5 s at a time; a
   Redis failure never fails a request by itself.
-- The version (`v1`, `v2`) is per key family and changes when the meaning or format of its
-  values changes, because Redis keeps its contents across deploys: values under the old
-  version are never read again and expire. `candles` is `v2` since archive candles off the
-  grid are taken from REST (see [What is fetched](#what-is-fetched)); the chunks cached before
-  that hold them as delivered. `catalog` is `v2` since crypto pairs have the exchange
-  `BINANCE`; the lists cached before that have none. Locks and kept errors carry the version
+- The version (`v1`, `v2`, ...) is per key family, or per family and market, and changes when
+  the meaning or format of its values changes, because Redis keeps its contents across
+  deploys: values under the old version are never read again and expire. `candles` is `v2`
+  since archive candles off the grid are taken from REST (see [What is fetched](#what-is-fetched));
+  the chunks cached before that hold them as delivered. `catalog` is `v2` since crypto pairs
+  have the exchange `BINANCE`; the lists cached before that have none. The stocks' `candles`
+  (`v3`), `first`, `stats` and `spark` (`v2`) changed with the SIP feed (#194): IEX values are
+  never served; the crypto keys kept their versions. Locks and kept errors carry the version
   too, so during a deploy a process on the old version and one on the new never wait for each
   other's value.
 - `GET /api/health/sources` reports `ok` or `error` per source (Binance `GET /api/v3/ping`,
@@ -562,7 +581,7 @@ Response (columnar arrays; index `i` of every array is one candle):
 | Field | Meaning |
 | --- | --- |
 | `meta.instrument`, `meta.timeframe`, `meta.start`, `meta.end` | the request, normalised |
-| `meta.source`, `meta.feed` | `binance`/`spot` or `alpaca`/`iex` |
+| `meta.source`, `meta.feed` | `binance`/`spot` or `alpaca`/`sip` |
 | `meta.fingerprint` | see [Fingerprint](#fingerprint) |
 | `meta.count` | number of candles returned |
 | `meta.gaps` | up to 100 `[start, end)` ranges of missing candles, earliest first |
@@ -676,8 +695,9 @@ Source unavailable:
 ## Facts verified against the sources
 
 Measured on 2026-09-25 (a Friday evening, US market closed): Binance from a developer machine,
-Alpaca from a GitHub Actions job with the stage paper keys. The recorded responses the tests
-use are in `backend/tests/fixtures/` (see its README).
+Alpaca from a GitHub Actions job with the stage paper keys, on the IEX feed. What is marked
+"docs" comes from Alpaca's documentation of 2026-10-14 and was not measured with our keys. The
+recorded responses the tests use are in `backend/tests/fixtures/` (see its README).
 
 ### Binance
 
@@ -746,7 +766,14 @@ use are in `backend/tests/fixtures/` (see its README).
   bar in 2018). IEX volume is about 0.8% of the market, and 1m bars are sparse: on 2024-06-03
   AAPL has 320 of 390 regular minutes, SPY 330, PLBY 4, UUU 1. IEX carries sparse prints
   before 09:30 and after 16:00, so bars are filtered to the calendar's sessions. SIP starts
-  2016-01-04 and answers with the paper keys, but paper accounts are entitled to IEX only.
+  2016-01-04 and answers with the paper keys.
+- **SIP on the free plan (docs).** The Basic plan, the default of paper accounts, includes SIP
+  history since 2016 for any query whose `end` is at least 15 minutes old; a newer one is
+  refused with `{"code":42210000,"message":"subscription does not permit querying recent SIP
+  data"}` (a 4xx). The latest and snapshot endpoints with `feed=sip` need a paid plan;
+  `GET /v2/stocks/snapshots` takes `feed=delayed_sip`, SIP delayed by 15 minutes. The limit
+  stays 200 requests per minute. SIP `1Day` bars have the official auction open and close and
+  count extended-hours volume; SIP 1m bars cover pre-market and after-hours.
 - **Adjustment.** `adjustment=all` divides prices before a split (NVDA 10:1 on 2024-06-10) and
   multiplies volumes, and applies dividend factors to all earlier bars: adjusted history
   changes after every later corporate action.
@@ -763,15 +790,18 @@ use are in `backend/tests/fixtures/` (see its README).
 
 | Question | Decision |
 | --- | --- |
-| Stock feed | `iex`: the only feed paper accounts are entitled to. History starts 2020-07-27, not 2016 as first planned. |
-| Stock 1d | Alpaca `1Day`, relabelled to the session open (see [4h and 1d](#4h-and-1d)). Intraday timeframes from regular-session 1m bars. |
+| Stock feed | `sip` since #194: the whole market from 2016, which the free plan of paper accounts includes up to 15 minutes ago. It was `iex` before, on the wrong belief that paper accounts get IEX only (history from 2020-07-27, about 1% of the volume). |
+| Stock delay | No request reaches into the last 15 minutes; the live tail ends there, and a chunk with data that was not final yet is cached only until it is. The stats come from `delayed_sip` snapshots, never from another feed. |
+| Stock 1d | Alpaca `1Day`, relabelled to the session open (see [4h and 1d](#4h-and-1d)): on SIP official open and close and extended-hours volume, so not the aggregate of the 1m candles. Intraday timeframes from regular-session 1m bars. |
 | Early closes | One 4h candle 09:30-13:00 and no second one; the last 1h candle is 12:30-13:00. |
 | Binance timestamps | Unit per value (`>= 10^15` is microseconds), label = open time, `close_time` ignored except for the still-open REST row. |
 | Binance current period | Closed month: monthly archive, else daily archives. Current month: daily archive per complete day, REST on 404; REST for today. |
 | End of range | Both sources treat `end` as inclusive; the adapters send end minus one unit. |
 | Stock cache | Closed stock chunks live 1 day (history is rewritten after corporate actions; 30 days for crypto). Stocks are fetched in whole months (1m) or years (1Day) because one request returns them and Alpaca requests are budgeted; per-day chunks would multiply the requests. |
 | Unknown instruments | Recognised by the catalog: Alpaca answers 200 with no bars. Error bodies are never assumed to be JSON. |
-| Gaps | IEX minutes without trades are gaps like any other, reported as capped ranges and a total. |
+| Gaps | Minutes without trades are gaps like any other, reported as capped ranges and a total. |
 
 Not verified yet: whether Alpaca returns a partial bar for the session in progress (the market
-was closed); candles are only returned once their end has passed, so it would not show.
+was closed); candles are only returned once their end has passed, so it would not show. Not
+measured with our keys yet (#194): the SIP bars of the last day and the `delayed_sip`
+snapshots; until then the facts on SIP are Alpaca's documentation.

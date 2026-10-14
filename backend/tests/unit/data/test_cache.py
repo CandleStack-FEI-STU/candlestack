@@ -236,6 +236,27 @@ def test_locks_and_kept_errors_are_versioned_with_their_values() -> None:
     assert cache_module.lock_key("calendar") == "data:lock:v1:calendar"
 
 
+@pytest.mark.parametrize(
+    ("name", "stored"),
+    [
+        # The stocks' values from IEX are never read again; the crypto ones stay.
+        ("candles:stock:AAPL:1m:2024-06", "data:v3:candles:stock:AAPL:1m:2024-06"),
+        ("candles:crypto:BTCUSDT:1h:2024-06", "data:v2:candles:crypto:BTCUSDT:1h:2024-06"),
+        ("first:stock:AAPL", "data:v2:first:stock:AAPL"),
+        ("first:crypto:BTCUSDT", "data:v1:first:crypto:BTCUSDT"),
+        ("stats:stock", "data:v2:stats:stock"),
+        ("stats:crypto", "data:v1:stats:crypto"),
+        ("spark:stock", "data:v2:spark:stock"),
+        ("spark:crypto", "data:v1:spark:crypto"),
+        ("catalog:stock", "data:v2:catalog:stock"),
+        ("health:alpaca", "data:v1:health:alpaca"),
+    ],
+)
+def test_a_market_can_have_its_own_version_of_a_family(name: str, stored: str) -> None:
+    assert cache_module.key(name) == stored
+    assert cache_module.lock_key(name) == stored.replace("data:", "data:lock:", 1)
+
+
 async def test_a_lock_is_kept_without_redis(error: Exception, caplog: pytest.LogCaptureFixture):
     # Without Redis nobody else can take it: renewing it succeeds, now and while Redis is skipped.
     cache = FailingRedis(error).cache()

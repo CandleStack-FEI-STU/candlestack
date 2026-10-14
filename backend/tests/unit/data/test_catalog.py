@@ -32,7 +32,7 @@ def stock(symbol: str, name: str, exchange: str = "NASDAQ") -> Instrument:
         id=InstrumentId(Market.STOCK, symbol),
         name=name,
         source="alpaca",
-        feed="iex",
+        feed="sip",
         exchange=exchange,
     )
 

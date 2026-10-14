@@ -49,7 +49,7 @@ BTCUSDT = Instrument(
     quote="USDT",
 )
 AAPL = Instrument(
-    InstrumentId(Market.STOCK, "AAPL"), "Apple Inc. Common Stock", "alpaca", "iex", "NASDAQ"
+    InstrumentId(Market.STOCK, "AAPL"), "Apple Inc. Common Stock", "alpaca", "sip", "NASDAQ"
 )
 BTCUSDT_STATS = InstrumentStats(83249.35, 1.51, 1258811866.0)
 # Two days of BTCUSDT's mini chart, the first without a candle.
@@ -134,7 +134,7 @@ class FakeDataService:
         self._called("instrument", instrument_id)
         if instrument_id != AAPL.id:
             raise InstrumentNotFound(instrument_id)
-        return InstrumentInfo(AAPL, tuple(Timeframe), 1595856600, 1790372340, 50000)
+        return InstrumentInfo(AAPL, tuple(Timeframe), 1451917800, 1790372340, 50000)
 
     async def icon(self, instrument_id: InstrumentId) -> Icon:
         self._called("icon", instrument_id)
@@ -230,7 +230,7 @@ def test_search(client: TestClient, service: FakeDataService) -> None:
                 "symbol": "AAPL",
                 "name": "Apple Inc. Common Stock",
                 "source": "alpaca",
-                "feed": "iex",
+                "feed": "sip",
                 "exchange": "NASDAQ",
                 "base": None,
                 "quote": None,
@@ -379,12 +379,12 @@ def test_instrument_detail(client: TestClient, service: FakeDataService) -> None
         "symbol": "AAPL",
         "name": "Apple Inc. Common Stock",
         "source": "alpaca",
-        "feed": "iex",
+        "feed": "sip",
         "exchange": "NASDAQ",
         "base": None,
         "quote": None,
         "timeframes": ["1m", "5m", "15m", "30m", "1h", "4h", "1d"],
-        "available_from": 1595856600,
+        "available_from": 1451917800,
         "available_to": 1790372340,
         "max_candles": 50000,
     }
@@ -803,12 +803,12 @@ def test_too_many_candles(client: TestClient, service: FakeDataService) -> None:
 
 
 def test_invalid_request_from_the_service(client: TestClient, service: FakeDataService) -> None:
-    service.error = InvalidRequest("stock:AAPL has no 1m candles before 2020-07-27.")
+    service.error = InvalidRequest("stock:AAPL has no 1m candles before 2016-01-04.")
 
     body = problem(client.get(CANDLES), 422, "validation")
 
     assert body["title"] == "Invalid request"
-    assert body["detail"] == "stock:AAPL has no 1m candles before 2020-07-27."
+    assert body["detail"] == "stock:AAPL has no 1m candles before 2016-01-04."
 
 
 def test_unknown_instrument_in_candles(client: TestClient, service: FakeDataService) -> None:

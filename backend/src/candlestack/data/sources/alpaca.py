@@ -1,11 +1,13 @@
-"""Alpaca, the source of the US stock market: IEX feed, paper account keys.
+"""Alpaca, the source of the US stock market: SIP feed (all US exchanges), paper account keys.
 
-Intraday timeframes are built from regular-session 1m bars; 1d is Alpaca's 1Day bar, which on
-IEX covers exactly the regular session, relabelled from 00:00 New York to the session open.
-Trading days come from ``GET /v2/calendar``. Every request spends our budget
-(``ALPACA_RATE_LIMIT``); Alpaca allows 200 per minute per key. The 24 h stats come from
-``GET /v2/stocks/snapshots`` and the daily candles of the mini charts from the 1Day bars,
-many symbols per request, paced to a share of the budget.
+The free plan serves SIP bars only up to 15 minutes ago (``SIP_DELAY``): no request asks for
+anything newer, and the candles of the last 15 minutes come once they are that old. Intraday
+timeframes are built from regular-session 1m bars; 1d is Alpaca's 1Day bar (official open and
+close, extended-hours volume), relabelled from 00:00 New York to the session open. Trading days
+come from ``GET /v2/calendar``. Every request spends our budget (``ALPACA_RATE_LIMIT``); Alpaca
+allows 200 per minute per key. The 24 h stats come from ``GET /v2/stocks/snapshots`` of the SIP
+feed delayed by 15 minutes and the daily candles of the mini charts from the 1Day bars, many
+symbols per request, paced to a share of the budget.
 """
 
 import bisect
@@ -14,7 +16,7 @@ import math
 import time
 from collections import Counter
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from functools import partial
 from itertools import batched
@@ -53,6 +55,7 @@ from candlestack.data.models import (
 from candlestack.data.sessions import NEW_YORK, Session, parse_calendar
 from candlestack.data.sources.base import (
     DAY,
+    LIVE_TTL,
     Period,
     get,
     json_body,
@@ -68,6 +71,13 @@ logger = logging.getLogger(__name__)
 NAME: Source = "alpaca"
 TITLE = "Alpaca"
 RATE_KEY = "data:rl:alpaca"
+# The free plan answers SIP bars only for a query whose end is at least this old; a newer end is
+# refused ("subscription does not permit querying recent SIP data").
+SIP_DELAY = 900
+# The latest extended-hours trade of a day is at 20:00 New York, at most 01:00 UTC the next day,
+# and a 1Day bar counts its volume: a chunk of 1Day bars that ends at a UTC midnight is final
+# this long after it.
+DAILY_FINAL_SECONDS = 3600 + SIP_DELAY
 # adjustment=all rewrites past bars after every dividend or split, so closed periods are
 # refetched daily.
 CLOSED_TTL = DAY
@@ -89,8 +99,9 @@ STATS_SHARE_DIVISOR = 5
 SPARK_RATE_KEY = "data:rl:alpaca-spark"
 SPARK_SHARE_MAX = 5
 SPARK_SHARE_DIVISOR = 20
-# A daily bar older than this is from a stock without IEX trades lately: it has no 24 h change
-# and no 24 h volume (0) rather than those of an old session. Covers a long weekend.
+# A daily bar older than this is from a stock that has not traded on any exchange lately (halted,
+# suspended): it has no 24 h change and no 24 h volume (0) rather than those of an old session.
+# Covers a long weekend.
 STALE_BAR_SECONDS = 5 * DAY
 
 # The values of Exchange a stock can have; BINANCE is the crypto pairs'.
@@ -141,7 +152,7 @@ def parse_assets(content: bytes) -> list[Instrument]:
                 id=instrument_id,
                 name=name,
                 source=NAME,
-                feed="iex",
+                feed="sip",
                 exchange=exchange if known else None,
             )
         )
@@ -198,7 +209,8 @@ def snapshot_stats(snapshot: Any, now: int) -> tuple[float, float | None, float 
 
     The price is the latest trade (the daily bar's close without one), the change is against
     the previous daily bar's close, and the volume is the daily bar's volume times its
-    volume-weighted price (its close without one). On the IEX feed both cover IEX trades only.
+    volume-weighted price (its close without one), both of every US exchange, extended hours
+    included.
     A daily bar older than ``STALE_BAR_SECONDS`` gives no change and a volume of 0. Raises
     ``TypeError`` for a snapshot, trade or bar that is not an object (``null`` is none).
     """
@@ -335,6 +347,13 @@ def _rfc3339(ts: int) -> str:
     return f"{utc(ts):%Y-%m-%dT%H:%M:%SZ}"
 
 
+def _span(start: int, end: int) -> dict[str, str | int]:
+    """``start`` and ``end`` of a bars request for ``[start, end)``: Alpaca's end is inclusive,
+    and it is never within the last ``SIP_DELAY``, which the free plan refuses."""
+    end = min(end, int(_time()) - SIP_DELAY)
+    return {"start": _rfc3339(start), "end": _rfc3339(end - 1)}
+
+
 @dataclass(frozen=True)
 class _Job:
     """What a refresh in batches asks for, as its log lines name it."""
@@ -404,10 +423,11 @@ def _refused(error: DataError) -> bool:
 
 class AlpacaSource:
     name: Source = NAME
-    feed: Feed = "iex"
+    feed: Feed = "sip"
     market = Market.STOCK
-    # A chunk of 1m bars is a month, about 8000 bars parsed from JSON while it is fetched, and
-    # years of them build one 1h request: few at once keep the memory of a request small.
+    # A chunk of 1m bars is a month, up to about 20000 bars with extended hours (2 or 3 pages)
+    # parsed from JSON while it is fetched, and years of them build one 1h request: few at once
+    # keep the memory of a request small.
     chunk_concurrency = 4
 
     def __init__(
@@ -447,10 +467,9 @@ class AlpacaSource:
         return self._sessions
 
     async def first_timestamp(self, symbol: str) -> int | None:
-        """Open of the session of the first 1Day bar (IEX data starts in July 2020)."""
-        body = await self._bars_page(
-            symbol, "1Day", {"start": f"{HISTORY_START}-01-01T00:00:00Z", "limit": 1}
-        )
+        """Open of the session of the first 1Day bar (SIP data starts in January 2016)."""
+        start = int(datetime(HISTORY_START, 1, 1, tzinfo=UTC).timestamp())
+        body = await self._bars_page(symbol, "1Day", {**_span(start, int(_time())), "limit": 1})
         frame = parse_bars(_symbol_bars(body, symbol))
         if not frame.height:
             return None
@@ -462,17 +481,30 @@ class AlpacaSource:
         return Timeframe.D1 if timeframe is Timeframe.D1 else Timeframe.M1
 
     def periods(self, timeframe: Timeframe, start: int, end: int, now: int) -> list[Period]:
-        # A request returns up to 10000 bars: a month of IEX 1m bars, many years of 1Day
-        # bars. Whole spans keep the number of requests (our budget) small.
-        return plan_periods(
+        # A request returns up to 10000 bars: about half a month of 1m bars with extended hours,
+        # many years of 1Day bars. Whole spans keep the number of requests (our budget) small. The
+        # chunks are planned as of SIP_DELAY ago: the live one ends there (and is complete until
+        # then), and a day joins a cached chunk only once its bars are that old.
+        periods = plan_periods(
             start,
             end,
-            now,
+            now - SIP_DELAY,
             yearly=timeframe is Timeframe.D1,
             daily=False,
             closed_ttl=CLOSED_TTL,
             current_ttl=CURRENT_TTL,
         )
+        if timeframe is not Timeframe.D1:
+            return periods
+        # The 1m bars of a regular session are final 15 minutes after its close, long before the
+        # UTC midnight that ends a chunk; its 1Day bar only once extended hours ended. A chunk
+        # fetched before that is kept until then, and then fetched again.
+        return [
+            replace(period, ttl=max(LIVE_TTL, final - now))
+            if period.kind != "live" and (final := period.end + DAILY_FINAL_SECONDS) > now
+            else period
+            for period in periods
+        ]
 
     async def fetch_period(self, symbol: str, timeframe: Timeframe, period: Period) -> pl.DataFrame:
         frame = await self._bars(symbol, timeframe, period.start, period.end)
@@ -564,7 +596,8 @@ class AlpacaSource:
     async def _snapshot_batch(self, symbols: Batch) -> tuple[pl.DataFrame, int, httpx.Response]:
         await self._turn(STATS_RATE_KEY, self._stats_limit)
         response = await self._request(
-            f"{self._data}/v2/stocks/snapshots", {"symbols": ",".join(symbols), "feed": "iex"}
+            f"{self._data}/v2/stocks/snapshots",
+            {"symbols": ",".join(symbols), "feed": "delayed_sip"},
         )
         frame, malformed = await to_thread.run_sync(parse_snapshots, response.content, int(_time()))
         return frame, malformed, response
@@ -574,11 +607,7 @@ class AlpacaSource:
     ) -> tuple[pl.DataFrame, int, None]:
         """The daily candles (``SPARK_SCHEMA``) of ``[start, end)`` of the stocks, following
         ``next_page_token``."""
-        params: dict[str, str | int] = {
-            "start": _rfc3339(start),
-            "end": _rfc3339(end - 1),  # Alpaca's end is inclusive
-            "limit": BARS_LIMIT,
-        }
+        params: dict[str, str | int] = {**_span(start, end), "limit": BARS_LIMIT}
         pages, malformed = [], 0
         while True:
             await self._turn(SPARK_RATE_KEY, self._spark_limit)
@@ -631,11 +660,9 @@ class AlpacaSource:
     async def _bars(self, symbol: str, timeframe: Timeframe, start: int, end: int) -> pl.DataFrame:
         """Every bar of ``[start, end)`` (``parse_bars``), following ``next_page_token``. Each
         page is parsed as it arrives, so the JSON objects of only one page are held at a time."""
-        params: dict[str, str | int] = {
-            "start": _rfc3339(start),
-            "end": _rfc3339(end - 1),  # Alpaca's end is inclusive
-            "limit": BARS_LIMIT,
-        }
+        if start >= end:
+            return parse_bars([])  # the live chunk in the second its day begins
+        params: dict[str, str | int] = {**_span(start, end), "limit": BARS_LIMIT}
         pages = []
         while True:
             body = await self._bars_page(
@@ -656,7 +683,7 @@ class AlpacaSource:
                 **params,
                 "symbols": symbol,
                 "timeframe": timeframe,
-                "feed": "iex",
+                "feed": "sip",
                 "adjustment": "all",
                 "sort": "asc",
             },
@@ -683,6 +710,17 @@ class AlpacaSource:
             self._limit,
         )
         response = await get(self._http, NAME, TITLE, url, params=params, headers=self._headers)
+        if 400 <= response.status_code < 500 and b"subscription" in response.content:
+            # The data plan does not cover the request (recent SIP data, a feed of a paid plan):
+            # a developer has to look, and asking for fewer symbols would not help.
+            logger.error(
+                "Alpaca refused our data plan: HTTP %d: %s",
+                response.status_code,
+                response.text[:200],
+            )
+            raise SourceUnavailable(
+                NAME, "Alpaca refused this server's market data plan for the request."
+            )
         if response.status_code in (401, 403):
             logger.error("Alpaca rejected our API keys: HTTP %d", response.status_code)
             raise SourceUnavailable(

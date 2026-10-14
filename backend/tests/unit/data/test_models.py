@@ -108,7 +108,7 @@ def test_instrument() -> None:
         id=InstrumentId.parse("stock:AAPL"),
         name="Apple Inc. Common Stock",
         source="alpaca",
-        feed="iex",
+        feed="sip",
         exchange="NASDAQ",
     )
 

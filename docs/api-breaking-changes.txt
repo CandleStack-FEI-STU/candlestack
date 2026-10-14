@@ -4,3 +4,6 @@
 GET /api/v1/data/candles api path removed without deprecation
 GET /api/v1/data/instruments/{instrument_id} added the new `30m` enum value to the `timeframes/items/` response property for the response status `200`
 GET /api/v1/data/instruments/{instrument_id}/candles added the new `30m` enum value to the `meta/timeframe` response property for the response status `200`
+GET /api/v1/data/instruments added the new `sip` enum value to the `items/items/feed` response property for the response status `200`
+GET /api/v1/data/instruments/{instrument_id} added the new `sip` enum value to the `feed` response property for the response status `200`
+GET /api/v1/data/instruments/{instrument_id}/candles added the new `sip` enum value to the `meta/feed` response property for the response status `200`

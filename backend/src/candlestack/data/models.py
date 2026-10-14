@@ -13,7 +13,7 @@ import polars as pl
 from candlestack.data.errors import InvalidRequest
 
 Source = Literal["binance", "alpaca"]
-Feed = Literal["spot", "iex"]
+Feed = Literal["spot", "sip"]
 
 _ID_EXAMPLE = "for example crypto:BTCUSDT or stock:AAPL"
 _SYMBOL_MAX = 32

@@ -218,10 +218,10 @@ to check that an error reaches Sentry. The Sentry settings are recorded in
 | --- | --- |
 | Modular monolith, one package, boundaries checked by import-linter | one image and one deploy for a small team; the boundaries still hold |
 | No database; Redis as a disposable cache (no persistence, `allkeys-lru`) | market data comes from the sources on demand; losing Redis costs only refetch time |
-| One source per market, never mixed in one series: Binance spot for crypto, Alpaca IEX for US stocks | consistent data; both are free |
+| One source per market, never mixed in one series: Binance spot for crypto, Alpaca SIP for US stocks (15 minutes delayed) | consistent data; both are free |
 | Full history fetched lazily on request, catalog cached 24 h and refreshed in the background | no ingestion pipeline and no scheduler to run |
 | The instruments' 24 h stats refreshed by one asyncio task in the API process (started in the app's lifespan, every 5-10 minutes, a Redis lock per market), only in prod and stage | a list sorted by volume needs every instrument's numbers before anyone asks; a task in the process needs no worker, queue or cron container, and the lock keeps a second process from fetching them again |
-| Stocks use the regular session only (09:30-16:00 New York, calendar from Alpaca) | comparable candles; extended-hours IEX data is thin |
+| Stocks use the regular session only (09:30-16:00 New York, calendar from Alpaca) | comparable candles; extended-hours data is thin |
 | Same timeframes for both markets: `1m 5m 15m 30m 1h 4h 1d` | experiments can switch markets without changing the pipeline |
 | UTC epoch seconds everywhere, candle label = open time, `start` inclusive, `end` exclusive | no time zone ambiguity at the API; New York time exists only in session math |
 | Gaps are reported, never filled | filled candles would be invented prices |

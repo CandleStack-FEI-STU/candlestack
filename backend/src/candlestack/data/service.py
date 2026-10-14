@@ -73,7 +73,7 @@ from candlestack.data.stats_store import StatsStore
 
 logger = logging.getLogger(__name__)
 
-# Chunks decoded and resampled at once: a year of monthly chunks of IEX 1m bars is about
+# Chunks decoded and resampled at once: a year of monthly chunks of 1m bars is about
 # 100000 rows (5 MB). Fewer at once use less memory, but every resample call costs time.
 RESAMPLE_CHUNKS = 12
 FIRST_TTL = 7 * DAY

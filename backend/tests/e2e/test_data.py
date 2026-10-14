@@ -76,9 +76,9 @@ def test_crypto_instrument(http: httpx.Client) -> None:
 def test_stock_instrument(http: httpx.Client) -> None:
     body = http.get("/api/v1/data/instruments/stock:AAPL").json()
 
-    assert (body["source"], body["feed"], body["exchange"]) == ("alpaca", "iex", "NASDAQ")
-    # IEX history starts on 2020-07-27.
-    assert 1595808000 <= body["available_from"] < 1595894400
+    assert (body["source"], body["feed"], body["exchange"]) == ("alpaca", "sip", "NASDAQ")
+    # SIP history starts on 2016-01-04: its session opens at 14:30 UTC.
+    assert body["available_from"] == 1451917800
 
 
 def test_unknown_instrument(http: httpx.Client) -> None:
@@ -159,7 +159,7 @@ def test_stock_1h_of_a_session(http: httpx.Client) -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert (body["meta"]["source"], body["meta"]["feed"]) == ("alpaca", "iex")
+    assert (body["meta"]["source"], body["meta"]["feed"]) == ("alpaca", "sip")
     # 09:30, 10:30, ..., 15:30 New York: the last candle is the 30 minutes up to the close.
     assert body["t"] == [JUNE_3_OPEN + hour * 3600 for hour in range(7)]
     assert body["meta"]["gaps"] == []

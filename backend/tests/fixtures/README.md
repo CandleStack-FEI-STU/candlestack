@@ -1,6 +1,9 @@
 # Test fixtures
 
 Real source responses, recorded once and committed so the tests need no network and no keys.
+The Alpaca bars were recorded on the IEX feed, which CandleStack used before #194; SIP answers in
+the same format, so they stand for SIP bars where the values do not matter. The SIP-specific ones
+are written by hand (below) until they can be recorded with the keys.
 
 | File | What | Recorded |
 | --- | --- | --- |
@@ -16,7 +19,9 @@ Real source responses, recorded once and committed so the tests need no network 
 | `alpaca/bars-AAPL-1Min-2024-03-08-open.json` | 1Min 14:00-15:31 UTC of 2024-03-08: the EST open at 14:30 and a 14:29 print before it | 2026-09-25 with the stage paper keys |
 | `alpaca/bars-AAPL-1Day-2024-06.json` | 1Day of June 2024, 19 bars stamped 04:00 UTC (00:00 EDT) | 2026-09-25 with the stage paper keys |
 | `alpaca/bars-AAPL-1Day-2024-11-25_12-02.json` | 1Day 2024-11-25 to 12-02 around the early close, stamped 05:00 UTC (00:00 EST) | 2026-09-25 with the stage paper keys |
-| `alpaca/bars-AAPL-1Day-earliest.json` | the first AAPL IEX 1Day bar (`limit=1`): 2020-07-27 | 2026-09-25 with the stage paper keys |
+| `alpaca/bars-AAPL-1Day-earliest.json` | the first AAPL SIP 1Day bar (`limit=1`): 2016-01-04, prices adjusted for the 2020 split, extended-hours volume | written by hand on 2026-10-14 (#194), values approximate: no Alpaca keys were at hand |
+| `alpaca/bars-AAPL-1Min-2016-01-04.json` | SIP 1Min bars of AAPL on 2016-01-04: two pre-market bars, five of the regular session (09:30-09:32, 10:30, 15:59 EST) and two after-hours bars | written by hand on 2026-10-14 (#194), not recorded |
+| `alpaca/calendar-2016-01.json` | the 19 trading days of January 2016 in the format of `GET /v2/calendar` (New Year's Day and Martin Luther King Jr. Day closed), so that the first SIP bar has its session | written by hand on 2026-10-14 (#194) from the NYSE holidays |
 | `alpaca/clock.json` | `GET /v2/clock` while the market was closed | 2026-09-25 with the stage paper keys |
 | `alpaca/error-no-auth.html` | the 401 of a request without keys: an nginx `text/html` page (line endings normalised to LF) | 2026-09-25 with the stage paper keys |
 | `alpaca/error-unknown-symbol-multi.json` | `GET /v2/stocks/bars?symbols=NOTAREALSYM`: 200 with no bars | 2026-09-25 with the stage paper keys |
@@ -26,8 +31,7 @@ Real source responses, recorded once and committed so the tests need no network 
 | `binance/archive/monthly/BTCUSDT-1h-2018-02.zip` and `.CHECKSUM` | monthly archive of the maintenance of 2018-02-08: 640 rows, of which 43 open at hh:28:14 (2018-02-09T09:28:14 to 02-11T03:28:14), off the 1h grid | 2026-09-26 from a developer machine |
 | `binance/rest/klines-BTCUSDT-1h-2018-02-09-maintenance.json` | `GET /api/v3/klines?symbol=BTCUSDT&interval=1h&startTime=1518166800000&endTime=1518321599999&limit=1000`: the same span on the grid, 42 rows from 2018-02-09T10:00 | 2026-09-26 from a developer machine |
 | `binance/rest/ticker-24hr-trading.json` | `GET /api/v3/ticker/24hr?symbolStatus=TRADING`, cut to the pairs of `exchangeInfo-trading.json` (BTCUSDT, ETHUSDT, SOLUSDT, ETHBTC and 币安人生USDT) | 2026-10-14 from a developer machine, trimmed as described |
-| `alpaca/snapshots-sample.json` | `GET /v2/stocks/snapshots?symbols=...&feed=iex` in the format of Alpaca's documentation: AAPL, SPY (no `vw`), BRK.B (a daily bar six weeks old), UUU (no trade, no previous bar) and AAC.U (`null`), as of the evening of 2026-10-13 | written by hand, not recorded: no Alpaca keys were at hand; to be replaced by a recorded answer |
-| `alpaca/calendar-2020-07.json` | the 22 trading days of July 2020 from `GET /v2/calendar?start=2016-01-01&end=2026-12-31`, so that the first IEX bar (2020-07-27) has its session | 2026-09-25 with the stage paper keys, other days removed |
+| `alpaca/snapshots-sample.json` | `GET /v2/stocks/snapshots?symbols=...&feed=delayed_sip` in the format of Alpaca's documentation: AAPL, SPY (no `vw`), BRK.B (a daily bar six weeks old, as of a halted stock), UUU (no trade, no previous bar) and AAC.U (`null`), as of the evening of 2026-10-13, with volumes of the whole market | written by hand, not recorded: no Alpaca keys were at hand; to be replaced by a recorded answer |
 
 `tests/e2e/mock_sources.py` fakes Binance and Alpaca for the e2e tests from these files (it finds
 them by name): the archives under their data.binance.vision paths, klines cut from the archives

@@ -66,8 +66,8 @@ Crypto needs no keys. US stocks (`stock:AAPL`) need the keys of an Alpaca paper 
 3. Put the key ID and the secret into `.env` as `ALPACA_KEY_ID` and `ALPACA_SECRET_KEY`, then
    run `docker compose up --build` again.
 
-Use your own paper account, never the team's. Paper accounts get the IEX feed only, which is
-the feed CandleStack uses. Without keys, `/api/health/sources` answers 503 with Alpaca's
+Use your own paper account, never the team's. Its free market data plan includes the SIP feed
+(every US exchange) up to 15 minutes ago, which is what CandleStack uses. Without keys, `/api/health/sources` answers 503 with Alpaca's
 `status` `error`, instrument searches report `"unavailable": ["stock"]` and stock requests get
 503 `source-unavailable`.
 
