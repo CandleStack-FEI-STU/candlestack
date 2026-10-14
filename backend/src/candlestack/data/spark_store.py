@@ -1,7 +1,7 @@
 """The last daily candles of the instruments, for the mini charts of the list, kept in Redis and
 in process memory like the stats (``MarketFrames``) and refreshed in the background once a day.
 
-Each market's candles are one Redis value (``data:v1:spark:<market>``) that a refresh replaces
+Each market's candles are one Redis value (``data:v<N>:spark:<market>``) that a refresh replaces
 after the market's daily close: crypto after 00:00 UTC, stocks after the New York close, each
 ``SETTLE_SECONDS`` later so that the source has the day's candle. Candles that are missing (a new
 environment, evicted from Redis) or from before the last daily close are fetched at once. The
@@ -30,8 +30,8 @@ from candlestack.data.models import (
 )
 from candlestack.data.stats_store import Entry, MarketFrames
 
-# A day's candle is asked for this long after the day closed: Binance has it at once, Alpaca's
-# IEX daily bar may take a few minutes.
+# A day's candle is asked for this long after the day closed: Binance has it at once, Alpaca
+# serves SIP bars only once they are 15 minutes old (alpaca.SIP_DELAY).
 SETTLE_SECONDS = 900
 # Candles are shown until this long after the next daily close settled: time for its refresh and
 # retries before they count as outdated.

@@ -13,7 +13,7 @@ const AAPL: InstrumentDetail = {
   market: 'stock',
   exchange: 'NASDAQ',
   source: 'alpaca',
-  feed: 'iex',
+  feed: 'sip',
   base: null,
   quote: null,
   available_from: null,

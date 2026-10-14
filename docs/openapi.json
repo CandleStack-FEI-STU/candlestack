@@ -22,7 +22,7 @@
           "feed": {
             "enum": [
               "spot",
-              "iex"
+              "sip"
             ],
             "examples": [
               "spot"
@@ -203,7 +203,7 @@
             "type": "array"
           },
           "v": {
-            "description": "Volumes: base asset for crypto, shares (IEX only) for stocks.",
+            "description": "Volumes: base asset for crypto, shares (every US exchange) for stocks.",
             "examples": [
               [
                 512.31,
@@ -341,10 +341,10 @@
             "title": "Exchange"
           },
           "feed": {
-            "description": "`spot` (Binance spot) or `iex` (Alpaca IEX: IEX trades only).",
+            "description": "`spot` (Binance spot) or `sip` (Alpaca SIP: trades of every US exchange).",
             "enum": [
               "spot",
-              "iex"
+              "sip"
             ],
             "examples": [
               "spot"
@@ -502,10 +502,10 @@
             "title": "Exchange"
           },
           "feed": {
-            "description": "`spot` (Binance spot) or `iex` (Alpaca IEX: IEX trades only).",
+            "description": "`spot` (Binance spot) or `sip` (Alpaca SIP: trades of every US exchange).",
             "enum": [
               "spot",
-              "iex"
+              "sip"
             ],
             "examples": [
               "spot"
@@ -544,7 +544,7 @@
                 "type": "null"
               }
             ],
-            "description": "Last price: in the quote asset for a crypto pair, in USD for a stock (the last IEX trade, also while the market is closed).",
+            "description": "Last price: in the quote asset for a crypto pair, in USD for a stock (the latest trade, delayed by 15 minutes, also while the market is closed).",
             "examples": [
               83249.35
             ],
@@ -646,7 +646,7 @@
                 "type": "null"
               }
             ],
-            "description": "Volume in USD: crypto of the last 24 hours, stocks of the latest session on IEX only (a small share of the market: it ranks stocks by popularity, it is not their whole turnover).",
+            "description": "Volume in USD: crypto of the last 24 hours, stocks of the latest session on every US exchange, extended hours included.",
             "examples": [
               1258811866.0
             ],

@@ -24,12 +24,21 @@ from candlestack.data.errors import DataIntegrityError, SourceUnavailable
 
 logger = logging.getLogger(__name__)
 
-# The version of each key family's values (the first part of a name; 1 when not listed). Redis
-# keeps its contents across deploys, so a family gets a new version whenever the meaning or
-# format of its values changes: values stored under the old version are never read again and
-# expire. candles 2: archive candles off the timeframe's grid are taken from REST. catalog 2:
-# crypto pairs have the exchange BINANCE.
-VERSIONS = {"candles": 2, "catalog": 2}
+# The version of each key family's values (the first part of a name; 1 when not listed), or of
+# its values of one market (``<family>:<market>``, before the family's). Redis keeps its contents
+# across deploys, so a family gets a new version whenever the meaning or format of its values
+# changes: values stored under the old version are never read again and expire. candles 2:
+# archive candles off the timeframe's grid are taken from REST. catalog 2: crypto pairs have the
+# exchange BINANCE. Stocks' candles 3, first 2, stats 2 and spark 2: Alpaca's SIP feed replaced
+# IEX (the crypto values stay).
+VERSIONS = {
+    "candles": 2,
+    "catalog": 2,
+    "candles:stock": 3,
+    "first:stock": 2,
+    "stats:stock": 2,
+    "spark:stock": 2,
+}
 
 LOCK_PREFIX = "data:lock:"
 FAIL_PREFIX = "data:fail:"
@@ -62,12 +71,15 @@ Fetch = Callable[[], Awaitable[tuple[bytes, int]]]
 
 
 def _versioned(name: str) -> str:
-    return f"v{VERSIONS.get(name.partition(':')[0], 1)}:{name}"
+    family, _, rest = name.partition(":")
+    version = VERSIONS.get(f"{family}:{rest.partition(':')[0]}", VERSIONS.get(family, 1))
+    return f"v{version}:{name}"
 
 
 def key(name: str) -> str:
     """The Redis key of a value: ``data:v<version of its family>:<name>``, e.g.
-    ``data:v2:candles:crypto:BTCUSDT:1h:2024-01`` or ``data:v1:calendar``."""
+    ``data:v2:candles:crypto:BTCUSDT:1h:2024-01``, ``data:v3:candles:stock:AAPL:1m:2024-06`` or
+    ``data:v1:calendar``."""
     return f"data:{_versioned(name)}"
 
 

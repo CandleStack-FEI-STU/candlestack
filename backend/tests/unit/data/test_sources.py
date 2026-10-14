@@ -25,6 +25,7 @@ from candlestack.data import (
 )
 from candlestack.data.cache import Cache, Fetch
 from candlestack.data.models import SPARK_SCHEMA, STATS_SCHEMA
+from candlestack.data.sources import alpaca as alpaca_module
 from candlestack.data.sources import base
 from candlestack.data.sources.alpaca import (
     AlpacaSource,
@@ -607,6 +608,125 @@ async def test_malformed_bars_response_is_a_data_integrity_error(
     assert info.value.source == "alpaca"
 
 
+# --- SIP delay --------------------------------------------------------------------------------
+
+
+def alpaca_plan(
+    alpaca: AlpacaSource, timeframe: Timeframe, start: str, now: str
+) -> list[tuple[str, str, int, int]]:
+    periods = alpaca.periods(timeframe, utc(start), utc(now), utc(now))
+    return [(p.kind, p.label, p.end, p.ttl) for p in periods]
+
+
+@pytest.mark.anyio
+async def test_alpaca_chunks_end_15_minutes_before_now(alpaca: AlpacaSource) -> None:
+    assert alpaca_plan(alpaca, Timeframe.M1, "2024-05-31", "2024-06-03T15:00") == [
+        ("closed", "2024-05", utc("2024-06-01"), DAY),
+        ("current", "2024-06-01..2024-06-03", utc("2024-06-03"), DAY),
+        ("live", "2024-06-03-live", utc("2024-06-03T14:45"), 60),
+    ]
+    # A day joins the cached chunk of the month only once it ended 15 minutes ago.
+    assert alpaca_plan(alpaca, Timeframe.M1, "2024-06-02", "2024-06-04T00:10") == [
+        ("current", "2024-06-01..2024-06-03", utc("2024-06-03"), DAY),
+        ("live", "2024-06-03-live", utc("2024-06-03T23:55"), 60),
+    ]
+    assert alpaca_plan(alpaca, Timeframe.M1, "2024-06-02", "2024-06-04T00:20") == [
+        ("current", "2024-06-01..2024-06-04", utc("2024-06-04"), DAY),
+        ("live", "2024-06-04-live", utc("2024-06-04T00:05"), 60),
+    ]
+
+
+@pytest.mark.anyio
+async def test_alpaca_daily_chunks_are_kept_only_until_extended_hours_are_final(
+    alpaca: AlpacaSource,
+) -> None:
+    # 1Day bars count the volume of extended hours, until 01:00 UTC at the latest: a chunk
+    # fetched before 01:15 UTC is kept until then.
+    assert alpaca_plan(alpaca, Timeframe.D1, "2023-12-01", "2024-06-04T00:20") == [
+        ("closed", "2023", utc("2024-01-01"), DAY),
+        ("current", "2024-01-01..2024-06-04", utc("2024-06-04"), 3300),
+        ("live", "2024-06-04-live", utc("2024-06-04T00:05"), 60),
+    ]
+    assert alpaca_plan(alpaca, Timeframe.D1, "2024-12-01", "2025-01-01T00:30")[0] == (
+        "closed",
+        "2024",
+        utc("2025-01-01"),
+        2700,
+    )
+    assert alpaca_plan(alpaca, Timeframe.D1, "2024-05-01", "2024-06-04T01:10")[0][3] == 300
+    assert alpaca_plan(alpaca, Timeframe.D1, "2024-05-01", "2024-06-04T01:14:30")[0][3] == 60
+    assert alpaca_plan(alpaca, Timeframe.D1, "2024-05-01", "2024-06-04T02:00")[0][3] == DAY
+    # The 1m bars of the regular sessions are final by then.
+    assert alpaca_plan(alpaca, Timeframe.M1, "2024-06-03", "2024-06-04T00:20")[0][3] == DAY
+
+
+@pytest.fixture
+def at_noon(monkeypatch: pytest.MonkeyPatch) -> int:
+    """Alpaca's clock at 2024-06-03T15:00Z, during the session."""
+    now = utc("2024-06-03T15:00")
+    monkeypatch.setattr(alpaca_module, "_time", lambda: float(now))
+    return now
+
+
+@pytest.mark.anyio
+async def test_alpaca_bars_never_end_within_the_last_15_minutes(
+    alpaca: AlpacaSource, alpaca_api: respx.MockRouter, at_noon: int
+) -> None:
+    alpaca_api.get(f"{ALPACA_API}/v2/calendar").respond(
+        200, content=fixture_bytes("alpaca/calendar-2024.json")
+    )
+    bars = alpaca_api.get(f"{ALPACA_DATA}/v2/stocks/bars").respond(
+        200, content=fixture_bytes("alpaca/bars-AAPL-1Min-2024-06-03-p1.json")
+    )
+    # A period up to now, as a caller that forgot the delay would plan it.
+    live = Period("live", utc("2024-06-03"), at_noon, "2024-06-03-live", 60)
+
+    await alpaca.fetch_period("AAPL", Timeframe.M1, live)
+    await alpaca.first_timestamp("AAPL")
+
+    for call in bars.calls:
+        assert call.request.url.params["end"] == "2024-06-03T14:44:59Z"
+        assert call.request.url.params["feed"] == "sip"
+
+
+@pytest.mark.anyio
+async def test_an_empty_live_chunk_asks_for_no_bars(
+    alpaca: AlpacaSource, alpaca_api: respx.MockRouter
+) -> None:
+    # The live chunk in the second its day begins (15 minutes after UTC midnight).
+    calendar = alpaca_api.get(f"{ALPACA_API}/v2/calendar").respond(
+        200, content=fixture_bytes("alpaca/calendar-2024.json")
+    )
+    live = Period("live", utc("2024-06-04"), utc("2024-06-04"), "2024-06-04-live", 60)
+
+    frame = await alpaca.fetch_period("AAPL", Timeframe.M1, live)
+
+    assert (frame.schema, frame.height) == (CANDLE_SCHEMA, 0)
+    assert alpaca_api.calls.call_count == calendar.call_count == 1
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("status", [403, 422])
+async def test_a_refused_data_plan_is_an_error_for_a_developer(
+    alpaca: AlpacaSource,
+    alpaca_api: respx.MockRouter,
+    caplog: pytest.LogCaptureFixture,
+    status: int,
+) -> None:
+    alpaca_api.get(f"{ALPACA_DATA}/v2/stocks/bars").respond(
+        status,
+        json={"code": 42210000, "message": "subscription does not permit querying recent SIP data"},
+    )
+
+    with caplog.at_level(logging.ERROR), pytest.raises(SourceUnavailable) as info:
+        await alpaca.fetch_period("AAPL", Timeframe.M1, JUNE)
+
+    assert info.value.detail == "Alpaca refused this server's market data plan for the request."
+    assert not info.value.rejected  # not a symbol's fault: no splitting of a batch
+    assert f"Alpaca refused our data plan: HTTP {status}: " in caplog.text
+    assert "subscription does not permit" in caplog.text
+
+
 # --- 24 h stats -------------------------------------------------------------------------------
 
 
@@ -676,15 +796,15 @@ def test_malformed_ticker_is_a_data_integrity_error(body: bytes) -> None:
 SNAPSHOTS_AT = utc("2026-10-14T00:00")
 
 
-def test_snapshots_give_price_change_and_iex_volume_in_usd() -> None:
+def test_snapshots_give_price_change_and_volume_in_usd() -> None:
     frame, malformed = parse_snapshots(fixture_bytes("alpaca/snapshots-sample.json"), SNAPSHOTS_AT)
     stats = stats_rows(frame)
 
     assert stats == {
-        "AAPL": (247.85, pytest.approx(0.458, abs=1e-4), pytest.approx(1375210 * 247.42)),
+        "AAPL": (247.85, pytest.approx(0.458, abs=1e-4), pytest.approx(48213500 * 247.42)),
         # no volume-weighted price: the daily volume at the last price
-        "SPY": (668.9, pytest.approx(0.3496, abs=1e-4), pytest.approx(2201000 * 668.9)),
-        # the last daily bar is six weeks old: no change, no volume
+        "SPY": (668.9, pytest.approx(0.3496, abs=1e-4), pytest.approx(61240000 * 668.9)),
+        # the last daily bar is six weeks old (a halted stock): no change, no volume
         "BRK.B": (488.1, None, 0.0),
         # no trade: the daily close; no previous bar: no change
         "UUU": (2.15, None, pytest.approx(300 * 2.12)),

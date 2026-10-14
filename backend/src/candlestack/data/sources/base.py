@@ -134,7 +134,8 @@ def plan_periods(  # noqa: PLR0913
     closed_ttl: int,
     current_ttl: int,
 ) -> list[Period]:
-    """Chunks that cover ``[start, end)`` at ``now`` (``end <= now``), in time order.
+    """Chunks that cover ``[start, end)`` at ``now``, in time order; nothing after ``now``
+    (an ``end`` after it adds nothing).
 
     - each closed calendar span, a month (a year with ``yearly``): ``2024-06`` or ``2024``,
       cached ``closed_ttl``;

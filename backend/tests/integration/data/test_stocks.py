@@ -1,5 +1,6 @@
 """Stock candles through DataService: sessions, 1m bars, 1Day bars and Alpaca's failures."""
 
+import json
 import logging
 from datetime import UTC, datetime
 
@@ -20,6 +21,8 @@ from candlestack.data import (
     Timeframe,
     build_data_service,
 )
+from candlestack.data import service as service_module
+from candlestack.data.sources import alpaca as alpaca_module
 from candlestack.main import create_app
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]
@@ -71,8 +74,8 @@ async def test_normal_day_from_1m_bars(service: DataService, upstream):
     halves = await service.candles(AAPL, Timeframe.H4, *period(JUNE_3))
 
     assert minutes.frame.height == 320
-    assert minutes.gaps_total == 70  # IEX has no trade in 70 of the 390 minutes
-    assert (minutes.source, minutes.feed) == ("alpaca", "iex")
+    assert minutes.gaps_total == 70  # the recording (IEX) has no trade in 70 of the 390
+    assert (minutes.source, minutes.feed) == ("alpaca", "sip")
     assert hours.frame["ts"].to_list() == [utc("2024-06-03T13:30") + i * HOUR for i in range(7)]
     assert hours.gaps_total == 0
     assert hours.frame["open"][0] == 191.16  # the first minute's open
@@ -90,7 +93,7 @@ async def test_normal_day_from_1m_bars(service: DataService, upstream):
     first, second = (call.request.url.params for call in june.calls)
     assert (first["end"], first["feed"], first["adjustment"], first["limit"]) == (
         "2024-06-30T23:59:59Z",
-        "iex",
+        "sip",
         "all",
         "10000",
     )
@@ -154,10 +157,101 @@ async def test_early_close_day(service: DataService, upstream):
         utc("2024-12-02T14:30"),
     ]
     assert days.gaps_total == 0
-    early_close = days.frame.row(3)
-    assert early_close[1:] == (233.11, 236.09, 232.28, 235.68, 549571.0)
-    # The IEX 1Day bar covers the regular session: same prices as the 1m bars of the session.
-    assert halves.frame.row(0)[1:5] == early_close[1:5]
+    assert days.frame.row(3)[1:] == (233.11, 236.09, 232.28, 235.68, 549571.0)
+
+
+async def test_sip_history_starts_in_2016(service: DataService, upstream):
+    upstream.assets()
+    calendar = [
+        *json.loads(upstream.fixture_bytes("alpaca/calendar-2016-01.json")),
+        *json.loads(upstream.fixture_bytes("alpaca/calendar-2024.json")),
+    ]
+    upstream.router.get(f"{upstream.ALPACA_API}/v2/calendar").respond(200, json=calendar)
+    first = upstream.first_bar()
+    month = upstream.bars("1Min", "2016-01-01T00:00:00Z", "bars-AAPL-1Min-2016-01-04.json")
+    upstream.bars_json(
+        "1Day", "2016-01-01T00:00:00Z", upstream.aapl_bars("bars-AAPL-1Day-earliest.json")
+    )
+    session = (utc("2016-01-04T14:30"), utc("2016-01-04T21:00"))
+
+    info = await service.instrument(AAPL)
+    minutes = await service.candles(AAPL, Timeframe.M1, *session)
+    hours = await service.candles(AAPL, Timeframe.H1, *session)
+    days = await service.candles(AAPL, Timeframe.D1, session[0], utc("2016-01-05"))
+
+    assert info.available_from == utc("2016-01-04T14:30")  # 09:30 EST
+    assert first.calls[0].request.url.params["feed"] == "sip"
+    # The pre-market and after-hours bars SIP has are dropped.
+    assert minutes.frame["ts"].to_list() == [
+        utc("2016-01-04T14:30"),
+        utc("2016-01-04T14:31"),
+        utc("2016-01-04T14:32"),
+        utc("2016-01-04T15:30"),
+        utc("2016-01-04T20:59"),
+    ]
+    assert minutes.gaps_total == 390 - 5
+    assert hours.frame["ts"].to_list() == [
+        utc("2016-01-04T14:30"),
+        utc("2016-01-04T15:30"),
+        utc("2016-01-04T20:30"),
+    ]
+    assert hours.frame.row(0)[1:] == (23.65, 23.74, 23.51, 23.58, 3127000 + 1504000 + 1210500)
+    # 1d is the 1Day bar: its volume counts extended hours too.
+    assert days.frame.rows() == [(utc("2016-01-04T14:30"), 23.65, 24.29, 23.51, 24.28, 270597548)]
+    assert month.call_count == 1
+
+
+@pytest.fixture
+def clock(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """The service's and Alpaca's wall clock, moved by the tests."""
+    now = [0.0]
+    monkeypatch.setattr(service_module, "_time", lambda: now[0])
+    monkeypatch.setattr(alpaca_module, "_time", lambda: now[0])
+    return now
+
+
+@pytest.mark.usefixtures("stocks")
+async def test_the_latest_candles_come_15_minutes_late(
+    service: DataService, upstream, redis: Redis, clock: list[float]
+):
+    pages = ["bars-AAPL-1Min-2024-06-03-p0.json", "bars-AAPL-1Min-2024-06-03-p1.json"]
+    today = upstream.bars("1Min", "2024-06-03T00:00:00Z", *pages, *pages)
+    clock[0] = utc("2024-06-03T15:00")  # 11:00 New York
+
+    before = await service.candles(AAPL, Timeframe.M1, utc("2024-06-03T13:30"), int(clock[0]))
+    # 16 minutes later, once the live chunk expired (60 s).
+    clock[0] += 16 * 60
+    await redis.delete("data:v3:candles:stock:AAPL:1m:2024-06-03-live")
+    after = await service.candles(AAPL, Timeframe.M1, utc("2024-06-03T13:30"), int(clock[0]))
+
+    assert [call.request.url.params["end"] for call in today.calls] == [
+        "2024-06-03T14:44:59Z",
+        "2024-06-03T14:44:59Z",  # the second page
+        "2024-06-03T15:00:59Z",
+        "2024-06-03T15:00:59Z",
+    ]
+    # Candles of the last 15 minutes are neither returned nor gaps yet.
+    assert before.frame["ts"][-1] == utc("2024-06-03T14:44")
+    assert all(end <= utc("2024-06-03T14:45") for _, end in before.gaps)
+    assert after.frame["ts"][-1] == utc("2024-06-03T15:00")
+    assert after.frame.height > before.frame.height
+
+
+@pytest.mark.usefixtures("stocks")
+async def test_a_daily_chunk_is_fetched_again_once_extended_hours_ended(
+    service: DataService, upstream, redis: Redis, clock: list[float]
+):
+    upstream.bars_json(
+        "1Day", "2024-01-01T00:00:00Z", upstream.aapl_bars("bars-AAPL-1Day-2024-06.json")
+    )
+    clock[0] = utc("2024-06-04T00:20")  # 20:20 New York: the 1Day bar of 06-03 is complete
+
+    days = await service.candles(AAPL, Timeframe.D1, utc("2024-06-03"), utc("2024-06-04"))
+
+    assert days.frame["ts"].to_list() == [utc("2024-06-03T13:30")]
+    # Kept until 01:15 UTC, when the extended hours of a winter day would have ended too.
+    ttl = await redis.ttl("data:v3:candles:stock:AAPL:1d:2024-01-01..2024-06-04")
+    assert 3200 < ttl <= 3300
 
 
 @pytest.mark.usefixtures("stocks")
@@ -349,8 +443,8 @@ async def test_alpaca_not_answering_is_unavailable_and_remembered(
         "source": "alpaca",
     }
     assert november.call_count == calls  # the second request got the kept error
-    assert 0 < await redis.ttl(f"data:fail:v2:{chunk}") <= 10
-    assert await redis.exists(f"data:v2:{chunk}") == 0
+    assert 0 < await redis.ttl(f"data:fail:v3:{chunk}") <= 10
+    assert await redis.exists(f"data:v3:{chunk}") == 0
 
 
 @pytest.mark.usefixtures("stocks")
@@ -393,7 +487,7 @@ async def test_answer_that_is_not_json_is_invalid_data(
         caplog.text
     )
     assert november.call_count == 1  # the second request got the kept error
-    assert await redis.exists("data:v2:candles:stock:AAPL:1m:2024-11") == 0
+    assert await redis.exists("data:v3:candles:stock:AAPL:1m:2024-11") == 0
 
 
 async def test_rejected_keys(service: DataService, upstream):

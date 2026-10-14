@@ -29,7 +29,7 @@ def crypto(symbol: str, base: str | None) -> Instrument:
 
 
 def stock(symbol: str) -> Instrument:
-    return Instrument(InstrumentId(Market.STOCK, symbol), symbol, "alpaca", "iex", "NYSE")
+    return Instrument(InstrumentId(Market.STOCK, symbol), symbol, "alpaca", "sip", "NYSE")
 
 
 @pytest.mark.parametrize(

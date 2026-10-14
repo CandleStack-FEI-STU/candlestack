@@ -178,7 +178,7 @@ export interface components {
              * @example spot
              * @enum {string}
              */
-            feed: "spot" | "iex";
+            feed: "spot" | "sip";
             /**
              * Fingerprint
              * @description `sha256:<hex>` over the request and its candles: the same candles give the same value, any changed number another.
@@ -284,7 +284,7 @@ export interface components {
             t: number[];
             /**
              * V
-             * @description Volumes: base asset for crypto, shares (IEX only) for stocks.
+             * @description Volumes: base asset for crypto, shares (every US exchange) for stocks.
              * @example [
              *       512.31,
              *       398.07,
@@ -351,11 +351,11 @@ export interface components {
             exchange: string | null;
             /**
              * Feed
-             * @description `spot` (Binance spot) or `iex` (Alpaca IEX: IEX trades only).
+             * @description `spot` (Binance spot) or `sip` (Alpaca SIP: trades of every US exchange).
              * @example spot
              * @enum {string}
              */
-            feed: "spot" | "iex";
+            feed: "spot" | "sip";
             /**
              * Id
              * @description Instrument id, `<market>:<symbol>`.
@@ -434,11 +434,11 @@ export interface components {
             exchange: string | null;
             /**
              * Feed
-             * @description `spot` (Binance spot) or `iex` (Alpaca IEX: IEX trades only).
+             * @description `spot` (Binance spot) or `sip` (Alpaca SIP: trades of every US exchange).
              * @example spot
              * @enum {string}
              */
-            feed: "spot" | "iex";
+            feed: "spot" | "sip";
             /**
              * Id
              * @description Instrument id, `<market>:<symbol>`.
@@ -455,7 +455,7 @@ export interface components {
             name: string;
             /**
              * Price
-             * @description Last price: in the quote asset for a crypto pair, in USD for a stock (the last IEX trade, also while the market is closed).
+             * @description Last price: in the quote asset for a crypto pair, in USD for a stock (the latest trade, delayed by 15 minutes, also while the market is closed).
              * @example 83249.35
              */
             price: number | null;
@@ -500,7 +500,7 @@ export interface components {
             symbol: string;
             /**
              * Volume 24H
-             * @description Volume in USD: crypto of the last 24 hours, stocks of the latest session on IEX only (a small share of the market: it ranks stocks by popularity, it is not their whole turnover).
+             * @description Volume in USD: crypto of the last 24 hours, stocks of the latest session on every US exchange, extended hours included.
              * @example 1258811866
              */
             volume_24h: number | null;

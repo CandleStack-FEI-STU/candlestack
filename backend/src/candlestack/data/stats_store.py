@@ -1,7 +1,7 @@
 """The 24 h stats of the instruments (last price, change, volume in USD), kept in Redis and in
 process memory, refreshed in the background.
 
-Each market's stats are one Redis value (``data:v1:stats:<market>``, the frame as Arrow IPC after
+Each market's stats are one Redis value (``data:v<N>:stats:<market>``, the frame as Arrow IPC after
 the time of the refresh, like a candle chunk) that a refresh replaces every few minutes. Every
 row keeps the time it was fetched: a refresh that could not ask for some instruments carries
 their last rows over, until those are ``KEEP_SECONDS`` old. Searches only
@@ -71,7 +71,7 @@ class Entry:
 
 class MarketFrames:
     """A frame per market that a background refresh replaces and searches only read, in Redis
-    (``data:v1:<kind>:<market>``) and in process memory, each row with the time it was fetched:
+    (``data:v<N>:<kind>:<market>``) and in process memory, each row with the time it was fetched:
     what ``StatsStore`` and ``SparkStore`` share. One process refreshes a market at a time (a
     lock renewed while it runs); the others adopt what it stored."""
 

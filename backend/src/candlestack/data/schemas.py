@@ -38,7 +38,7 @@ class InstrumentOut(BaseModel):
     )
     source: Source = Field(examples=["binance"])
     feed: Feed = Field(
-        description="`spot` (Binance spot) or `iex` (Alpaca IEX: IEX trades only).",
+        description="`spot` (Binance spot) or `sip` (Alpaca SIP: trades of every US exchange).",
         examples=["spot"],
     )
     exchange: str | None = Field(
@@ -78,7 +78,7 @@ class InstrumentItemOut(InstrumentOut):
 
     price: float | None = Field(
         description="Last price: in the quote asset for a crypto pair, in USD for a stock "
-        "(the last IEX trade, also while the market is closed).",
+        "(the latest trade, delayed by 15 minutes, also while the market is closed).",
         examples=[83249.35],
     )
     change_24h: float | None = Field(
@@ -88,8 +88,7 @@ class InstrumentItemOut(InstrumentOut):
     )
     volume_24h: float | None = Field(
         description="Volume in USD: crypto of the last 24 hours, stocks of the latest session "
-        "on IEX only (a small share of the market: it ranks stocks by popularity, it is not "
-        "their whole turnover).",
+        "on every US exchange, extended hours included.",
         examples=[1258811866.0],
     )
 
@@ -189,7 +188,7 @@ class CandlesOut(BaseModel):
     l: list[float] = Field(description="Low prices.", examples=[[67420.2, 67510.0, 67488.8]])  # noqa: E741
     c: list[float] = Field(description="Close prices.", examples=[[67612.4, 67540.3, 67601.9]])
     v: list[float] = Field(
-        description="Volumes: base asset for crypto, shares (IEX only) for stocks.",
+        description="Volumes: base asset for crypto, shares (every US exchange) for stocks.",
         examples=[[512.31, 398.07, 421.55]],
     )
 

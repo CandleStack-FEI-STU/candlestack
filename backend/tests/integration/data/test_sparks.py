@@ -107,6 +107,7 @@ class Sources:
         if "BRK.B" in self.down:
             return httpx.Response(self.down["BRK.B"], json={"message": "down"})
         assert (params["start"], params["end"]) == ("2024-11-04T00:00:00Z", "2024-11-15T20:59:59Z")
+        assert params["feed"] == "sip"
         bars = {
             symbol: [
                 {

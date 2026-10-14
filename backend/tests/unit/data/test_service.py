@@ -35,7 +35,7 @@ class Named:
 
 
 Binance = cast("DataSource", Named("binance", "spot"))
-Alpaca = cast("DataSource", Named("alpaca", "iex"))
+Alpaca = cast("DataSource", Named("alpaca", "sip"))
 
 
 def utc(text: str) -> int:

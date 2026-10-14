@@ -514,7 +514,7 @@ def test_fingerprint_changes_with_any_number(column: int) -> None:
     "request_",
     [
         ("alpaca", "spot", "crypto:BTCUSDT", Timeframe.H1, 1704067200, 1704078000),
-        ("binance", "iex", "crypto:BTCUSDT", Timeframe.H1, 1704067200, 1704078000),
+        ("binance", "sip", "crypto:BTCUSDT", Timeframe.H1, 1704067200, 1704078000),
         ("binance", "spot", "crypto:ETHUSDT", Timeframe.H1, 1704067200, 1704078000),
         ("binance", "spot", "crypto:BTCUSDT", Timeframe.H4, 1704067200, 1704078000),
         ("binance", "spot", "crypto:BTCUSDT", Timeframe.H1, 1704067199, 1704078000),

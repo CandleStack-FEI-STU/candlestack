@@ -41,7 +41,7 @@ const AAPL: Instrument = {
   market: 'stock',
   exchange: 'NASDAQ',
   source: 'alpaca',
-  feed: 'iex',
+  feed: 'sip',
   base: null,
   quote: null,
   price: 247.85,

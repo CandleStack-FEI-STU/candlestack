@@ -118,7 +118,7 @@ async def test_icons_give_up_waiting_for_a_slot(
     monkeypatch.setattr(icons_module, "SLOT_WAIT", 0.01)
     icons = Icons(settings, http, RateLimiter(redis), Cache(redis))
     logo = upstream.logo("ticker/AAPL").mock(return_value=png())
-    aapl = Instrument(AAPL, "Apple", "alpaca", "iex", "NASDAQ")
+    aapl = Instrument(AAPL, "Apple", "alpaca", "sip", "NASDAQ")
     for _ in range(icons_module.CONCURRENCY):
         await icons._calls.acquire()
 

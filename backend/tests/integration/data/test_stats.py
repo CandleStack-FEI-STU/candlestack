@@ -63,10 +63,10 @@ async def test_refresh_sorts_the_list_by_volume_in_usd(service: DataService, ups
     found = await service.search(None, limit=100)
 
     assert ids(found) == [
-        "stock:SPY",  # IEX volume only, still more than BTCUSDT in USD
+        "stock:SPY",
+        "stock:AAPL",
         "crypto:BTCUSDT",
         "crypto:ETHUSDT",
-        "stock:AAPL",
         "crypto:SOLUSDT",
         "crypto:ETHBTC",
         "crypto:币安人生USDT",
@@ -77,9 +77,10 @@ async def test_refresh_sorts_the_list_by_volume_in_usd(service: DataService, ups
     assert aapl is not None
     assert aapl.price == 247.85
     assert aapl.change_24h == pytest.approx(0.458, abs=1e-3)
-    assert aapl.volume_24h == pytest.approx(1375210 * 247.42)
+    assert aapl.volume_24h == pytest.approx(48213500 * 247.42)
     assert stats["stock:BRK.B"] == InstrumentStats(488.1, None, 0.0)
     assert (ticker.call_count, snapshots.call_count) == (1, 1)
+    assert snapshots.calls[0].request.url.params["feed"] == "delayed_sip"
     assert "X-RateLimit-Limit 200, X-RateLimit-Remaining 187; our count this minute" in (
         caplog.text
     )
@@ -199,7 +200,7 @@ async def test_old_stats_are_dropped_and_the_list_still_works(
 async def test_unreadable_stored_stats_are_dropped(service: DataService, redis: Redis, caplog):
     await redis.set("data:v1:stats:crypto", b"not arrow")
     await redis.set(
-        "data:v1:stats:stock",
+        "data:v2:stats:stock",
         encode_chunk(pl.DataFrame(schema=STATS_SCHEMA).drop("price"), int(time.time())),
     )
     store = fresh_store(service)
@@ -208,7 +209,7 @@ async def test_unreadable_stored_stats_are_dropped(service: DataService, redis: 
         table = await store.table()
 
     assert table.height == 0
-    assert await redis.exists("data:v1:stats:crypto", "data:v1:stats:stock") == 0
+    assert await redis.exists("data:v1:stats:crypto", "data:v2:stats:stock") == 0
     assert caplog.text.count("Dropping the stored") == 2
 
 
@@ -305,7 +306,7 @@ async def test_the_refresh_lock_outlasts_a_slow_refresh(
         # Longer than the lock lasts: it is renewed meanwhile.
         for _ in range(4):
             await asyncio.sleep(0.15)
-            held.append(await redis.pttl("data:lock:v1:stats:stock"))
+            held.append(await redis.pttl("data:lock:v2:stats:stock"))
         return SourceStats(pl.DataFrame(schema=STATS_SCHEMA))
 
     monkeypatch.setattr(stats_store, "LOCK_MS", 200)
@@ -313,7 +314,7 @@ async def test_the_refresh_lock_outlasts_a_slow_refresh(
     await fresh_store(service).refresh(Market.STOCK, fetch)
 
     assert all(0 < ttl <= 200 for ttl in held)
-    assert await redis.exists("data:lock:v1:stats:stock") == 0
+    assert await redis.exists("data:lock:v2:stats:stock") == 0
 
 
 async def test_a_lock_taken_over_is_neither_renewed_nor_released(
@@ -321,7 +322,7 @@ async def test_a_lock_taken_over_is_neither_renewed_nor_released(
 ):
     async def fetch():
         # The lock expired and another process took it.
-        await redis.set("data:lock:v1:stats:stock", "another-process")
+        await redis.set("data:lock:v2:stats:stock", "another-process")
         await asyncio.sleep(0.15)
         return SourceStats(pl.DataFrame(schema=STATS_SCHEMA))
 
@@ -329,7 +330,7 @@ async def test_a_lock_taken_over_is_neither_renewed_nor_released(
     with caplog.at_level(logging.WARNING):
         await fresh_store(service).refresh(Market.STOCK, fetch)
 
-    assert await redis.get("data:lock:v1:stats:stock") == b"another-process"
+    assert await redis.get("data:lock:v2:stats:stock") == b"another-process"
     assert caplog.text.count("was lost while it ran") == 1
 
 
@@ -590,6 +591,31 @@ async def test_a_refused_batch_is_split_to_find_the_symbol(
     with_stats = {item.symbol for item, stats in _stocks(found) if stats is not None}
     assert with_stats == {"AAPL", "BRK.B"}
     assert caplog.text.count("Alpaca refused the snapshots of SPY: no stats for them") == 1
+
+
+async def test_snapshots_the_data_plan_does_not_cover_are_an_error_for_a_developer(
+    service: DataService, upstream, caplog
+):
+    upstream.exchange_info()
+    upstream.assets()
+    upstream.ticker()
+    snapshots = upstream.router.get(f"{upstream.ALPACA_DATA}/v2/stocks/snapshots").respond(
+        403, json={"code": 42210000, "message": "subscription does not permit querying SIP data"}
+    )
+
+    with caplog.at_level(logging.WARNING):
+        await service.refresh_stats()
+
+    # No other feed instead, and no splitting by symbol: the batch is asked twice, then dropped.
+    assert snapshots.call_count == 2
+    assert {call.request.url.params["feed"] for call in snapshots.calls} == {"delayed_sip"}
+    assert [r.levelname for r in caplog.records if "refused our data plan" in r.message] == [
+        "ERROR",
+        "ERROR",
+    ]
+    assert "Refreshing the stock stats failed: Alpaca refused this server's market" in caplog.text
+    found = await service.search(None, Market.STOCK)
+    assert all(stats is None for stats in found.stats)
 
 
 async def test_the_markets_refresh_at_the_same_time(
