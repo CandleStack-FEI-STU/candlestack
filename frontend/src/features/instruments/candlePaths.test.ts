@@ -15,10 +15,10 @@ describe('candlePaths', () => {
     // An up day, a missing day, a down day: low 8, high 12 over 30 px.
     const spark: Spark = [[OCT_4, 10, 12, 8, 11], null, [OCT_4 + 2 * DAY, 11, 11.5, 9, 9.5]];
     expect(candlePaths(spark, 10, 112, 32)).toEqual({
-      up: 'M5 1h1V31h-1ZM3 9h5V16h-5Z',
-      down: 'M28 5h1V24h-1ZM26 9h5V20h-5Z',
-      // the slots after the last day stay empty
-      days: [spark[0], null, spark[2], null, null, null, null, null, null, null],
+      up: 'M83 1h1V31h-1ZM81 9h5V16h-5Z',
+      down: 'M106 5h1V24h-1ZM104 9h5V20h-5Z',
+      // fewer days than slots: the first slots stay empty, the newest day is at the right edge
+      days: [null, null, null, null, null, null, null, spark[0], null, spark[2]],
     });
   });
 
@@ -40,7 +40,7 @@ describe('candlePaths', () => {
 
   it('counts a close at the open as up, and centres a day that never moved', () => {
     const paths = candlePaths([[OCT_4, 5, 5, 5, 5]], 10, 112, 32);
-    expect(paths).toEqual(expect.objectContaining({ up: 'M5 16h1V17h-1ZM3 16h5V17h-5Z', down: '' }));
+    expect(paths).toEqual(expect.objectContaining({ up: 'M106 16h1V17h-1ZM104 16h5V17h-5Z', down: '' }));
   });
 
   it('is null without any candle, for the placeholder line', () => {
@@ -53,9 +53,12 @@ describe('candlePaths', () => {
 });
 
 describe('candlesLabel', () => {
-  it('says how many days and the change from the first open to the last close', () => {
+  it('says how many candles there are and the change from the first open to the last close', () => {
     expect(candlesLabel(RISING)).toBe('10 daily candles, +100.00%');
-    expect(candlesLabel([null, [OCT_4, 20, 21, 9, 10], null])).toBe('3 daily candles, −50.00%');
+    expect(candlesLabel([null, [OCT_4, 20, 21, 9, 10], null, [OCT_4 + 2 * DAY, 10, 16, 9, 15]])).toBe(
+      '2 daily candles, −25.00%',
+    );
+    expect(candlesLabel([null, [OCT_4, 20, 21, 9, 10], null])).toBe('1 daily candle, −50.00%');
     expect(candlesLabel([null])).toBe('No chart yet');
   });
 });

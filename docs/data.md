@@ -174,7 +174,9 @@ it) is `null`; `spark` is `null` when the instrument has none of them. About 0.5
 
 The same background task as the stats (`STATS_REFRESH`) refreshes them once a day per market,
 15 minutes after its daily close (crypto at 00:15 UTC, stocks 15 minutes after the New York
-close), checking once a minute in its own loop, so the stats never wait for it:
+close), checking once a minute in its own loop, so the stats never wait for it. A market without
+stored candles (a new environment, the key evicted from Redis) or with candles from before its
+last daily close is refreshed at once, on the next check:
 
 - Crypto: `GET /api/v3/klines?symbol=<pair>&interval=1d&startTime=&endTime=&limit=10` for
   every pair of the catalog (about 1400, weight 2 each), one after another, at most 300 weight
@@ -183,13 +185,19 @@ close), checking once a minute in its own loop, so the stats never wait for it:
   request fails is asked once more after the others; one Binance refuses (a 4xx) gets none.
   After 5 failures in a row the pairs left are not asked this time.
 - Stocks: `GET /v2/stocks/bars?symbols=<500 symbols>&timeframe=1Day&feed=iex&adjustment=all`
-  of the last 10 sessions (about 27 requests), within the stats' share of the Alpaca budget,
-  with the same retry and splitting as the snapshots.
-- A pair or batch that still fails keeps its last candles, each until 36 hours after it was
-  fetched; a refresh that gets nothing keeps all of them and is tried again 30 minutes later.
+  of the last 10 sessions (about 27 requests), within their own share of the Alpaca budget
+  (`data:rl:alpaca-spark`: a twentieth of `ALPACA_RATE_LIMIT`, at most 5 a minute; prod and
+  stage 5, previews 1), so they never slow the stats' share, with the same retry and splitting
+  as the snapshots. A malformed bar is skipped (one warning per refresh), not its whole request.
+- A pair or batch that still fails keeps its last candles and is asked again every 30 minutes,
+  alone, until it is answered or the next daily close; a refresh that gets nothing keeps all of
+  them and is tried again 30 minutes later.
+- Candles are shown until 12 hours after the market's next daily close settled: about 36 hours
+  for crypto, over weekends and holidays until the next session for stocks.
 - Each market's candles are one Redis value (`data:v1:spark:<market>`, about 4 MB for both
-  markets), kept and reloaded as the stats are; a process keeps its own copy (about 7 MB) and
-  reads only the candles of the page it returns.
+  markets), kept and reloaded as the stats are (at most 7 days); a process keeps its own copy
+  (about 7 MB), sorted by symbol, with an index built once per stored frame, so a search looks
+  up only the candles of the page it returns.
 
 ## Icons
 
@@ -404,7 +412,8 @@ requested timeframe.
 | --- | --- | --- | --- |
 | Clients: `CLIENT_RATE_LIMIT` | client IP (`CF-Connecting-IP`, else the peer address; an IPv6 address counts as its /64 network); every candle and instrument-detail request, cached or not | 60 per minute, `0` disables | 429 `rate-limited` with `Retry-After` |
 | Alpaca: `ALPACA_RATE_LIMIT` | environment; each Alpaca request | prod 150, stage 100, `pr-*` 30 | 503 `source-unavailable` with `Retry-After` |
-| Alpaca, stats refresh | environment; each snapshots and daily bars request, on top of the above | a fifth of `ALPACA_RATE_LIMIT`, at most 20 | the refresh waits for the next minute |
+| Alpaca, stats refresh | environment; each snapshots request, on top of the above | a fifth of `ALPACA_RATE_LIMIT`, at most 20 | the refresh waits for the next minute |
+| Alpaca, daily candles refresh | environment; each daily bars request, on top of the above | a twentieth of `ALPACA_RATE_LIMIT`, at most 5 | the refresh waits for the next minute |
 | Binance REST: `BINANCE_WEIGHT_LIMIT` | environment; request weight of each REST call | 1000 | 503 `source-unavailable` with `Retry-After` |
 | Binance, daily candles refresh | environment; weight of each klines request, on top of the above | a third of `BINANCE_WEIGHT_LIMIT`, at most 300 | the refresh waits for the next minute |
 | logo.dev: `LOGO_DEV_RATE_LIMIT` | environment; each logo.dev request | prod 50, stage 20, `pr-*` 5 | the fallback icon, no waiting |
@@ -439,11 +448,11 @@ again. Keys:
 | `data:v1:first:<instrument>` | `available_from` | 7 days; 1 hour while the instrument has no candle |
 | `data:v1:health:<source>` | reachability of the source | 60 s |
 | `data:v1:stats:<market>` | the 24 h stats of the market's instruments (symbol, price, change, volume): their fetch time (8 bytes), then Arrow IPC + zstd, as a candle chunk | until 2 hours after the fetch began; replaced every 5 (crypto) or 10 (stocks) minutes by the background refresh |
-| `data:v1:spark:<market>` | the last 10 daily candles of the market's instruments (symbol, open time, open, high, low, close), as the stats | until 36 hours after the fetch began; replaced once a day after the market's daily close |
+| `data:v1:spark:<market>` | the last 10 daily candles of the market's instruments (symbol, open time, open, high, low, close), as the stats | until 7 days after the fetch began; replaced once a day after the market's daily close |
 | `data:v1:icon:ticker/<symbol>`, `data:v1:icon:crypto/<base asset>` | the logo (`<media type>` + newline + image), `none` or `failed` | 30 days; `none` 7 days; `failed` 60 s |
 | `data:lock:vN:<key without data:vN:>` | single-flight lock for a key being fetched, with the key's version (`data:lock:v2:catalog:crypto`) | 30 s; 2 minutes for a stats or daily candles refresh, renewed every 40 s while it runs |
 | `data:fail:vN:<key without data:vN:>` | the error of a failed fetch of that key (source unavailable or invalid data) | 10 s, or the error's `Retry-After` when shorter |
-| `data:rl:client:<ip>:<minute>`, `data:rl:alpaca:<minute>`, `data:rl:alpaca-stats:<minute>` (the stats' share), `data:rl:binance:<minute>`, `data:rl:binance-spark:<minute>` (the daily candles' share), `data:rl:logodev:<minute>` | fixed-window counters; `<ip>` is an IPv4 address or an IPv6 /64 network, `<minute>` is Unix time // 60 | 61 s |
+| `data:rl:client:<ip>:<minute>`, `data:rl:alpaca:<minute>`, `data:rl:alpaca-stats:<minute>` (the stats' share), `data:rl:binance:<minute>`, `data:rl:alpaca-spark:<minute>`, `data:rl:binance-spark:<minute>` (the daily candles' shares), `data:rl:logodev:<minute>` | fixed-window counters; `<ip>` is an IPv4 address or an IPv6 /64 network, `<minute>` is Unix time // 60 | 61 s |
 
 | Chunk | `<chunk>` | Crypto | Stock |
 | --- | --- | --- | --- |

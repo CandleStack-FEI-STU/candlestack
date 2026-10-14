@@ -15,9 +15,9 @@ export type CandlePaths = { up: string; down: string; days: (Day | null)[] };
 // odd so the 1 px wick sits in their middle, at least 3 px wide and 1 px high (5 px in the 11.2 px
 // slots of 10 days in 112 px, 3 px in 44 px for 7).
 export function candlePaths(spark: Spark, count: number, width: number, height: number): CandlePaths | null {
-  // Fewer days than slots fill them from the left.
+  // Fewer days than slots are padded at the start: the newest day is always at the right edge.
   const days: (Day | null)[] = (spark ?? []).slice(-count);
-  while (days.length < count) days.push(null);
+  while (days.length < count) days.unshift(null);
   const candles = days.filter((day) => day !== null);
   if (candles.length === 0) return null;
   const low = Math.min(...candles.map((day) => day[3]));
@@ -43,13 +43,15 @@ export function candlePaths(spark: Spark, count: number, width: number, height: 
   return { ...paths, days };
 }
 
-// What a screen reader hears: "10 daily candles, +2.15%", from the first open to the last close.
+// What a screen reader hears: "10 daily candles, +2.15%", the candles there are (not the empty
+// days) and the change from the first open to the last close.
 export function candlesLabel(days: readonly (Day | null)[]): string {
   const candles = days.filter((day) => day !== null);
   const first = candles[0];
   const last = candles.at(-1);
   if (!first || !last) return 'No chart yet';
-  return `${days.length} daily candles, ${formatSignedChange((last[4] / first[1] - 1) * 100)}`;
+  const change = formatSignedChange((last[4] / first[1] - 1) * 100);
+  return `${candles.length} daily ${candles.length === 1 ? 'candle' : 'candles'}, ${change}`;
 }
 
 // UTC: a crypto day starts at 00:00 UTC, a stock's session opens at 13:30 or 14:30 UTC.

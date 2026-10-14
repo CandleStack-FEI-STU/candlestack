@@ -794,21 +794,33 @@ def test_parse_daily_bars_of_many_symbols(sessions: list[Session]) -> None:
     body = {
         "bars": {
             "AAPL": [_daily_bar("2024-11-14T05:00:00Z"), _daily_bar("2024-11-15T05:00:00Z", 12.5)],
-            # A day outside the asked sessions, and a bar without a close.
-            "SPY": [_daily_bar("2024-11-13T05:00:00Z"), _daily_bar("2024-11-15T05:00:00Z", None)],
+            # A day outside the asked sessions, and malformed bars that cost only themselves.
+            "SPY": [
+                _daily_bar("2024-11-13T05:00:00Z"),
+                _daily_bar("2024-11-15T05:00:00Z", None),
+                {**_daily_bar("2024-11-15T05:00:00Z"), "o": "9"},
+                {**_daily_bar("2024-11-15T05:00:00Z"), "h": True},
+                {**_daily_bar("2024-11-15T05:00:00Z"), "l": float("nan")},
+                _daily_bar("not a time"),
+                _daily_bar("2024-11-15T05:00:00"),  # without a time zone
+                {"c": 1},
+                "bar",
+            ],
             "BRK.B": None,
         },
         "next_page_token": None,
     }
 
-    frame = parse_daily_bars(body, days)
+    frame, malformed = parse_daily_bars(body, days)
 
     assert frame.schema == SPARK_SCHEMA
     assert frame.sort("ts").rows() == [
         ("AAPL", days[0].open, 9.0, 11.0, 8.0, 10.0),
         ("AAPL", days[1].open, 9.0, 11.0, 8.0, 12.5),
     ]
-    assert parse_daily_bars({"bars": {}}, days).schema == SPARK_SCHEMA
+    assert malformed == 8
+    empty, malformed = parse_daily_bars({"bars": {}}, days)
+    assert (empty.schema, malformed) == (SPARK_SCHEMA, 0)
 
 
 @pytest.mark.parametrize("bars", [["AAPL"], {"AAPL": {"t": "x"}}])

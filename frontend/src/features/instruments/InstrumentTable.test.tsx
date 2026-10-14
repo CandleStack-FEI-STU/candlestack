@@ -118,10 +118,10 @@ describe('InstrumentTable', () => {
     ]);
     expect(cells(aapl).map(text)).toEqual([
       'AAPLNASDAQ · $341M',
-      '7 daily candles, −0.60%',
+      '2 daily candles, −0.60%',
       '247.85−0.71%',
       '0.71%',
-      '10 daily candles, −0.60%Oct 4 · close 248.00Oct 6 · close 248.50',
+      '2 daily candles, −0.60%Oct 4 · close 248.00Oct 6 · close 248.50',
       '$341M',
       'Apple Inc.',
       'Stock',

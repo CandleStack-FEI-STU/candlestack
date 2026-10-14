@@ -20,7 +20,12 @@ from candlestack.data import (
 )
 from candlestack.data import service as service_module
 from candlestack.data.sources import alpaca, base, binance
-from candlestack.data.spark_store import KEEP_SECONDS, SparkStore
+from candlestack.data.spark_store import (
+    GRACE_SECONDS,
+    RETRY_SECONDS,
+    SETTLE_SECONDS,
+    SparkStore,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.anyio]
 
@@ -195,7 +200,8 @@ async def test_a_pair_that_fails_keeps_its_last_candles(
     assert [candle and candle[0] for candle in btc] == [*CRYPTO_DAYS[1:], None]
     assert "Binance daily candles of 1 of 5 pairs failed" in caplog.text
 
-    clock.now += KEEP_SECONDS - DAY  # 36 hours after they were fetched
+    # Shown until 12 hours after the next daily close settled: Sunday 12:15 UTC.
+    clock.now = NOW // DAY * DAY + DAY + SETTLE_SECONDS + GRACE_SECONDS
     found = sparks(await service.search(None, Market.CRYPTO))
     assert found["crypto:BTCUSDT"] is None
     assert found["crypto:ETHUSDT"] is not None
@@ -222,7 +228,7 @@ async def test_when_binance_is_down_the_last_candles_stay_and_the_next_try_waits
     await service.refresh_daily_candles()
     assert sources.klines.call_count - calls == 4  # waits RETRY_SECONDS
 
-    service._sparks._retry_at.clear()  # RETRY_SECONDS later
+    clock.now += RETRY_SECONDS
     sources.down = {}
     await service.refresh_daily_candles()
     found = sparks(await service.search(None, Market.CRYPTO))
@@ -370,3 +376,166 @@ async def test_keep_stats_fresh_runs_both_refreshes_until_cancelled(
     await asyncio.wait_for(service.keep_stats_fresh(), 5)
 
     assert min(rounds.values()) >= 3
+
+
+async def one_tick(service: DataService, monkeypatch: pytest.MonkeyPatch) -> None:
+    """One round of ``keep_stats_fresh`` (without the stats): each loop stops at its first
+    wait."""
+
+    async def nothing() -> None:
+        pass
+
+    async def stop(_seconds: float) -> None:
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(service, "refresh_stats", nothing)
+    monkeypatch.setattr(base, "_sleep", stop)
+    await asyncio.wait_for(service.keep_stats_fresh(), 5)
+
+
+async def test_without_stored_candles_the_first_tick_refreshes_at_once(
+    service: DataService, sources: Sources, clock: Clock, monkeypatch: pytest.MonkeyPatch
+):
+    clock.now = NOW // DAY * DAY + 6 * 3600  # 06:00 UTC, long after the daily slot
+
+    await one_tick(service, monkeypatch)
+
+    assert (sources.klines.call_count, sources.bars.call_count) == (5, 1)
+    assert sparks(await service.search(None, Market.CRYPTO))["crypto:BTCUSDT"] is not None
+
+
+async def test_with_fresh_candles_the_tick_waits_for_the_daily_slot(
+    service: DataService,
+    sources: Sources,
+    clock: Clock,
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+    redis: Redis,
+    http: httpx.AsyncClient,
+):
+    await service.refresh_daily_candles()
+    other = build_data_service(settings, redis, http)
+
+    clock.now += 6 * 3600
+    await one_tick(other, monkeypatch)  # another process: adopts them from Redis
+    assert (sources.klines.call_count, sources.bars.call_count) == (5, 1)
+
+    clock.now = NOW // DAY * DAY + DAY + SETTLE_SECONDS  # crypto's next slot
+    await one_tick(other, monkeypatch)
+    assert (sources.klines.call_count, sources.bars.call_count) == (10, 1)
+
+
+async def test_stock_candles_are_shown_until_after_the_next_session(
+    service: DataService, sources: Sources, clock: Clock
+):
+    await service.refresh_daily_candles()  # Saturday: the candles up to Friday's session
+
+    # Monday's session closes at 21:00 UTC: they stay through the weekend and until 12 hours
+    # after Monday's candle settled, and are not fetched again before.
+    monday = int(datetime(2024, 11, 18, 21, tzinfo=UTC).timestamp()) + SETTLE_SECONDS
+    clock.now = monday - 1
+    await service.refresh_daily_candles()
+    assert sources.bars.call_count == 1
+    clock.now = monday + GRACE_SECONDS - 1
+    assert sparks(await service.search(None, Market.STOCK))["stock:AAPL"] is not None
+    clock.now += 1
+    assert sparks(await service.search(None, Market.STOCK))["stock:AAPL"] is None
+
+
+async def test_unanswered_pairs_are_asked_again_until_the_next_daily_close(
+    service: DataService, sources: Sources, clock: Clock, monkeypatch: pytest.MonkeyPatch, caplog
+):
+    monkeypatch.setattr(binance, "SPARK_FAILURES_IN_A_ROW", 1)  # SOLUSDT stops the round
+    sources.down["SOLUSDT"] = 200  # a body that is no list
+
+    await service.refresh_daily_candles()
+    asked = [call.request.url.params["symbol"] for call in sources.klines.calls]
+    # BTCUSDT and ETHUSDT, then SOLUSDT fails and the rest wait; the second round fails at once.
+    assert asked == ["BTCUSDT", "ETHUSDT", "SOLUSDT", "SOLUSDT"]
+    eth = sparks(await service.search(None, Market.CRYPTO))["crypto:ETHUSDT"]
+
+    clock.now += RETRY_SECONDS - 1
+    await service.refresh_daily_candles()
+    assert sources.klines.call_count == 4
+
+    clock.now += 1  # only the unanswered pairs, SOLUSDT still failing
+    await service.refresh_daily_candles()
+    assert sources.klines.call_count == 6
+
+    clock.now += RETRY_SECONDS
+    del sources.down["SOLUSDT"]
+    with caplog.at_level(logging.INFO):
+        await service.refresh_daily_candles()
+    asked = [call.request.url.params["symbol"] for call in sources.klines.calls[6:]]
+    assert sorted(asked) == ["ETHBTC", "SOLUSDT", "币安人生USDT"]
+    found = sparks(await service.search(None, Market.CRYPTO))
+    assert found["crypto:SOLUSDT"] is not None
+    assert found["crypto:币安人生USDT"] is not None
+    assert found["crypto:ETHUSDT"] == eth  # kept as it was
+
+    clock.now += RETRY_SECONDS  # all answered (ETHBTC is refused): nothing more to ask
+    await service.refresh_daily_candles()
+    assert sources.klines.call_count == 9
+
+
+async def test_unanswered_pairs_wait_for_the_next_daily_close_once_it_passed(
+    service: DataService, sources: Sources, clock: Clock
+):
+    sources.down["SOLUSDT"] = 200
+    await service.refresh_daily_candles()
+    sources.down.clear()
+
+    clock.now = NOW // DAY * DAY + DAY + SETTLE_SECONDS  # the next slot: every pair again
+    calls = sources.klines.call_count
+    await service.refresh_daily_candles()
+    assert sources.klines.call_count - calls == 5
+
+
+async def test_the_index_follows_the_frame_the_store_adopts(
+    service: DataService, sources: Sources, clock: Clock
+):
+    await service.refresh_daily_candles()
+    first = sparks(await service.search(None, Market.CRYPTO))["crypto:BTCUSDT"]
+
+    clock.now += DAY
+    await service.refresh_daily_candles()
+    second = sparks(await service.search(None, Market.CRYPTO))["crypto:BTCUSDT"]
+
+    assert first[0][0] == CRYPTO_DAYS[0]
+    assert [candle[0] for candle in second] == [*CRYPTO_DAYS[1:], CRYPTO_DAYS[-1] + DAY]
+
+
+async def test_alpaca_daily_bars_have_their_own_share_and_skip_malformed_bars(
+    settings: Settings,
+    redis: Redis,
+    http: httpx.AsyncClient,
+    sources: Sources,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog,
+):
+    monkeypatch.setattr(alpaca, "SNAPSHOT_SYMBOLS", 1)  # a request per stock
+    monkeypatch.setattr(alpaca, "SPARK_SHARE_MAX", 1)  # one a minute
+    answer = sources._bars
+
+    def with_a_bad_bar(request: httpx.Request) -> httpx.Response:
+        body = answer(request).json()
+        body["bars"].setdefault("AAPL", []).append({"t": "2024-11-15T05:00:00Z", "o": "x"})
+        return httpx.Response(200, json=body)
+
+    sources.bars.side_effect = with_a_bad_bar
+    service = build_data_service(settings, redis, http)
+    waited = []
+
+    async def sleep(seconds: float) -> None:
+        waited.append(seconds)
+        assert not await redis.keys("data:rl:alpaca-stats:*")  # the stats' share is untouched
+        await redis.delete(*await redis.keys("data:rl:alpaca-spark:*"))  # the next minute
+
+    monkeypatch.setattr(base, "_sleep", sleep)
+    with caplog.at_level(logging.WARNING):
+        await service.refresh_daily_candles()
+
+    assert sources.bars.call_count == 3
+    assert len(waited) == 2
+    assert caplog.text.count("Skipped 3 malformed Alpaca daily bars") == 1
+    assert sparks(await service.search(None, Market.STOCK))["stock:AAPL"] is not None

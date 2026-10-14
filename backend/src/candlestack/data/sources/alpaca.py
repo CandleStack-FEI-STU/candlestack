@@ -84,6 +84,11 @@ SNAPSHOT_SYMBOLS = 500
 STATS_RATE_KEY = "data:rl:alpaca-stats"
 STATS_SHARE_MAX = 20
 STATS_SHARE_DIVISOR = 5
+# The daily bars of the mini charts (about 27 requests once a day after the close) have their own,
+# smaller share, so they do not slow the stats refresh (prod 150: 5, stage 100: 5, previews 30: 1).
+SPARK_RATE_KEY = "data:rl:alpaca-spark"
+SPARK_SHARE_MAX = 5
+SPARK_SHARE_DIVISOR = 20
 # A daily bar older than this is from a stock without IEX trades lately: it has no 24 h change
 # and no 24 h volume (0) rather than those of an old session. Covers a long weekend.
 STALE_BAR_SECONDS = 5 * DAY
@@ -266,19 +271,45 @@ def relabel_daily(frame: pl.DataFrame, sessions: list[Session]) -> pl.DataFrame:
     )
 
 
-def parse_daily_bars(body: dict[str, Any], days: list[Session]) -> pl.DataFrame:
+def _daily_bar(bar: Any) -> tuple[int, float, float, float, float] | None:
+    """Open time and prices of a 1Day bar, or ``None`` when it is malformed."""
+    if not isinstance(bar, dict):
+        return None
+    prices = [bar.get(key) for key in ("o", "h", "l", "c")]
+    if not all(
+        isinstance(price, int | float) and not isinstance(price, bool) and math.isfinite(price)
+        for price in prices
+    ):
+        return None
+    try:
+        opened = datetime.fromisoformat(bar["t"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if opened.tzinfo is None:
+        return None
+    open_, high, low, close = (float(price) for price in prices)
+    return int(opened.timestamp()), open_, high, low, close
+
+
+def parse_daily_bars(body: dict[str, Any], days: list[Session]) -> tuple[pl.DataFrame, int]:
     """The daily candles (``SPARK_SCHEMA``) of a ``GET /v2/stocks/bars`` page of 1Day bars of
-    many symbols, labelled with the open of their session in ``days`` (``relabel_daily``);
-    bars without a price are skipped."""
+    many symbols, labelled with the open of their session in ``days`` (``relabel_daily``), and
+    the number of malformed bars skipped: one bad bar costs only itself."""
     by_symbol = body.get("bars") or {}
     if not isinstance(by_symbol, dict) or not all(
         isinstance(bars, list) for bars in by_symbol.values() if bars is not None
     ):
         raise DataIntegrityError("Alpaca bars response has no list of bars.", source=NAME)
-    symbols = [symbol for symbol, bars in by_symbol.items() for _ in bars or ()]
-    frame = parse_bars([bar for bars in by_symbol.values() for bar in bars or ()])
-    frame = frame.with_columns(symbol=pl.Series(symbols, dtype=pl.String))
-    return relabel_daily(frame, days).select(*SPARK_SCHEMA).drop_nulls()
+    rows, malformed = [], 0
+    for symbol, bars in by_symbol.items():
+        for bar in bars or ():
+            parsed = _daily_bar(bar)
+            if parsed is None:
+                malformed += 1
+            else:
+                rows.append((symbol, *parsed))
+    frame = pl.DataFrame(rows, schema=SPARK_SCHEMA, orient="row")
+    return relabel_daily(frame, days).select(*SPARK_SCHEMA), malformed
 
 
 def regular_candles(
@@ -395,6 +426,7 @@ class AlpacaSource:
         self._limiter = limiter
         self._limit = settings.alpaca_rate_limit
         self._stats_limit = max(1, min(STATS_SHARE_MAX, self._limit // STATS_SHARE_DIVISOR))
+        self._spark_limit = max(1, min(SPARK_SHARE_MAX, self._limit // SPARK_SHARE_DIVISOR))
         self._cache = cache
         self._sessions: list[Session] = []
         self._sessions_until = 0.0
@@ -480,7 +512,7 @@ class AlpacaSource:
 
     async def _in_batches(self, instruments: Sequence[Instrument], ask: Ask, job: _Job) -> _Batches:
         """Asks for the stocks in batches of ``SNAPSHOT_SYMBOLS``, one after another, each within
-        the stats share of the budget (waiting for it as long as needed) and our whole budget. A
+        its share of the budget (waiting for it as long as needed) and our whole budget. A
         request that fails is tried once more after the others; one Alpaca still refuses (a
         4xx) is split in halves until the symbols it refuses are found, which get nothing. The
         stocks of a request that still fails otherwise keep what they had."""
@@ -530,7 +562,7 @@ class AlpacaSource:
         return unanswered
 
     async def _snapshot_batch(self, symbols: Batch) -> tuple[pl.DataFrame, int, httpx.Response]:
-        await self._stats_turn()
+        await self._turn(STATS_RATE_KEY, self._stats_limit)
         response = await self._request(
             f"{self._data}/v2/stocks/snapshots", {"symbols": ",".join(symbols), "feed": "iex"}
         )
@@ -547,14 +579,16 @@ class AlpacaSource:
             "end": _rfc3339(end - 1),  # Alpaca's end is inclusive
             "limit": BARS_LIMIT,
         }
-        pages = []
+        pages, malformed = [], 0
         while True:
-            await self._stats_turn()
+            await self._turn(SPARK_RATE_KEY, self._spark_limit)
             body = await self._bars_page(",".join(symbols), "1Day", params)
-            pages.append(await to_thread.run_sync(parse_daily_bars, body, days))
+            frame, skipped = await to_thread.run_sync(parse_daily_bars, body, days)
+            pages.append(frame)
+            malformed += skipped
             token = body.get("next_page_token")
             if not token:
-                return pl.concat(pages), 0, None
+                return pl.concat(pages), malformed, None
             params["page_token"] = token
 
     async def _log_rate_limit(self, got: _Batches) -> None:
@@ -570,9 +604,9 @@ class AlpacaSource:
             self._limit,
         )
 
-    async def _stats_turn(self) -> None:
-        """Waits until the stats share of this minute has room for one more request."""
-        while (wait := await self._limiter.hit(STATS_RATE_KEY, self._stats_limit)) > 0:
+    async def _turn(self, key: str, limit: int) -> None:
+        """Waits until the share ``key`` of this minute has room for one more request."""
+        while (wait := await self._limiter.hit(key, limit)) > 0:
             await pause(wait)
 
     async def _fetch_calendar(self) -> tuple[bytes, int]:

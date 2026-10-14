@@ -99,18 +99,25 @@ class MarketFrames:
         self._forget_old()
         return self._entries
 
-    def _changed(self) -> None:
-        """Called when a market's frame was adopted or dropped, for what is derived from them."""
+    def _changed(self, market: Market) -> None:
+        """Called when the market's frame was adopted or dropped, for what is derived from it."""
 
     @staticmethod
     def _now() -> float:
         return _time()
 
-    async def _refresh(self, market: Market, fetch: Fetch, stale: Callable[[int], bool]) -> bool:
+    async def _refresh(
+        self,
+        market: Market,
+        fetch: Fetch,
+        stale: Callable[[int], bool],
+        only: frozenset[str] | None = None,
+    ) -> bool:
         """Fetches the market's frame when the stored one is missing or ``stale`` (given its
         fetch time) and no other process is fetching it, and stores it. Rows of the symbols the
-        source could not ask for are carried over. A source that fails leaves the last frame in
-        place (logged) and gives ``False``; the next call tries again."""
+        source could not ask for are carried over; with ``only`` the fetch asks for those symbols
+        alone, and the other rows stay. A source that fails leaves the last frame in place
+        (logged) and gives ``False``; the next call tries again."""
         name = f"{self.kind}:{market}"
         started = int(_time())
         if not await self._due(market, stale):
@@ -124,7 +131,7 @@ class MarketFrames:
                 return True
             async with _renewing(self._cache, name, token):
                 found = await fetch()
-            frame = self._merged(found, self._entries.get(market), started, int(_time()))
+            frame = self._merged(found, self._entries.get(market), started, int(_time()), only)
             blob = await to_thread.run_sync(encode_chunk, frame, started)
             # Redis keeps it as long as the process does: keep_seconds from the refresh.
             await self._cache.set(name, blob, max(1, self.keep_seconds - (int(_time()) - started)))
@@ -172,28 +179,34 @@ class MarketFrames:
 
     def _adopt(self, market: Market, entry: Entry) -> None:
         self._entries[market] = entry
-        self._changed()
+        self._changed(market)
 
     def _forget_old(self) -> None:
         now = _time()
         for market, entry in list(self._entries.items()):
             if now - entry.fetched_at >= self.keep_seconds:
                 del self._entries[market]
-                self._changed()
+                self._changed(market)
 
     def _merged(
-        self, found: SourceStats, last: Entry | None, started: int, now: int
+        self,
+        found: SourceStats,
+        last: Entry | None,
+        started: int,
+        now: int,
+        only: frozenset[str] | None = None,
     ) -> pl.DataFrame:
         """The new rows, fetched at ``started``, plus the last rows of the symbols the source
-        could not ask for, with their own fetch time, while they are younger than
-        ``keep_seconds``."""
+        could not ask for (with ``only``: of every symbol but those it answered now), with their
+        own fetch time, while they are younger than ``keep_seconds``."""
         frame = found.frame.select(*self.schema).with_columns(fetched_at=pl.lit(started, pl.Int64))
-        if not found.failed or last is None:
+        if last is None or (only is None and not found.failed):
             return frame
-        kept = last.frame.filter(
-            pl.col("symbol").is_in(list(found.failed)),
-            pl.col("fetched_at") > now - self.keep_seconds,
-        )
+        if only is None:
+            carried = pl.col("symbol").is_in(list(found.failed))
+        else:
+            carried = ~pl.col("symbol").is_in(list(only - found.failed))
+        kept = last.frame.filter(carried, pl.col("fetched_at") > now - self.keep_seconds)
         return pl.concat([frame, kept])
 
 
@@ -228,7 +241,7 @@ class StatsStore(MarketFrames):
         )
 
     @override
-    def _changed(self) -> None:
+    def _changed(self, market: Market) -> None:
         self._table = None
 
 

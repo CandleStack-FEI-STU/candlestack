@@ -212,17 +212,23 @@ class DataService:
     async def _refresh_daily(self, market: Market) -> None:
         try:
             source = self._sources[market]
-            closed_at = daily_close(int(_time()) - SETTLE_SECONDS, await source.sessions())
+            sessions = await source.sessions()
+            closed_at = daily_close(int(_time()) - SETTLE_SECONDS, sessions)
             if closed_at is None:
                 return
             fetch = partial(self._fetch_daily, market, closed_at)
-            await self._sparks.refresh(market, fetch, closed_at)
+            await self._sparks.refresh(market, fetch, closed_at, next_close(closed_at, sessions))
         except Exception:
             logger.exception("Refreshing the %s daily candles failed", market)
 
-    async def _fetch_daily(self, market: Market, closed_at: int) -> SourceStats:
+    async def _fetch_daily(
+        self, market: Market, closed_at: int, only: frozenset[str] | None
+    ) -> SourceStats:
         catalog = await self._catalogs.catalog(market)
-        return await self._sources[market].daily_candles(catalog.instruments(market), closed_at)
+        instruments = catalog.instruments(market)
+        if only is not None:
+            instruments = [i for i in instruments if i.symbol in only]
+        return await self._sources[market].daily_candles(instruments, closed_at)
 
     async def instrument(self, instrument_id: InstrumentId) -> InstrumentInfo:
         """The instrument and its available period. ``available_from`` is ``None`` when the
@@ -452,6 +458,21 @@ def daily_close(now: int, sessions: Sequence[Session] | None) -> int | None:
         return now // DAY * DAY
     latest = bisect.bisect_right(sessions, now, key=lambda session: session.close) - 1
     return sessions[latest].close if latest >= 0 else None
+
+
+# Past the end of the calendar the next stock session is taken to close this long after the last.
+_NEXT_CLOSE_FALLBACK = 4 * DAY
+
+
+def next_close(closed_at: int, sessions: Sequence[Session] | None) -> int:
+    """When the daily candle after the one that closed at ``closed_at`` closes: a day later for
+    crypto, with the next session for stocks (after weekends and holidays)."""
+    if sessions is None:
+        return closed_at + DAY
+    following = bisect.bisect_right(sessions, closed_at, key=lambda session: session.close)
+    if following < len(sessions):
+        return sessions[following].close
+    return closed_at + _NEXT_CLOSE_FALLBACK
 
 
 def newest_minute(now: int, sessions: Sequence[Session] | None) -> int:
