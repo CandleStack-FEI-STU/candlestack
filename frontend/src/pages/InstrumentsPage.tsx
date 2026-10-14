@@ -5,12 +5,12 @@ import { PageTitle } from '@/components/PageTitle';
 import { Filters, InstrumentList, SearchBox, rememberListSearch } from '@/features/instruments';
 import { usePageTitle } from '@/lib/usePageTitle';
 
-// The start page: every stock and crypto pair, searchable, the most traded first.
-// /?q=apple&market=stock&exchange=NASDAQ&sort=gainers&page=2
+// Every stock and crypto pair, searchable, the most traded first.
+// /instruments?q=apple&market=stock&exchange=NASDAQ&sort=gainers&page=2
 export function InstrumentsPage() {
-  const search = useSearch({ from: '/' });
+  const search = useSearch({ from: '/instruments' });
   const { q = '', market, exchange, sort, page = 1 } = search;
-  const navigate = useNavigate({ from: '/' });
+  const navigate = useNavigate({ from: '/instruments' });
   // "Instruments" on an instrument page comes back to this search.
   useEffect(() => rememberListSearch(search), [search]);
   usePageTitle(q === '' ? 'Instruments' : `“${q}” · Instruments`);

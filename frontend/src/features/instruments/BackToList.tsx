@@ -7,7 +7,7 @@ import { lastListSearch } from './lastSearch';
 export function BackToList() {
   return (
     <Link
-      to="/"
+      to="/instruments"
       search={lastListSearch()}
       className="mb-4 inline-flex items-center gap-1.5 self-start rounded-md text-sm text-muted-foreground hover:text-foreground"
     >

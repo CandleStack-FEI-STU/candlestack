@@ -61,7 +61,7 @@ function ErrorState({ error, onRetry }: { error: ListError; onRetry: () => void 
 // is known, the page goes to the last one, in place of the broken entry in the history.
 // Returns whether that redirect is on its way.
 function useClampPage(result: UseQueryResult<InstrumentSearchResult>, page: number): boolean {
-  const navigate = useNavigate({ from: '/' });
+  const navigate = useNavigate({ from: '/instruments' });
   const total = result.isPlaceholderData || !result.data ? undefined : resultTotal(result.data);
   const clamped = clampedPage(page, total, LIST_PAGE_SIZE);
   useEffect(() => {
@@ -76,7 +76,7 @@ function PastTheEnd() {
   return (
     <p className="px-3 py-12 text-center text-sm text-muted-foreground">
       This page is past the end of the results.{' '}
-      <Link from="/" search={(prev) => ({ ...prev, page: undefined })} className="text-primary underline">
+      <Link from="/instruments" search={(prev) => ({ ...prev, page: undefined })} className="text-primary underline">
         Go to page 1
       </Link>
     </p>
@@ -92,7 +92,7 @@ function Mismatch({ market, exchange }: { market: Market; exchange: Exchange }) 
       <p className="font-medium">{title}</p>
       <p className="text-muted-foreground">{hint}</p>
       <Button asChild variant="outline" size="sm" className="mt-1.5">
-        <Link from="/" search={(prev) => withExchange(prev, undefined)}>
+        <Link from="/instruments" search={(prev) => withExchange(prev, undefined)}>
           Show all exchanges
         </Link>
       </Button>

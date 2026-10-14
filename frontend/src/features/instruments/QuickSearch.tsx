@@ -92,7 +92,7 @@ function Results({ typed, tf, input, onPick, ...state }: ResultsProps) {
         </li>
       ))}
       <li>
-        <Link to="/" search={{ q: typed }} {...link} className={`${ITEM} text-muted-foreground`}>
+        <Link to="/instruments" search={{ q: typed }} {...link} className={`${ITEM} text-muted-foreground`}>
           All results for “{typed}”
         </Link>
       </li>

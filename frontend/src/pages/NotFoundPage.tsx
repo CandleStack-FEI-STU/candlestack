@@ -10,7 +10,7 @@ export function NotFoundPage() {
     <>
       <PageTitle title="Page not found" description="There is nothing at this address." />
       <Button asChild variant="outline" className="self-start">
-        <Link to="/">Back to instruments</Link>
+        <Link to="/instruments">Back to instruments</Link>
       </Button>
     </>
   );

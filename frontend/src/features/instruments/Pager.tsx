@@ -20,7 +20,7 @@ function PageLink({ page, enabled, children }: { page: number | undefined; enabl
     );
   }
   return (
-    <Link from="/" search={(prev) => ({ ...prev, page })} className={LINK}>
+    <Link from="/instruments" search={(prev) => ({ ...prev, page })} className={LINK}>
       {children}
     </Link>
   );

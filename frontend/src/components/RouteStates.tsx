@@ -33,7 +33,7 @@ export function RouteError({ error }: ErrorComponentProps) {
           Try again
         </Button>
         <Button asChild variant="ghost">
-          <Link to="/">Back to instruments</Link>
+          <Link to="/instruments">Back to instruments</Link>
         </Button>
       </div>
     </>

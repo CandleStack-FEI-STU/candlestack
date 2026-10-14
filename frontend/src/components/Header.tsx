@@ -7,7 +7,7 @@ import { QuickSearch } from '@/features/instruments';
 
 // The list page has its own search box; every other page gets one in the header.
 export function Header() {
-  const onList = useRouterState({ select: (state) => state.location.pathname === '/' });
+  const onList = useRouterState({ select: (state) => state.location.pathname === '/instruments' });
   return (
     <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
       {/* Relative: on a phone the quick search's list hangs from this bar, the full width of the
