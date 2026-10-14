@@ -131,3 +131,14 @@
     background-size: 40px 40px;
   }
 }
+
+/* The dashes that run along the home page's pipeline (src/features/home/Pipeline.tsx). */
+@theme {
+  --animate-pipeline-flow: pipeline-flow 2.4s linear infinite;
+
+  @keyframes pipeline-flow {
+    to {
+      left: 100%;
+    }
+  }
+}
