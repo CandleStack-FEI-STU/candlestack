@@ -7,7 +7,8 @@ pipeline works. None of them is planned yet. Each becomes an issue when we decid
 
 A full [MCP](https://modelcontextprotocol.io) server, so Claude and ChatGPT can use CandleStack
 as a connector: search instruments, read candles, run backtests and compare experiments from a
-chat.
+chat. Instead of clicking through the builder run by run, the user describes what to try and
+the assistant runs it and analyzes the results.
 
 - A remote MCP endpoint next to the API, with tools over the same modules the web app uses:
   instruments and candles first, then runs and experiments once they exist.
