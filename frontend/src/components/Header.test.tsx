@@ -56,6 +56,12 @@ describe('Header', () => {
     expect(classes(html, /<button [^>]*>Sign in/)).toContain('max-md:hidden');
   });
 
+  it('hovers Sign in with the full surface in the dark theme too', async () => {
+    const signIn = classes(await render('/'), /<button [^>]*>Sign in/);
+    expect(signIn).toContain('dark:hover:bg-accent');
+    expect(signIn).not.toContain('dark:hover:bg-accent/50');
+  });
+
   it('has no search box', async () => {
     expect(await render('/instrument/crypto:BTCUSDT')).not.toContain('<input');
   });

@@ -43,11 +43,12 @@ function MainNav() {
 }
 
 // No action yet: the backtest builder and accounts are not designed. Sign in waits for md: with
-// the nav, the row needs about 675 px.
+// the nav, the row needs about 675 px. Sign in hovers with the full surface in dark too, as in the
+// mockup: the ghost variant alone would halve it there.
 function Actions() {
   return (
     <div className="ml-auto flex items-center gap-2">
-      <Button type="button" variant="ghost" className={cn(BUTTON, 'max-md:hidden')}>
+      <Button type="button" variant="ghost" className={cn(BUTTON, 'max-md:hidden dark:hover:bg-accent')}>
         Sign in
       </Button>
       <Button

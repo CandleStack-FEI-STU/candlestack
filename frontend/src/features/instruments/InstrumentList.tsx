@@ -57,8 +57,8 @@ function ErrorState({ error, onRetry }: { error: ListError; onRetry: () => void 
   );
 }
 
-// An old or shared link can point past the end: /?q=apple&page=40 with 3 pages. Once the total
-// is known, the page goes to the last one, in place of the broken entry in the history.
+// An old or shared link can point past the end: /instruments?q=apple&page=40 with 3 pages. Once
+// the total is known, the page goes to the last one, in place of the broken entry in the history.
 // Returns whether that redirect is on its way.
 function useClampPage(result: UseQueryResult<InstrumentSearchResult>, page: number): boolean {
   const navigate = useNavigate({ from: '/instruments' });

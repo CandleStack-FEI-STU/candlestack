@@ -19,6 +19,8 @@
   --accent: #0f766e;
   --warn: #a15c07;
   --down: #b42318;
+  /* Not 1:1: the home page design (#199) shows the grid stronger than the website's 0.045, in
+     both themes. */
   --grid: rgb(28 25 23 / 0.09);
 
   /* A rising 24 h change in the instrument list (#184), as text: the grass green of the candles,
