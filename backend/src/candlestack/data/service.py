@@ -6,14 +6,15 @@ the source (single-flight, a few at once), and the chunks are joined, resampled 
 sliced to ``[start, end)``, checked for gaps and fingerprinted in a worker thread.
 
 The instrument list is sorted by the 24 h stats that ``keep_stats_fresh`` refreshes in the
-background (``StatsStore``); a search only reads them.
+background (``StatsStore``), and its items carry mini charts of the last daily candles, which
+the same task refreshes once a day (``SparkStore``); a search only reads them.
 """
 
 import asyncio
 import bisect
 import logging
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from functools import partial
 from itertools import batched
@@ -67,6 +68,7 @@ from candlestack.data.sessions import Session, sessions_between
 from candlestack.data.sources.alpaca import AlpacaSource
 from candlestack.data.sources.base import DAY, DataSource, Period, pause
 from candlestack.data.sources.binance import BinanceSource
+from candlestack.data.spark_store import SETTLE_SECONDS, SparkStore
 from candlestack.data.stats_store import StatsStore
 
 logger = logging.getLogger(__name__)
@@ -118,7 +120,7 @@ class _Lookup:
 
 
 class DataService:
-    def __init__(
+    def __init__(  # noqa: PLR0913 (keyword-only: its parts, each built once)
         self,
         *,
         sources: Mapping[Market, DataSource],
@@ -127,6 +129,7 @@ class DataService:
         icons: Icons,
         candles_max: int,
         stats: StatsStore,
+        sparks: SparkStore,
     ) -> None:
         self._sources = sources
         self._cache = cache
@@ -134,6 +137,7 @@ class DataService:
         self._icons = icons
         self._candles_max = candles_max
         self._stats = stats
+        self._sparks = sparks
 
     async def search(
         self,
@@ -149,14 +153,14 @@ class DataService:
         ``candlestack.data.catalog``, ties in ``sort``), or of every instrument in ``sort``
         without ``q``, in the markets whose catalog can be loaded; ``unavailable`` names the
         others. Raises the source's error when none can be loaded. ``exchange`` keeps only the
-        instruments that trade there. The stats are what the background refresh last stored:
-        instruments without them sort last."""
+        instruments that trade there. The stats and the mini charts are what the background
+        refresh last stored: instruments without stats sort last."""
         if q is not None and not normalise_query(q):
-            return SearchResult([], [], 0, [])
+            return SearchResult([], [], 0, [], [])
         if exchange is not None:
             # An exchange lists one market only: the other market's catalog is not needed.
             if market not in (None, exchange.market):
-                return SearchResult([], [], 0, [])
+                return SearchResult([], [], 0, [], [])
             market = exchange.market
         catalog = await self._catalogs.catalog(market)
         # Taken with the catalog, before anything else is awaited: a market that finishes loading
@@ -169,14 +173,17 @@ class DataService:
                 catalog.page, q, market, limit, offset, exchange=exchange, sort=sort, stats=stats
             )
         )
-        return SearchResult(found.items, unavailable, found.total, found.stats)
+        sparks = await self._sparks.sparks(found.items)
+        return SearchResult(found.items, unavailable, found.total, found.stats, sparks)
 
     async def keep_stats_fresh(self) -> None:
-        """Refreshes the stats of every market when they are due, checking once a minute, until
-        cancelled (the app's lifespan runs it in prod and stage, ``STATS_REFRESH``)."""
-        while True:
-            await self.refresh_stats()
-            await pause(STATS_CHECK_SECONDS)
+        """Refreshes the stats and the daily candles of every market when they are due, each
+        checking once a minute on its own (the daily candles take minutes and must not hold up
+        the stats), until cancelled (the app's lifespan runs it in prod and stage,
+        ``STATS_REFRESH``)."""
+        async with asyncio.TaskGroup() as group:
+            group.create_task(_every(STATS_CHECK_SECONDS, self.refresh_stats))
+            group.create_task(_every(STATS_CHECK_SECONDS, self.refresh_daily_candles))
 
     async def refresh_stats(self) -> None:
         """One round: each market whose stats are due is fetched from its source for the
@@ -194,6 +201,28 @@ class DataService:
     async def _fetch_stats(self, market: Market) -> SourceStats:
         catalog = await self._catalogs.catalog(market)
         return await self._sources[market].stats(catalog.instruments(market))
+
+    async def refresh_daily_candles(self) -> None:
+        """One round: each market whose daily candles are due (after its daily close) is fetched
+        from its source for the instruments of its catalog (``SparkStore.refresh``), all markets
+        at once. A market whose refresh fails unexpectedly is logged for a developer, and the
+        others still run."""
+        await asyncio.gather(*(self._refresh_daily(market) for market in self._sources))
+
+    async def _refresh_daily(self, market: Market) -> None:
+        try:
+            source = self._sources[market]
+            closed_at = daily_close(int(_time()) - SETTLE_SECONDS, await source.sessions())
+            if closed_at is None:
+                return
+            fetch = partial(self._fetch_daily, market, closed_at)
+            await self._sparks.refresh(market, fetch, closed_at)
+        except Exception:
+            logger.exception("Refreshing the %s daily candles failed", market)
+
+    async def _fetch_daily(self, market: Market, closed_at: int) -> SourceStats:
+        catalog = await self._catalogs.catalog(market)
+        return await self._sources[market].daily_candles(catalog.instruments(market), closed_at)
 
     async def instrument(self, instrument_id: InstrumentId) -> InstrumentInfo:
         """The instrument and its available period. ``available_from`` is ``None`` when the
@@ -405,7 +434,24 @@ def build_data_service(settings: Settings, redis: Redis, http: httpx.AsyncClient
         icons=Icons(settings, http, limiter, cache),
         candles_max=settings.candles_max,
         stats=StatsStore(cache, sources),
+        sparks=SparkStore(cache, sources),
     )
+
+
+async def _every(seconds: float, job: Callable[[], Awaitable[None]]) -> None:
+    """Runs ``job`` and waits ``seconds`` after it, until cancelled."""
+    while True:
+        await job()
+        await pause(seconds)
+
+
+def daily_close(now: int, sessions: Sequence[Session] | None) -> int | None:
+    """When the newest daily candle closed by ``now`` closed: the UTC midnight for crypto, the
+    close of the latest session that ended for stocks (``None`` before the first)."""
+    if sessions is None:
+        return now // DAY * DAY
+    latest = bisect.bisect_right(sessions, now, key=lambda session: session.close) - 1
+    return sessions[latest].close if latest >= 0 else None
 
 
 def newest_minute(now: int, sessions: Sequence[Session] | None) -> int:

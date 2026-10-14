@@ -24,12 +24,13 @@ from candlestack.data import (
     Timeframe,
 )
 from candlestack.data.cache import Cache, Fetch
-from candlestack.data.models import STATS_SCHEMA
+from candlestack.data.models import SPARK_SCHEMA, STATS_SCHEMA
 from candlestack.data.sources import base
 from candlestack.data.sources.alpaca import (
     AlpacaSource,
     parse_assets,
     parse_bars,
+    parse_daily_bars,
     parse_snapshots,
     regular_candles,
     relabel_daily,
@@ -782,3 +783,35 @@ def ticker_row(symbol: str, price: str, change: str, quote_volume: str) -> dict[
         "quoteVolume": quote_volume,
         "count": 1,
     }
+
+
+def _daily_bar(t: str, close: float | None = 10.0) -> dict[str, Any]:
+    return {"t": t, "o": 9.0, "h": 11.0, "l": 8.0, "c": close, "v": 100, "n": 5, "vw": 10.0}
+
+
+def test_parse_daily_bars_of_many_symbols(sessions: list[Session]) -> None:
+    days = [s for s in sessions if s.date.isoformat() in ("2024-11-14", "2024-11-15")]
+    body = {
+        "bars": {
+            "AAPL": [_daily_bar("2024-11-14T05:00:00Z"), _daily_bar("2024-11-15T05:00:00Z", 12.5)],
+            # A day outside the asked sessions, and a bar without a close.
+            "SPY": [_daily_bar("2024-11-13T05:00:00Z"), _daily_bar("2024-11-15T05:00:00Z", None)],
+            "BRK.B": None,
+        },
+        "next_page_token": None,
+    }
+
+    frame = parse_daily_bars(body, days)
+
+    assert frame.schema == SPARK_SCHEMA
+    assert frame.sort("ts").rows() == [
+        ("AAPL", days[0].open, 9.0, 11.0, 8.0, 10.0),
+        ("AAPL", days[1].open, 9.0, 11.0, 8.0, 12.5),
+    ]
+    assert parse_daily_bars({"bars": {}}, days).schema == SPARK_SCHEMA
+
+
+@pytest.mark.parametrize("bars", [[], {"AAPL": {"t": "x"}}])
+def test_parse_daily_bars_refuses_a_body_without_lists(bars: Any, sessions: list[Session]) -> None:
+    with pytest.raises(DataIntegrityError, match="no list of bars"):
+        parse_daily_bars({"bars": bars}, sessions)

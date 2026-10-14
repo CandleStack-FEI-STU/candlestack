@@ -470,6 +470,8 @@ export interface components {
              * @enum {string}
              */
             source: "binance" | "alpaca";
+            /** Spark */
+            spark: ([number, number, number, number, number] | null)[] | null;
             /**
              * Symbol
              * @description Symbol as the source spells it.

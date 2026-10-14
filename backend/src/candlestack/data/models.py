@@ -199,10 +199,31 @@ STATS_SCHEMA = pl.Schema(
 )
 
 
+# The last daily candles of the instruments of one market, for the mini charts of the list: a
+# row per candle, ``ts`` its open (00:00 UTC for crypto, the session open for stocks).
+SPARK_SCHEMA = pl.Schema(
+    {
+        "symbol": pl.String,
+        "ts": pl.Int64,
+        "open": pl.Float64,
+        "high": pl.Float64,
+        "low": pl.Float64,
+        "close": pl.Float64,
+    }
+)
+# Daily candles in a mini chart.
+SPARK_DAYS = 10
+
+type Spark = list[tuple[int, float, float, float, float] | None]
+"""An instrument's mini chart: a slot per day of its market's last ``SPARK_DAYS`` daily candles,
+oldest first, each ``(open time, open, high, low, close)`` or ``None`` for a day without one."""
+
+
 @dataclass(frozen=True, eq=False)
 class SourceStats:
-    """What a source reports for a market's stats: ``frame`` (``STATS_SCHEMA``) and the symbols
-    it could not ask for this time (a failed request), whose last stats are kept."""
+    """What a source reports for a market's stats or daily candles: ``frame`` (``STATS_SCHEMA``
+    or ``SPARK_SCHEMA``) and the symbols it could not ask for this time (a failed request), whose
+    last rows are kept."""
 
     frame: pl.DataFrame
     failed: frozenset[str] = frozenset()
@@ -225,13 +246,14 @@ NO_STATS = InstrumentStats(None, None, None)
 class SearchResult:
     """A page of the instruments found, best first, the number of all of them, and the
     searched markets that were left out because their catalog cannot be loaded right now
-    (their source is down). ``stats`` has an entry per item: its stats, or ``None`` when there
-    are none (yet)."""
+    (their source is down). ``stats`` and ``sparks`` have an entry per item: its stats and its
+    mini chart, or ``None`` when there are none (yet)."""
 
     items: list[Instrument]
     unavailable: list[Market]
     total: int
     stats: list[InstrumentStats | None]
+    sparks: list[Spark | None]
 
 
 @dataclass(frozen=True)

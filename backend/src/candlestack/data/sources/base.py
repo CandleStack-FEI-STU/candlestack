@@ -95,6 +95,13 @@ class DataSource(Protocol):
         budget. Raises the source's error when it got nothing."""
         ...
 
+    async def daily_candles(self, instruments: Sequence[Instrument], closed_at: int) -> SourceStats:
+        """The last ``SPARK_DAYS`` daily candles (``SPARK_SCHEMA``) that closed by ``closed_at``
+        of the given instruments of the catalog, and the symbols it could not ask for. Runs in
+        the background, never for a request: it is paced to a share of the request budget.
+        Raises the source's error when it got nothing."""
+        ...
+
 
 def utc(ts: int) -> datetime:
     return datetime.fromtimestamp(ts, UTC)

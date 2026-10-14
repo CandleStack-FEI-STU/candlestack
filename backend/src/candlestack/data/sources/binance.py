@@ -5,7 +5,8 @@ while the monthly file is not published yet, up to 7 days after the month), the 
 the current month from the daily archives, and whatever has no archive yet (today, yesterday
 until about 03:30 UTC) from ``GET /api/v3/klines``. Every archive is checked against its
 ``.CHECKSUM``. REST calls spend our weight budget (``BINANCE_WEIGHT_LIMIT``); the archives are
-not limited. The 24 h stats of every pair come from one ``GET /api/v3/ticker/24hr``.
+not limited. The 24 h stats of every pair come from one ``GET /api/v3/ticker/24hr``, the daily
+candles of the mini charts from a ``GET /api/v3/klines`` per pair, paced to a share of the budget.
 """
 
 import asyncio
@@ -15,6 +16,7 @@ import logging
 import time
 import zipfile
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from urllib.parse import quote
 
 import httpx
@@ -27,6 +29,8 @@ from candlestack.data.candles import normalise, slice_range, validate
 from candlestack.data.errors import DataError, DataIntegrityError, InvalidRequest, SourceUnavailable
 from candlestack.data.models import (
     CANDLE_SCHEMA,
+    SPARK_DAYS,
+    SPARK_SCHEMA,
     Exchange,
     Feed,
     Instrument,
@@ -43,6 +47,7 @@ from candlestack.data.sources.base import (
     Period,
     get,
     json_body,
+    pause,
     plan_periods,
     spend,
     unavailable,
@@ -72,6 +77,13 @@ _TICKER_SCHEMA = {
     "priceChangePercent": pl.String,
     "quoteVolume": pl.String,
 }
+# Daily candles of the mini charts: a klines request per pair (about 1400, 2800 weight once a
+# day), paced to at most this weight a minute (and a third of our budget), so that they take ten
+# minutes and chart requests keep the rest.
+SPARK_RATE_KEY = "data:rl:binance-spark"
+SPARK_WEIGHT_SHARE_MAX = 300
+# After this many failed requests in a row Binance counts as down: the other pairs are not asked.
+SPARK_FAILURES_IN_A_ROW = 5
 # Binance allows 6000 weight per minute per IP, and every environment on the VM shares the IP.
 # When X-MBX-USED-WEIGHT-1M reaches this, REST calls stop until the minute is over.
 IP_WEIGHT_CEILING = 5000
@@ -248,6 +260,15 @@ def _clean(frame: pl.DataFrame, timeframe: Timeframe, period: Period) -> pl.Data
     return frame
 
 
+@dataclass
+class _Daily:
+    """What the klines requests of one daily candles refresh got so far."""
+
+    frames: list[pl.DataFrame] = field(default_factory=list)
+    error: DataError | None = None
+    refused: list[str] = field(default_factory=list)
+
+
 class BinanceSource:
     name: Source = NAME
     feed: Feed = "spot"
@@ -262,6 +283,9 @@ class BinanceSource:
         self._http = http
         self._limiter = limiter
         self._weight_limit = settings.binance_weight_limit
+        self._spark_weight = max(
+            KLINES_WEIGHT, min(SPARK_WEIGHT_SHARE_MAX, self._weight_limit // 3)
+        )
         self._paused_until = 0.0
 
     async def list_instruments(self) -> list[Instrument]:
@@ -321,6 +345,82 @@ class BinanceSource:
             "/api/v3/ticker/24hr", {"symbolStatus": "TRADING"}, TICKER_WEIGHT
         )
         return SourceStats(await to_thread.run_sync(parse_ticker, response.content, instruments))
+
+    async def daily_candles(self, instruments: Sequence[Instrument], closed_at: int) -> SourceStats:
+        """A klines request per pair, one after another within the share of the budget. A
+        pair whose request fails is asked once more after the others, and keeps its last
+        candles when that fails too; one Binance refuses (a 4xx: a pair delisted since the
+        catalog was loaded) gets none. After ``SPARK_FAILURES_IN_A_ROW`` failures in a row the
+        pairs left are not asked this time."""
+        got = _Daily()
+        pending = [instrument.symbol for instrument in instruments]
+        for _ in range(2):
+            pending = await self._daily_round(pending, closed_at, got)
+            if not pending:
+                break
+        if not got.frames and pending and got.error is not None:
+            raise got.error
+        if pending and got.error is not None:
+            logger.warning(
+                "Binance daily candles of %d of %d pairs failed (%s): their last candles stay",
+                len(pending),
+                len(instruments),
+                got.error.detail,
+            )
+        if got.refused:
+            logger.warning(
+                "Binance refused the daily candles of %s: none for them", ", ".join(got.refused)
+            )
+        frame = pl.concat(got.frames) if got.frames else pl.DataFrame(schema=SPARK_SCHEMA)
+        return SourceStats(frame, frozenset(pending))
+
+    async def _daily_round(self, symbols: list[str], closed_at: int, got: _Daily) -> list[str]:
+        """Asks for the daily candles of each pair into ``got``; returns the pairs that failed,
+        and those not asked after too many failures in a row."""
+        failed: list[str] = []
+        in_a_row = 0
+        for index, symbol in enumerate(symbols):
+            if in_a_row >= SPARK_FAILURES_IN_A_ROW:
+                return failed + symbols[index:]
+            await self._spark_turn()
+            try:
+                got.frames.append(await self._daily(symbol, closed_at))
+            except DataError as exc:
+                if isinstance(exc, SourceUnavailable) and exc.rejected:
+                    got.refused.append(symbol)
+                    continue
+                got.error = exc
+                failed.append(symbol)
+                in_a_row += 1
+                if isinstance(exc, SourceUnavailable) and exc.retry_after:
+                    await pause(min(exc.retry_after, 60))  # our budget or Binance's limit
+                continue
+            in_a_row = 0
+        return failed
+
+    async def _spark_turn(self) -> None:
+        """Waits until the share of this minute has room for one more klines request."""
+        while (
+            wait := await self._limiter.hit(SPARK_RATE_KEY, self._spark_weight, KLINES_WEIGHT)
+        ) > 0:
+            await pause(wait)
+
+    async def _daily(self, symbol: str, closed_at: int) -> pl.DataFrame:
+        """The pair's daily candles (``SPARK_SCHEMA``) of the ``SPARK_DAYS`` days before
+        ``closed_at`` (a UTC midnight)."""
+        response = await self._rest(
+            "/api/v3/klines",
+            {
+                "symbol": symbol,
+                "interval": str(Timeframe.D1),
+                "startTime": (closed_at - SPARK_DAYS * DAY) * 1000,
+                "endTime": closed_at * 1000 - 1,
+                "limit": SPARK_DAYS,
+            },
+            KLINES_WEIGHT,
+        )
+        frame = parse_klines(json_body(response, NAME, TITLE), closed_at)
+        return frame.select(pl.lit(symbol, pl.String).alias("symbol"), *list(SPARK_SCHEMA)[1:])
 
     async def _month(self, symbol: str, timeframe: Timeframe, period: Period) -> pl.DataFrame:
         try:

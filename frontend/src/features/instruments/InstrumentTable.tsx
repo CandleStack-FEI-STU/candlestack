@@ -8,15 +8,19 @@ import { changeTone, formatChange, formatPrice, formatSignedChange, formatVolume
 import { cn } from '@/lib/utils';
 import type { ListSort } from '@/routes/instrumentsSearch';
 
+import { MiniCandles } from './MiniCandles';
 import { sortedColumn, type SortedColumn } from './sorting';
 
-// Phones (below md) show two columns, the symbol and the price; from md the stats get their own
-// columns and the name the rest; from lg the type too. Cells have 12 px at the sides (8 px between
-// the two columns of a phone), 4 px above and below the 32 px icon: a row is 41 px high.
+// Phones (below md) show three columns, the symbol, the last 7 daily candles and the price; from md
+// the stats get their own columns and the name the rest; from lg the type and the 10 daily candles
+// too. Cells have 12 px at the sides (8 px between the columns of a phone), 4 px above and below
+// the 32 px icon and the 32 px candles: a row is 41 px high.
 const HEAD = 'py-2 text-xs font-medium text-muted-foreground';
 const CELL = 'py-1';
 const PHONE_FIRST = 'pr-2 pl-3 md:px-3';
 const PHONE_LAST = 'pr-3 pl-2 md:px-3';
+const PHONE_MIDDLE = 'w-[60px] px-2 md:hidden';
+const WIDEST = 'hidden w-[136px] px-3 lg:table-cell';
 const WIDE = 'hidden px-3 md:table-cell';
 const TONES = { up: 'text-up', down: 'text-down', flat: 'text-muted-foreground', none: 'text-muted-foreground' };
 const TYPES: Record<Market, string> = { stock: 'Stock', crypto: 'Crypto' };
@@ -48,7 +52,7 @@ function Label({ right, arrow, children }: { right?: boolean; arrow?: ReactNode;
   );
 }
 
-// The two headers of a phone, each a header of its own (hidden from md up) so that its aria-sort
+// The three headers of a phone, each a header of its own (hidden from md up) so that its aria-sort
 // can name the order the phone shows: the symbol column stands for the volume column a phone
 // hides ("Symbol · by volume ↓") and for the symbol, the price column for the change ("Price ·
 // 24h ↓").
@@ -60,6 +64,7 @@ function PhoneHeads({ sorted }: { sorted: SortedColumn }) {
       <Head className={cn(PHONE_FIRST, 'text-left md:hidden')} sorted={column === 'change' ? undefined : direction}>
         <Label arrow={column !== 'change' && arrow}>{column === 'volume' ? 'Symbol · by volume' : 'Symbol'}</Label>
       </Head>
+      <Head className={cn(PHONE_MIDDLE, 'text-left')}>7d</Head>
       <Head
         className={cn(PHONE_LAST, 'w-[100px] text-right md:hidden')}
         sorted={column === 'change' ? direction : undefined}
@@ -91,6 +96,7 @@ function Header({ sort }: { sort: ListSort | undefined }) {
             24h
           </Label>
         </Head>
+        <Head className={cn(WIDEST, 'text-left')}>10d</Head>
         <Head className={cn(WIDE, 'w-[112px] text-right')} sorted={on('volume')}>
           <Label right arrow={arrow('volume')}>
             Volume 24h
@@ -177,9 +183,15 @@ function Row({ instrument }: { instrument: Instrument }) {
   return (
     <tr className="relative border-b last:border-b-0 hover:bg-accent">
       <SymbolCell instrument={instrument} where={where} />
+      <td className={cn(CELL, PHONE_MIDDLE)}>
+        <MiniCandles id={instrument.id} spark={instrument.spark} count={7} width={44} height={24} />
+      </td>
       <PriceCell instrument={instrument} stats={stats} />
       <td className={cn(CELL, WIDE, 'text-right')}>
         <Change change={instrument.change_24h} />
+      </td>
+      <td className={cn(CELL, WIDEST)}>
+        <MiniCandles id={instrument.id} spark={instrument.spark} count={10} width={112} height={32} hover />
       </td>
       <td className={cn(CELL, WIDE, 'text-right font-mono', instrument.volume_24h === null && 'text-muted-foreground')}>
         {formatVolume(instrument.volume_24h)}
@@ -199,13 +211,14 @@ function Row({ instrument }: { instrument: Instrument }) {
   );
 }
 
-// One row per instrument with its 24 h stats (#184): Symbol 168 | Price 128 | 24h 104 | Volume 24h
-// 112 | Name (the rest) | Type 88 | Exchange 104 px. The symbol is the row's link, stretched over
-// the whole row, so the row is one click target and one tab stop. The columns have fixed widths
-// and the name takes the rest, so long text truncates instead of widening the table past the
-// screen: Type shows from lg (1024 px), the stats, name and exchange from md (768 px); a phone
-// shows the symbol over "exchange · volume" and the price over the change. The sorted column's
-// header is ink with an arrow.
+// One row per instrument with its 24 h stats (#184) and its last daily candles (#189): Symbol 168 |
+// Price 128 | 24h 104 | 10d 136 | Volume 24h 112 | Name (the rest) | Type 88 | Exchange 104 px. The
+// symbol is the row's link, stretched over the whole row, so the row is one click target and one
+// tab stop. The columns have fixed widths and the name takes the rest, so long text truncates
+// instead of widening the table past the screen: Type and 10d show from lg (1024 px), the stats,
+// name and exchange from md (768 px), where 10d would leave the name no room; a phone shows the
+// symbol over "exchange · volume", the last 7 candles in 60 px and the price over the change. The
+// sorted column's header is ink with an arrow.
 export function InstrumentTable({ items, sort }: { items: readonly Instrument[]; sort?: ListSort | undefined }) {
   return (
     <table className="w-full table-fixed border-collapse text-sm">

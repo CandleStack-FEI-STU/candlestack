@@ -18,6 +18,7 @@ from candlestack.data.service import (
     CandleRequest,
     assemble,
     bin_open,
+    daily_close,
     newest_minute,
 )
 from candlestack.data.sources.base import DAY, DataSource, Period, plan_periods
@@ -52,6 +53,19 @@ def test_newest_minute_of_stocks(sessions: list[Session]) -> None:
     assert newest_minute(utc("2024-11-29T14:31:00"), sessions) == utc("2024-11-29T14:30")
     assert newest_minute(utc("2024-11-30T10:00"), sessions) == utc("2024-11-29T17:59")
     assert newest_minute(utc("2024-12-02T14:00"), sessions) == utc("2024-11-29T17:59")
+
+
+def test_daily_close_of_crypto_is_the_last_utc_midnight() -> None:
+    assert daily_close(utc("2026-09-26T12:34"), None) == utc("2026-09-26T00:00")
+    assert daily_close(utc("2026-09-26T00:00"), None) == utc("2026-09-26T00:00")
+
+
+def test_daily_close_of_stocks_is_the_close_of_the_last_session(sessions: list[Session]) -> None:
+    # 2024-11-29 closes early (18:00 UTC); 11-28 is Thanksgiving.
+    assert daily_close(utc("2024-11-29T17:59"), sessions) == utc("2024-11-27T21:00")
+    assert daily_close(utc("2024-11-29T18:00"), sessions) == utc("2024-11-29T18:00")
+    assert daily_close(utc("2024-12-01T12:00"), sessions) == utc("2024-11-29T18:00")
+    assert daily_close(utc("2015-06-01T12:00"), sessions) is None
 
 
 def test_bin_open_of_fixed_bins() -> None:
