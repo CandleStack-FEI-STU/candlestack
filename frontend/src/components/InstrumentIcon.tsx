@@ -11,12 +11,14 @@ type Size = keyof typeof SIZE;
 type TileProps = { id: string; size: Size; failed: boolean; onError: () => void };
 
 // The instrument's logo, or the backend's square fallback, on a white tile rounded by 10 % of its
-// size. The image fills the tile 1 px inside its edge, clipped to its corners, and the 1 px
-// hairline is drawn above it, so a logo that fills its whole box (Apple's) never covers it. White
-// in both themes, so black logos such as Apple's stay visible in dark mode. The fixed size keeps
-// rows from jumping while it loads; the alt is empty because the symbol is always next to it.
-// When the image does not load at all (e.g. a 502 during a deploy), the tile draws the backend's
-// fallback itself: the white chart-candlestick on dark grey.
+// size. The image fills the whole tile, clipped to its corners, and the 1 px hairline is drawn
+// above it, so a logo that fills its whole box (Apple's) never covers it. A 1 px gap between the
+// image and the edge would show the white tile as a stripe on one side at 125 % or 150 % display
+// scaling, where the browser rounds the image and the hairline differently. White in both themes,
+// so black logos such as Apple's stay visible in dark mode. The fixed size keeps rows from jumping
+// while it loads; the alt is empty because the symbol is always next to it. When the image does
+// not load at all (e.g. a 502 during a deploy), the tile draws the backend's fallback itself: the
+// white chart-candlestick on dark grey.
 export function IconTile({ id, size, failed, onError }: TileProps) {
   return (
     <span
@@ -27,7 +29,7 @@ export function IconTile({ id, size, failed, onError }: TileProps) {
       )}
     >
       {failed ? (
-        <span className="absolute inset-px grid place-items-center bg-icon-fallback text-white">
+        <span className="absolute inset-0 grid place-items-center bg-icon-fallback text-white">
           <ChartCandlestick aria-hidden className="size-[56%]" />
         </span>
       ) : (
@@ -38,7 +40,7 @@ export function IconTile({ id, size, failed, onError }: TileProps) {
           height={size}
           loading="lazy"
           onError={onError}
-          className="absolute inset-px size-[calc(100%-2px)] object-contain"
+          className="absolute inset-0 size-full object-contain"
         />
       )}
     </span>
