@@ -10,8 +10,20 @@ function link(html: string, name: string): string {
   return attributes;
 }
 
-// #166: the chart has no TradingView logo, so the footer carries the attributions.
 describe('Footer', () => {
+  it('links the API docs of its own host, the status page and the website in a new tab', () => {
+    const html = renderToStaticMarkup(<Footer />);
+    expect(html).toContain('<span>CandleStack</span>');
+    expect(link(html, 'API docs')).toContain('href="/api/v1/docs"');
+    expect(link(html, 'Status')).toContain('href="https://ops.candlestack.tech"');
+    expect(link(html, 'candlestack.tech')).toContain('href="https://candlestack.tech"');
+    for (const name of ['API docs', 'Status', 'candlestack.tech']) {
+      expect(link(html, name)).toContain('target="_blank"');
+      expect(link(html, name)).toContain('rel="noopener"');
+    }
+  });
+
+  // #166: the chart has no TradingView logo, so the footer carries the attributions.
   it('credits TradingView Lightweight Charts', () => {
     const html = renderToStaticMarkup(<Footer />);
     expect(html).toContain('Charts by');

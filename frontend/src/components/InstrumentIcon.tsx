@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { instrumentIconUrl } from '@/api';
 import { cn } from '@/lib/utils';
 
-// 32 px in the instrument list and the header search, 64 px on the instrument page.
+// 32 px in the instrument list and the home page's top five, 64 px on the instrument page.
 const SIZE = { 32: 'size-8', 64: 'size-16' } as const;
 type Size = keyof typeof SIZE;
 

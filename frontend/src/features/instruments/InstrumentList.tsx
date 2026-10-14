@@ -57,11 +57,11 @@ function ErrorState({ error, onRetry }: { error: ListError; onRetry: () => void 
   );
 }
 
-// An old or shared link can point past the end: /?q=apple&page=40 with 3 pages. Once the total
-// is known, the page goes to the last one, in place of the broken entry in the history.
+// An old or shared link can point past the end: /instruments?q=apple&page=40 with 3 pages. Once
+// the total is known, the page goes to the last one, in place of the broken entry in the history.
 // Returns whether that redirect is on its way.
 function useClampPage(result: UseQueryResult<InstrumentSearchResult>, page: number): boolean {
-  const navigate = useNavigate({ from: '/' });
+  const navigate = useNavigate({ from: '/instruments' });
   const total = result.isPlaceholderData || !result.data ? undefined : resultTotal(result.data);
   const clamped = clampedPage(page, total, LIST_PAGE_SIZE);
   useEffect(() => {
@@ -76,7 +76,7 @@ function PastTheEnd() {
   return (
     <p className="px-3 py-12 text-center text-sm text-muted-foreground">
       This page is past the end of the results.{' '}
-      <Link from="/" search={(prev) => ({ ...prev, page: undefined })} className="text-primary underline">
+      <Link from="/instruments" search={(prev) => ({ ...prev, page: undefined })} className="text-primary underline">
         Go to page 1
       </Link>
     </p>
@@ -88,11 +88,11 @@ function PastTheEnd() {
 function Mismatch({ market, exchange }: { market: Market; exchange: Exchange }) {
   const { title, hint } = mismatchMessage(market, exchange);
   return (
-    <div className="flex flex-col items-center gap-1.5 rounded-lg border px-3 py-10 text-center text-sm">
+    <div className="flex flex-col items-center gap-1.5 rounded-lg border bg-background px-3 py-10 text-center text-sm">
       <p className="font-medium">{title}</p>
       <p className="text-muted-foreground">{hint}</p>
       <Button asChild variant="outline" size="sm" className="mt-1.5">
-        <Link from="/" search={(prev) => withExchange(prev, undefined)}>
+        <Link from="/instruments" search={(prev) => withExchange(prev, undefined)}>
           Show all exchanges
         </Link>
       </Button>
@@ -151,15 +151,18 @@ export function InstrumentList(props: Props) {
   const unavailable = unavailableMessage(data.unavailable);
   return (
     <>
-      {unavailable && <p className="mb-3 rounded-md border px-3 py-2 text-sm text-warn">{unavailable}</p>}
-      <div className={result.isPlaceholderData ? 'rounded-lg border opacity-60' : 'rounded-lg border'}>
-        <ListBody
-          items={data.items}
-          sort={shown}
-          waiting={result.isPlaceholderData || clamping}
-          page={page}
-          empty={emptyMessage(query, market, exchange)}
-        />
+      {unavailable && <p className="mb-3 rounded-md border bg-background px-3 py-2 text-sm text-warn">{unavailable}</p>}
+      {/* Solid under the rows, also while they fade for the next page: no grid shows through. */}
+      <div className="rounded-lg bg-background">
+        <div className={result.isPlaceholderData ? 'rounded-lg border opacity-60' : 'rounded-lg border'}>
+          <ListBody
+            items={data.items}
+            sort={shown}
+            waiting={result.isPlaceholderData || clamping}
+            page={page}
+            empty={emptyMessage(query, market, exchange)}
+          />
+        </div>
       </div>
       <Pager
         page={page}

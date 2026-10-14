@@ -30,7 +30,7 @@ describe('InstrumentList', () => {
     });
     expect(html).toContain('No crypto pairs on NYSE');
     expect(html).toContain('NYSE lists stocks only.');
-    expect(html).toMatch(/<a [^>]*href="\/\?q=a&amp;market=crypto"[^>]*>Show all exchanges<\/a>/);
+    expect(html).toMatch(/<a [^>]*href="\/instruments\?q=a&amp;market=crypto"[^>]*>Show all exchanges<\/a>/);
     expect(html).not.toContain('Loading');
   });
 

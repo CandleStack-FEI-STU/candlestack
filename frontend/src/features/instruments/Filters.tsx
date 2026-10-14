@@ -133,7 +133,7 @@ function Sections({ options, render }: SectionsProps) {
 // goes to the URL (page 1, a new history entry, so Back undoes it) and leaves the panel open for
 // the second filter. The entry with the focus is never one the type has just disabled.
 function useFiltersPanel(options: FilterOption[]) {
-  const navigate = useNavigate({ from: '/' });
+  const navigate = useNavigate({ from: '/instruments' });
   // The arrows follow the layout, which changes at sm (640 px).
   const layout = useMediaQuery('(min-width: 640px)') ? 'wide' : 'phone';
   const [open, setOpen] = useState(false);

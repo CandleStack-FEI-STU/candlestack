@@ -4,6 +4,7 @@ import { createRootRouteWithContext, createRoute, createRouter, lazyRouteCompone
 import { instrumentQueryOptions, queryClient } from '@/api';
 import { Layout } from '@/components/Layout';
 import { RouteError, RoutePending } from '@/components/RouteStates';
+import { HomePage } from '@/pages/HomePage';
 import { InstrumentsPage } from '@/pages/InstrumentsPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { validateInstrumentSearch } from '@/routes/instrumentSearch';
@@ -17,10 +18,17 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
   notFoundComponent: NotFoundPage,
 });
 
-// /?q=btc&market=crypto&page=2; broken values are dropped in validateSearch.
-const instrumentsRoute = createRoute({
+// The public start page.
+const homeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
+  component: HomePage,
+});
+
+// /instruments?q=btc&market=crypto&page=2; broken values are dropped in validateSearch.
+const instrumentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/instruments',
   validateSearch: validateInstrumentsSearch,
   component: InstrumentsPage,
 });
@@ -36,7 +44,7 @@ const instrumentRoute = createRoute({
   component: lazyRouteComponent(() => import('@/pages/InstrumentPage'), 'InstrumentPage'),
 });
 
-const routeTree = rootRoute.addChildren([instrumentsRoute, instrumentRoute]);
+const routeTree = rootRoute.addChildren([homeRoute, instrumentsRoute, instrumentRoute]);
 
 export const router = createRouter({
   routeTree,
@@ -57,5 +65,9 @@ export const router = createRouter({
 declare module '@tanstack/react-router' {
   interface Register {
     router: typeof router;
+  }
+  // A link to an instrument from the home page sets from: 'home', so its back link returns there.
+  interface HistoryState {
+    from?: 'home';
   }
 }

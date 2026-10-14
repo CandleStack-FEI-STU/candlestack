@@ -2,7 +2,6 @@
 export { candleBridgeQueryOptions, candlePageQueryOptions, type Candles } from './candles';
 export { ApiError } from './client';
 export { EXCHANGES, exchangeLabel, exchangeMarket, type Exchange } from './exchanges';
-export { useHealth, type Health } from './health';
 export {
   exchangeName,
   instrumentIconUrl,

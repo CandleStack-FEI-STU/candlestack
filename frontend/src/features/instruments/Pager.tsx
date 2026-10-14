@@ -6,7 +6,7 @@ import { lastPage } from './pagination';
 
 type Props = { page: number; hasNext: boolean; total: number | undefined; pageSize: number; loading: boolean };
 
-const LINK = 'rounded-md border px-3 py-1.5 text-sm transition-colors hover:bg-accent';
+const LINK = 'rounded-md border bg-background px-3 py-1.5 text-sm transition-colors hover:bg-accent';
 const DISABLED = 'opacity-40';
 
 // A link to another page, or a plain label when there is none: a disabled link would still be
@@ -20,7 +20,7 @@ function PageLink({ page, enabled, children }: { page: number | undefined; enabl
     );
   }
   return (
-    <Link from="/" search={(prev) => ({ ...prev, page })} className={LINK}>
+    <Link from="/instruments" search={(prev) => ({ ...prev, page })} className={LINK}>
       {children}
     </Link>
   );
