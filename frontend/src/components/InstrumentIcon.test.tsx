@@ -46,7 +46,16 @@ describe('InstrumentIcon', () => {
     const html = renderToStaticMarkup(<InstrumentIcon id="stock:AAPL" size={64} />);
     expect(element(html, 'span')).toContain('overflow-hidden');
     expect(element(html, 'span')).toMatch(/after:absolute .*after:inset-ring /);
-    expect(element(html, 'img')).toMatch(/absolute inset-px size-\[calc\(100%-2px\)\] .*object-contain/);
+    expect(element(html, 'img')).toMatch(/absolute inset-0 size-full .*object-contain/);
+  });
+
+  it('leaves no gap between the image or the fallback and the edge of the tile', () => {
+    const image = renderToStaticMarkup(<IconTile id="stock:AAPL" size={32} failed={false} onError={() => {}} />);
+    const fallback = renderToStaticMarkup(<IconTile id="stock:AAPL" size={32} failed onError={() => {}} />);
+    for (const html of [image, fallback]) {
+      expect(html).not.toContain('inset-px');
+      expect(html).not.toContain('100%-2px');
+    }
   });
 
   it("draws the backend's fallback itself when the image does not load", () => {
