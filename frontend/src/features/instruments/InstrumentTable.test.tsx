@@ -59,7 +59,12 @@ async function render(sort?: ListSort, items: Instrument[] = [BTC, AAPL, NEW, FL
 const rows = (html: string) =>
   [...html.matchAll(/<tr class="relative[^>]*>(.*?)<\/tr>/g)].map((match) => match[1] ?? '');
 const cells = (row: string) => [...row.matchAll(/<td[^>]*>(.*?)<\/td>/g)].map((match) => match[0]);
-const text = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&');
+// The text between the tags of server-rendered markup (a test helper, not a sanitizer).
+const text = (html: string) =>
+  [...html.matchAll(/>([^<]*)</g)]
+    .map((match) => match[1] ?? '')
+    .join('')
+    .replaceAll('&amp;', '&');
 const head = (html: string) => html.match(/<thead.*<\/thead>/)?.[0] ?? '';
 const headers = (html: string) => [...head(html).matchAll(/<th [^>]*>.*?<\/th>/g)].map((match) => match[0]);
 
