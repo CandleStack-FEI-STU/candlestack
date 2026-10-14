@@ -1,7 +1,8 @@
 """The CandleStack API app, served by granian: ``candlestack.main:app``."""
 
+import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from importlib.resources import files
 from typing import Any, override
 
@@ -23,7 +24,7 @@ from candlestack.core import (
     setup_logging,
     setup_sentry,
 )
-from candlestack.data import build_data_service, data_router
+from candlestack.data import DataService, build_data_service, data_router
 
 TITLE = "CandleStack API"
 # The icon is served by the frontend on the same host, like the rest of the site.
@@ -62,7 +63,9 @@ class CandleStackAPI(FastAPI):
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Opens the shared clients on ``app.state`` (``redis``, ``http``) and builds what uses
-    them: the client ``rate_limiter`` and the market ``data_service``."""
+    them: the client ``rate_limiter`` and the market ``data_service``. With ``STATS_REFRESH``
+    (prod and stage) the instrument stats are refreshed in a background task while the app
+    runs."""
     settings: Settings = app.state.settings
     app.state.redis = create_redis(settings.redis_url)
     app.state.rate_limiter = RateLimiter(app.state.redis)
@@ -70,9 +73,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         async with create_http_client(settings) as http:
             app.state.http = http
             app.state.data_service = build_data_service(settings, app.state.redis, http)
-            yield
+            async with _background(app.state.data_service, stats=settings.stats_refresh):
+                yield
     finally:
         await app.state.redis.aclose()
+
+
+@asynccontextmanager
+async def _background(service: DataService, *, stats: bool) -> AsyncIterator[None]:
+    """Runs the stats refresh while the app runs, when ``stats``; cancels it on shutdown."""
+    if not stats:
+        yield
+        return
+    task = asyncio.create_task(service.keep_stats_fresh())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

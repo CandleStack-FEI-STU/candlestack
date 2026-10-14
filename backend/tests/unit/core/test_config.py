@@ -106,6 +106,25 @@ def test_logo_dev_rate_limit_default_depends_on_env(
     assert Settings().logo_dev_rate_limit == limit
 
 
+@pytest.mark.parametrize(
+    ("app_env", "refresh"),
+    [("prod", True), ("stage", True), ("pr-42", False), ("local", False), ("test", False)],
+)
+def test_stats_refresh_default_depends_on_env(
+    monkeypatch: pytest.MonkeyPatch, app_env: str, refresh: bool
+) -> None:
+    monkeypatch.setenv("APP_ENV", app_env)
+
+    assert Settings().stats_refresh is refresh
+
+
+def test_stats_refresh_can_be_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APP_ENV", "pr-7")
+    monkeypatch.setenv("STATS_REFRESH", "true")
+
+    assert Settings().stats_refresh is True
+
+
 def test_logo_dev_key_is_stripped_and_hidden(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LOGO_DEV_KEY", " pk_test123\n")
 

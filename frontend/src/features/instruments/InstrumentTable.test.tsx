@@ -3,38 +3,54 @@ import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import type { Instrument } from '@/api';
+import type { ListSort } from '@/routes/instrumentsSearch';
 import { classes } from '@/test/markup';
 
 import { InstrumentTable } from './InstrumentTable';
 
-const ITEMS: Instrument[] = [
-  {
-    id: 'crypto:BTCUSDT',
-    symbol: 'BTCUSDT',
-    name: 'Bitcoin / TetherUS',
-    market: 'crypto',
-    exchange: null,
-    source: 'binance',
-    feed: 'spot',
-    base: 'BTC',
-    quote: 'USDT',
-  },
-  {
-    id: 'stock:AAPL',
-    symbol: 'AAPL',
-    name: 'Apple Inc.',
-    market: 'stock',
-    exchange: 'NASDAQ',
-    source: 'alpaca',
-    feed: 'iex',
-    base: null,
-    quote: null,
-  },
-];
+const BTC: Instrument = {
+  id: 'crypto:BTCUSDT',
+  symbol: 'BTCUSDT',
+  name: 'Bitcoin / TetherUS',
+  market: 'crypto',
+  exchange: null,
+  source: 'binance',
+  feed: 'spot',
+  base: 'BTC',
+  quote: 'USDT',
+  price: 83249.35,
+  change_24h: 1.51,
+  volume_24h: 1258811866,
+};
+const AAPL: Instrument = {
+  id: 'stock:AAPL',
+  symbol: 'AAPL',
+  name: 'Apple Inc.',
+  market: 'stock',
+  exchange: 'NASDAQ',
+  source: 'alpaca',
+  feed: 'iex',
+  base: null,
+  quote: null,
+  price: 247.85,
+  change_24h: -0.71,
+  volume_24h: 341000000,
+};
+const NEW: Instrument = {
+  ...AAPL,
+  id: 'stock:AAC.U',
+  symbol: 'AAC.U',
+  name: 'Ares Acquisition Corporation II Units',
+  exchange: 'NYSE',
+  price: null,
+  change_24h: null,
+  volume_24h: null,
+};
+const FLAT: Instrument = { ...AAPL, id: 'stock:SPY', symbol: 'SPY', change_24h: 0.001 };
 
 // The rows' links need a router; a one-route router on "/", loaded first, is enough.
-async function render(): Promise<string> {
-  const rootRoute = createRootRoute({ component: () => <InstrumentTable items={ITEMS} /> });
+async function render(sort?: ListSort, items: Instrument[] = [BTC, AAPL, NEW, FLAT]): Promise<string> {
+  const rootRoute = createRootRoute({ component: () => <InstrumentTable items={items} sort={sort} /> });
   const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ['/'] }) });
   await router.load();
   return renderToString(<RouterProvider router={router} />);
@@ -42,6 +58,10 @@ async function render(): Promise<string> {
 
 const rows = (html: string) =>
   [...html.matchAll(/<tr class="relative[^>]*>(.*?)<\/tr>/g)].map((match) => match[1] ?? '');
+const cells = (row: string) => [...row.matchAll(/<td[^>]*>(.*?)<\/td>/g)].map((match) => match[0]);
+const text = (html: string) => html.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&');
+const head = (html: string) => html.match(/<thead.*<\/thead>/)?.[0] ?? '';
+const headers = (html: string) => [...head(html).matchAll(/<th [^>]*>.*?<\/th>/g)].map((match) => match[0]);
 
 describe('InstrumentTable', () => {
   it('shows a 32 px icon before the symbol of each row', async () => {
@@ -51,30 +71,137 @@ describe('InstrumentTable', () => {
     expect(btc).toMatch(/<img [^>]*width="32"/);
   });
 
-  it('keeps long names and symbols inside the table at every width', async () => {
+  it('shows the price, the 24 h change and volume, the name, the type and the exchange', async () => {
+    const [btc = '', aapl = ''] = rows(await render());
+    expect(cells(btc).map(text)).toEqual([
+      'BTCUSDTBinance · $1.26B',
+      '83,249.35+1.51%',
+      '1.51%',
+      '$1.26B',
+      'Bitcoin / TetherUS',
+      'Crypto',
+      'Binance',
+    ]);
+    expect(cells(aapl).map(text)).toEqual([
+      'AAPLNASDAQ · $341M',
+      '247.85−0.71%',
+      '0.71%',
+      '$341M',
+      'Apple Inc.',
+      'Stock',
+      'NASDAQ',
+    ]);
+  });
+
+  it('colours the change and points its triangle up or down; 0.00 % is muted without one', async () => {
+    const [btc = '', aapl = '', , flat = ''] = rows(await render());
+    const change = (row: string) => cells(row)[2] ?? '';
+    expect(change(btc)).toContain('text-up');
+    expect(change(btc)).toContain('d="M4 1 7.5 7h-7Z"');
+    expect(change(aapl)).toContain('text-down');
+    expect(change(aapl)).toContain('d="M4 7 .5 1h7Z"');
+    expect(change(flat)).toContain('text-muted-foreground');
+    expect(change(flat)).not.toContain('<svg');
+    expect(text(change(flat))).toBe('0.00%');
+    // on a phone, under the price, with its sign
+    expect(cells(btc)[1]).toMatch(/<span class="[^"]*text-up[^"]*">\+1\.51%<\/span>/);
+  });
+
+  it('shows dashes without stats, "no stats yet" on a phone', async () => {
+    const [, , fresh = ''] = rows(await render());
+    expect(cells(fresh).map(text)).toEqual([
+      'AAC.UNYSE · no stats yet',
+      '—No stats yet',
+      '—',
+      '—',
+      'Ares Acquisition Corporation II Units',
+      'Stock',
+      'NYSE',
+    ]);
+    expect(classes(cells(fresh)[1] ?? '', /<span [^>]*>—/)).toContain('text-muted-foreground');
+  });
+
+  it('writes the numbers in Geist Mono', async () => {
+    const [btc = ''] = rows(await render());
+    expect(classes(btc, /<span [^>]*>83,249.35/)).toContain('font-mono');
+    expect(classes(btc, /<td [^>]*>\$1.26B/)).toContain('font-mono');
+    expect(classes(btc, /<a [^>]*>BTCUSDT/)).toContain('font-mono');
+  });
+
+  it('fits every width: fixed columns, the name takes the rest, phones get two columns', async () => {
     const html = await render();
-    const [btc = ''] = rows(html);
-    // Fixed column widths: the cells truncate their text instead of widening the table.
     expect(classes(html, /<table [^>]*>/)).toContain('table-fixed');
+    const [symbol = '', price = '', change = '', volume = '', name = '', type = '', exchange = ''] = headers(html);
+    expect(classes(symbol, /<th [^>]*>/)).toContain('md:w-[168px]');
+    expect(classes(price, /<th [^>]*>/)).toEqual(expect.arrayContaining(['w-[100px]', 'md:w-[128px]']));
+    expect(classes(change, /<th [^>]*>/)).toEqual(expect.arrayContaining(['hidden', 'md:table-cell', 'w-[104px]']));
+    expect(classes(volume, /<th [^>]*>/)).toEqual(expect.arrayContaining(['hidden', 'md:table-cell', 'w-[112px]']));
+    expect(classes(name, /<th [^>]*>/).some((name) => name.startsWith('w-'))).toBe(false);
+    expect(classes(type, /<th [^>]*>/)).toEqual(expect.arrayContaining(['hidden', 'lg:table-cell', 'w-[88px]']));
+    expect(classes(exchange, /<th [^>]*>/)).toEqual(expect.arrayContaining(['hidden', 'md:table-cell', 'w-[104px]']));
+    const [btc = ''] = rows(html);
     expect(classes(btc, /<span [^>]*>Bitcoin/)).toContain('truncate');
     expect(classes(btc, /<a [^>]*>BTCUSDT</)).toContain('truncate');
   });
 
   it('shows cut text in full on hover', async () => {
-    const [btc = '', aapl = ''] = rows(await render());
+    const [btc = ''] = rows(await render());
     expect(btc).toMatch(/<a [^>]*title="BTCUSDT"[^>]*>BTCUSDT<\/a>/);
     expect(btc).toMatch(/<span title="Bitcoin \/ TetherUS"[^>]*>Bitcoin/);
-    // The market and exchange: in their columns, and under the name on a phone.
-    expect(btc).toMatch(/<span title="crypto · Binance"[^>]*>crypto · Binance</);
-    expect(aapl).toMatch(/<td title="stock"[^>]*>stock</);
-    expect(aapl).toMatch(/<td title="NASDAQ"[^>]*>NASDAQ</);
+    expect(btc).toMatch(/<span title="Binance · \$1.26B"/);
+    expect(btc).toMatch(/<td title="Binance"[^>]*>Binance</);
   });
 
   it('keeps the symbol the only link of a row, so the row stays one click target', async () => {
     const all = rows(await render());
-    expect(all).toHaveLength(2);
+    expect(all).toHaveLength(4);
     for (const row of all) {
       expect(row.match(/<a /g)).toHaveLength(1);
     }
+  });
+});
+
+describe('InstrumentTable header', () => {
+  // Each header's text, its aria-sort and whether it shows an arrow (↓ or ↑) and is ink.
+  const sorted = async (sort?: ListSort) =>
+    headers(await render(sort, [BTC])).map((th) => {
+      const arrow = th.includes('lucide-arrow-down') ? ' ↓' : th.includes('lucide-arrow-up') ? ' ↑' : '';
+      return `${text(th)}${arrow}${th.match(/aria-sort="(\w+)"/)?.[1] === 'none' ? '' : ' (sorted)'}`;
+    });
+
+  it('marks Volume 24h by default; a phone says "by volume" next to the symbol', async () => {
+    expect(await sorted()).toEqual([
+      'Symbol · by volumeSymbol ↓',
+      'PricePrice',
+      '24h',
+      'Volume 24h ↓ (sorted)',
+      'Name',
+      'Type',
+      'Exchange',
+    ]);
+  });
+
+  it('marks 24h when sorted by change, down for gainers and up for losers, also in the phone price header', async () => {
+    expect((await sorted('gainers')).slice(0, 4)).toEqual([
+      'SymbolSymbol',
+      'Price · 24hPrice ↓',
+      '24h ↓ (sorted)',
+      'Volume 24h',
+    ]);
+    expect((await sorted('losers')).slice(0, 3)).toEqual(['SymbolSymbol', 'Price · 24hPrice ↑', '24h ↑ (sorted)']);
+  });
+
+  it('marks Symbol going up when sorted by symbol', async () => {
+    expect((await sorted('symbol')).slice(0, 4)).toEqual([
+      'SymbolSymbol ↑ (sorted)',
+      'PricePrice',
+      '24h',
+      'Volume 24h',
+    ]);
+  });
+
+  it('turns the sorted header ink', async () => {
+    const [, , change = ''] = headers(await render('gainers', [BTC]));
+    expect(classes(change, /<th [^>]*>/)).toContain('text-foreground');
   });
 });

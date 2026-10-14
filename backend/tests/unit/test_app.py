@@ -1,11 +1,17 @@
+import asyncio
+from typing import Any
+
 import httpx
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from redis.asyncio import Redis
 
-from candlestack.core import RateLimiter
+from candlestack.core import RateLimiter, Settings
+from candlestack.core.redis import get_redis
 from candlestack.data import DataService
 from candlestack.main import app as module_app
+from candlestack.main import create_app
 
 
 def test_lifespan_opens_and_closes_the_shared_clients(app: FastAPI) -> None:
@@ -17,6 +23,36 @@ def test_lifespan_opens_and_closes_the_shared_clients(app: FastAPI) -> None:
         assert app.state.http.headers["User-Agent"] == "candlestack/1.2.3"
 
     assert app.state.http.is_closed
+
+
+def test_lifespan_refreshes_the_stats_while_the_app_runs(
+    settings: Settings, fake_redis: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events = []
+
+    async def keep_stats_fresh(_service: DataService) -> None:
+        events.append("started")
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            events.append("cancelled")
+            raise
+
+    monkeypatch.setattr(DataService, "keep_stats_fresh", keep_stats_fresh)
+    app = create_app(settings.model_copy(update={"stats_refresh": True}))
+    app.dependency_overrides[get_redis] = lambda: fake_redis
+
+    with TestClient(app):
+        assert events == ["started"]
+
+    assert events == ["started", "cancelled"]
+
+
+def test_lifespan_without_the_stats_refresh(app: FastAPI, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(DataService, "keep_stats_fresh", None)  # never called
+
+    with TestClient(app):
+        pass
 
 
 def test_module_level_app_for_granian() -> None:

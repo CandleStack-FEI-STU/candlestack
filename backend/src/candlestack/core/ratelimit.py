@@ -55,3 +55,15 @@ class RateLimiter:
         if used <= limit:
             return 0.0
         return max((number + 1) * window - now, 0.001)
+
+    async def used(self, key: str, window: int = 60) -> int | None:
+        """The cost counted for ``key`` in the current window so far, or ``None`` when Redis
+        cannot say (a log line can show it next to what a source reports)."""
+        if time.monotonic() < self._down_until:
+            return None
+        try:
+            value = await self._redis.get(f"{key}:{int(_time() // window)}")
+        except (RedisError, OSError) as exc:
+            logger.warning("Redis failed (%s): the %s count is not known", type(exc).__name__, key)
+            return None
+        return int(value or 0)

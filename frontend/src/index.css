@@ -21,6 +21,10 @@
   --down: #b42318;
   --grid: rgb(28 25 23 / 0.045);
 
+  /* A rising 24 h change in the instrument list (#184), as text: the grass green of the candles,
+     darkened to 4.9:1 on the background. Falling uses --down. */
+  --up: #1a7f37;
+
   /* Candles: green and red like TradingView, but a grass green, not the teal accent (#113).
      src/candleColors.test.ts checks the distance. */
   --candle-up: #2e9e44;
@@ -44,6 +48,9 @@
   --warn: #e8b45a;
   --down: #f0616d;
   --grid: rgb(230 232 234 / 0.045);
+
+  /* 6.8:1 on the dark background. */
+  --up: #43b049;
 
   --candle-up: #43b049;
   --candle-down: #f23645;
@@ -102,6 +109,8 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-warn: var(--warn);
+  --color-up: var(--up);
+  --color-down: var(--down);
   --color-candle-up: var(--candle-up);
   --color-candle-down: var(--candle-down);
   --color-icon-ring: var(--icon-ring);

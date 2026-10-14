@@ -12,16 +12,25 @@ import {
 } from '@/api';
 import { Button } from '@/components/ui/button';
 
+import type { ListSort } from '@/routes/instrumentsSearch';
+
 import { mismatchOf, withExchange } from './filterRules';
 import { InstrumentTable } from './InstrumentTable';
 import { describeListError, emptyMessage, mismatchMessage, unavailableMessage, type ListError } from './messages';
 import { Pager } from './Pager';
 import { clampedPage, listBodyState } from './pagination';
+import { apiSort } from './sorting';
 
 // Rows per page. The API allows up to 100; 25 fits about one screen.
 export const LIST_PAGE_SIZE = 25;
 
-type Props = { query: string; market: Market | undefined; exchange: Exchange | undefined; page: number };
+type Props = {
+  query: string;
+  market: Market | undefined;
+  exchange: Exchange | undefined;
+  sort: ListSort | undefined;
+  page: number;
+};
 
 function Note({ children, tone = 'muted' }: { children: string; tone?: 'muted' | 'error' }) {
   const color = tone === 'error' ? 'text-destructive' : 'text-muted-foreground';
@@ -91,24 +100,37 @@ function Mismatch({ market, exchange }: { market: Market; exchange: Exchange }) 
   );
 }
 
-type BodyProps = { items: InstrumentSearchResult['items']; waiting: boolean; page: number; empty: string };
+type BodyProps = {
+  items: InstrumentSearchResult['items'];
+  sort: ListSort | undefined;
+  waiting: boolean;
+  page: number;
+  empty: string;
+};
 
 // The rows, or why there are none. While the previous result stands in for the new one or the
 // page is being clamped, an empty result is not the answer yet: it says "Loading", not "No
 // instruments match" or "past the end" for a moment.
-function ListBody({ items, waiting, page, empty }: BodyProps) {
+function ListBody({ items, sort, waiting, page, empty }: BodyProps) {
   const state = listBodyState(items.length, waiting, page);
-  if (state === 'rows') return <InstrumentTable items={items} />;
+  if (state === 'rows') return <InstrumentTable items={items} sort={sort} />;
   if (state === 'loading') return <Note>Loading instruments…</Note>;
   if (state === 'past') return <PastTheEnd />;
   return <Note>{empty}</Note>;
 }
 
-// The search result for the query, market, exchange and page in the URL, with its empty and error states.
-export function InstrumentList({ query, market, exchange, page }: Props) {
-  const params = { q: query, market, exchange, limit: LIST_PAGE_SIZE, offset: (page - 1) * LIST_PAGE_SIZE };
+// The API request of a page of the list.
+function searchParams({ query, market, exchange, sort, page }: Props) {
+  const offset = (page - 1) * LIST_PAGE_SIZE;
+  return { q: query, market, exchange, sort: apiSort(sort), limit: LIST_PAGE_SIZE, offset };
+}
+
+// The search result for the query, market, exchange, order and page in the URL, with its empty and
+// error states.
+export function InstrumentList(props: Props) {
+  const { query, market, exchange, sort, page } = props;
   const mismatch = mismatchOf(market, exchange);
-  const result = useQuery({ ...instrumentSearchQueryOptions(params), enabled: !mismatch });
+  const result = useQuery({ ...instrumentSearchQueryOptions(searchParams(props)), enabled: !mismatch });
   const clamping = useClampPage(result, page);
 
   if (mismatch) {
@@ -131,6 +153,7 @@ export function InstrumentList({ query, market, exchange, page }: Props) {
       <div className={result.isPlaceholderData ? 'rounded-lg border opacity-60' : 'rounded-lg border'}>
         <ListBody
           items={data.items}
+          sort={sort}
           waiting={result.isPlaceholderData || clamping}
           page={page}
           empty={emptyMessage(query, market, exchange)}

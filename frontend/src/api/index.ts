@@ -17,5 +17,6 @@ export {
   resultTotal,
   type Instrument,
   type InstrumentSearchResult,
+  type InstrumentSort,
 } from './search';
 export { instrumentTimeframe, parseTimeframe, type Timeframe } from './timeframes';

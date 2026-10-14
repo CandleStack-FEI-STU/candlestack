@@ -7,6 +7,7 @@ import { useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefOb
 import type { Exchange, Market } from '@/api';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import type { ListSort } from '@/routes/instrumentsSearch';
 
 import {
   applyOption,
@@ -21,7 +22,7 @@ import {
   type OptionGroup,
 } from './filterRules';
 
-type Props = { market: Market | undefined; exchange: Exchange | undefined };
+type Props = { market: Market | undefined; exchange: Exchange | undefined; sort?: ListSort | undefined };
 
 type OptionProps = {
   option: FilterOption;
@@ -69,13 +70,18 @@ function Option({ option, index, active, onPick, onFocus, onKeyDown }: OptionPro
   );
 }
 
+// On a phone the panel is tightened so that every entry fits in its 480 px without scrolling:
+// group labels 24 px high, 2 px around the separators, headings 4 px above their list.
 function Group({ label, children }: { label: string; children: ReactNode }) {
   const id = useId();
   return (
     <>
-      <div aria-hidden className="-mx-1 my-1 h-px bg-border" />
+      <div aria-hidden className="-mx-1 my-0.5 h-px bg-border sm:my-1" />
       <div role="group" aria-labelledby={id}>
-        <div id={id} className="flex h-7 items-end px-2 pb-1 text-xs font-medium text-muted-foreground select-none">
+        <div
+          id={id}
+          className="flex h-6 items-end px-2 pb-1 text-xs font-medium text-muted-foreground select-none sm:h-7"
+        >
           {label}
         </div>
         {children}
@@ -84,11 +90,11 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, area, children }: { title: string; area: string; children: ReactNode }) {
   const id = useId();
   return (
-    <div>
-      <p id={id} className="mb-2 text-xs font-medium text-muted-foreground">
+    <div className={area}>
+      <p id={id} className="mb-1 text-xs font-medium text-muted-foreground sm:mb-2">
         {title}
       </p>
       <div role="listbox" aria-labelledby={id} className="-mx-1">
@@ -100,14 +106,20 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 type SectionsProps = { options: FilterOption[]; render: (option: FilterOption, index: number) => ReactNode };
 
-// The two sections side by side (Type 128 px, Exchange the rest of 412 px); stacked on phones.
+// Type over Sort by in the 128 px left column, Exchange the rest of 412 px on the right; on a
+// phone Type and Sort by side by side, Exchange below them.
 function Sections({ options, render }: SectionsProps) {
   const group = (name: OptionGroup) =>
     options.flatMap((option, index) => (optionGroup(option) === name ? [render(option, index)] : []));
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-[128px_minmax(0,1fr)] sm:gap-4">
-      <Section title="Type">{group('type')}</Section>
-      <Section title="Exchange">
+    <div className="grid grid-cols-2 gap-2 [grid-template-areas:'type_sort'_'exchange_exchange'] sm:grid-cols-[128px_minmax(0,1fr)] sm:grid-rows-[auto_1fr] sm:gap-4 sm:[grid-template-areas:'type_exchange'_'sort_exchange']">
+      <Section title="Type" area="[grid-area:type]">
+        {group('type')}
+      </Section>
+      <Section title="Sort by" area="[grid-area:sort]">
+        {group('sort')}
+      </Section>
+      <Section title="Exchange" area="[grid-area:exchange]">
         {group('all-exchanges')}
         <Group label="Stock exchanges">{group('stock')}</Group>
         <Group label="Crypto exchanges">{group('crypto')}</Group>
@@ -181,13 +193,14 @@ function Trigger({ summary, onOpen, ref }: TriggerProps) {
   );
 }
 
-// Type and exchange behind one button of a fixed size (34 × 200 px) that sums them up, so nothing
-// in the row moves when they change (#182). The panel opens on Enter, Space or ArrowDown and starts
-// on the chosen type. Escape closes it and the focus goes back to the button; Tab and Shift+Tab
-// close it and move on to the element after or before the button; so does a click outside.
-export function Filters({ market, exchange }: Props) {
-  const options = filterOptions(market, exchange);
-  const summary = filtersSummary(market, exchange);
+// Type, order and exchange behind one button of a fixed size (34 × 200 px) that sums them up, so
+// nothing in the row moves when they change (#182, #184). The panel opens on Enter, Space or
+// ArrowDown and starts on the chosen type. Escape closes it and the focus goes back to the button;
+// Tab and Shift+Tab close it and move on to the element after or before the button; so does a
+// click outside.
+export function Filters({ market, exchange, sort }: Props) {
+  const options = filterOptions(market, exchange, sort);
+  const summary = filtersSummary(market, exchange, sort);
   const { open, setOpen, active, trigger, panel, focus, pick, onKeyDown } = useFiltersPanel(options);
 
   return (
@@ -210,7 +223,7 @@ export function Filters({ market, exchange }: Props) {
           event.preventDefault();
           if (document.activeElement === document.body) trigger.current?.focus();
         }}
-        className="max-h-[480px] w-[calc(100vw-2rem)] overflow-y-auto rounded-lg p-3 text-sm sm:w-[412px]"
+        className="max-h-[480px] w-[calc(100vw-2rem)] overflow-y-auto rounded-lg p-2 text-sm sm:w-[412px] sm:p-3"
       >
         <Sections
           options={options}

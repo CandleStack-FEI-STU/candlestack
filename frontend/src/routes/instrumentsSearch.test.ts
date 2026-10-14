@@ -29,6 +29,20 @@ describe('validateInstrumentsSearch', () => {
     expect(validate({ market: 'stock', exchange: 'BINANCE' })).toEqual({ market: 'stock', exchange: 'BINANCE' });
   });
 
+  it('keeps an order other than the default, the 24 h volume', () => {
+    expect(validate({ sort: 'gainers' })).toEqual({ sort: 'gainers' });
+    expect(validate({ sort: 'losers', market: 'stock', page: 2 })).toEqual({
+      sort: 'losers',
+      market: 'stock',
+      page: 2,
+    });
+    expect(validate({ sort: 'symbol' })).toEqual({ sort: 'symbol' });
+    // the default and the API's own names are not the URL's
+    expect(validate({ sort: 'volume' })).toEqual({});
+    expect(validate({ sort: '-change' })).toEqual({});
+    expect(validate({ sort: ['gainers'] })).toEqual({});
+  });
+
   it('reads a number as a query (?q=500 arrives as a number)', () => {
     expect(validate({ q: 500 })).toEqual({ q: '500' });
   });

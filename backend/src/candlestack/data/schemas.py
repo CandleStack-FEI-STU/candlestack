@@ -15,6 +15,7 @@ from candlestack.data.models import (
     Feed,
     Instrument,
     InstrumentInfo,
+    InstrumentStats,
     Market,
     Source,
     SourceHealth,
@@ -64,8 +65,39 @@ class InstrumentOut(BaseModel):
         )
 
 
+class InstrumentItemOut(InstrumentOut):
+    """An instrument of the list with its 24 h stats, refreshed every few minutes; null while
+    there are none (yet)."""
+
+    price: float | None = Field(
+        description="Last price: in the quote asset for a crypto pair, in USD for a stock "
+        "(the last IEX trade, also while the market is closed).",
+        examples=[83249.35],
+    )
+    change_24h: float | None = Field(
+        description="Change of the price in percent: crypto against 24 hours ago, stocks "
+        "against the previous session's close.",
+        examples=[1.51],
+    )
+    volume_24h: float | None = Field(
+        description="Volume in USD: crypto of the last 24 hours, stocks of the latest session "
+        "on IEX only (a small share of the market: it ranks stocks by popularity, it is not "
+        "their whole turnover).",
+        examples=[1258811866.0],
+    )
+
+    @classmethod
+    def of_item(cls, instrument: Instrument, stats: InstrumentStats | None) -> Self:
+        return cls(
+            **InstrumentOut.of(instrument).model_dump(),
+            price=None if stats is None else stats.price,
+            change_24h=None if stats is None else stats.change_24h,
+            volume_24h=None if stats is None else stats.volume_24h,
+        )
+
+
 class InstrumentSearchOut(BaseModel):
-    items: list[InstrumentOut] = Field(description="Best matches first.")
+    items: list[InstrumentItemOut] = Field(description="Best matches first.")
     count: int = Field(description="Number of items.", examples=[1])
     total: int = Field(
         description="Number of all matches; page with `offset` while `offset + count` is less.",

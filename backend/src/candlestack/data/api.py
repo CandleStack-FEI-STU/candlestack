@@ -29,11 +29,11 @@ from candlestack.data.errors import (
     SourceUnavailable,
     TooManyCandles,
 )
-from candlestack.data.models import Exchange, InstrumentId, Market, Timeframe
+from candlestack.data.models import Exchange, InstrumentId, InstrumentSort, Market, Timeframe
 from candlestack.data.schemas import (
     CandlesOut,
     InstrumentDetailOut,
-    InstrumentOut,
+    InstrumentItemOut,
     InstrumentSearchOut,
     SourcesHealthOut,
     candles_json,
@@ -253,7 +253,7 @@ _RATE_LIMITED = (
     summary="Search instruments",
     responses=_errors({422: "Invalid parameters (`validation`).", **_SOURCE_ERRORS}),
 )
-async def search_instruments(
+async def search_instruments(  # noqa: PLR0913 (a query parameter each, and the service)
     service: DataServiceDep,
     q: Annotated[
         str | None,
@@ -279,14 +279,25 @@ async def search_instruments(
     offset: Annotated[
         int, Query(ge=0, description="Matches to skip; past the end, `items` is empty.")
     ] = 0,
+    sort: Annotated[
+        InstrumentSort,
+        Query(
+            description="Order: `volume` (24 h volume in USD, highest first), `change` (24 h "
+            "change, highest first: the top gainers), `-change` (lowest first: the top losers) "
+            "or `symbol`. Instruments without stats come last in the first three. With `q` the "
+            "ranking stays first and the order only breaks its ties.",
+        ),
+    ] = InstrumentSort.VOLUME,
 ) -> InstrumentSearchOut:
     """Searches the instruments of both markets: every Binance spot pair that is trading and
-    every active tradable US stock and ETF at Alpaca (without OTC).
+    every active tradable US stock and ETF at Alpaca (without OTC). Each item carries its last
+    price, 24 h change and 24 h volume in USD, refreshed every few minutes (null without them).
 
     Ranking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`
     first), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word
-    in the name, substring of the symbol, substring of the name; ties go to the shorter symbol,
-    then alphabetically. Without `q`, every instrument comes back in symbol order.
+    in the name, substring of the symbol, substring of the name; ties go to `sort`, then to the
+    shorter symbol, then alphabetically. Without `q`, every instrument comes back in `sort`:
+    the most traded first by default.
     `exchange` narrows any of these to the instruments that trade on it.
     `total` counts all matches: page through them with `offset` and `limit`.
 
@@ -294,9 +305,12 @@ async def search_instruments(
     searched and `unavailable` names the missing one; 503 when no market can be searched.
     """
     with _problems():
-        found = await service.search(q, market, limit, offset, exchange=exchange)
+        found = await service.search(q, market, limit, offset, exchange=exchange, sort=sort)
     return InstrumentSearchOut(
-        items=[InstrumentOut.of(item) for item in found.items],
+        items=[
+            InstrumentItemOut.of_item(item, stats)
+            for item, stats in zip(found.items, found.stats, strict=True)
+        ],
         count=len(found.items),
         total=found.total,
         offset=offset,

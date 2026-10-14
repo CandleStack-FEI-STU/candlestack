@@ -45,6 +45,16 @@ class Exchange(StrEnum):
         return Market.CRYPTO if self is Exchange.BINANCE else Market.STOCK
 
 
+class InstrumentSort(StrEnum):
+    """Orders of the instrument list. The stats sorts (volume, change, -change) put instruments
+    without stats last; ``symbol`` is the order by symbol alone."""
+
+    VOLUME = "volume"  # 24 h volume in USD, highest first
+    CHANGE = "change"  # 24 h change, highest first: the top gainers
+    LOSERS = "-change"  # 24 h change, lowest first: the top losers
+    SYMBOL = "symbol"
+
+
 class Timeframe(StrEnum):
     """Candle durations; iteration goes from the shortest to the longest."""
 
@@ -175,15 +185,41 @@ class CandleSet:
     fingerprint: str
 
 
+# The 24 h stats of the instruments of one market, as a source reports them: the last price
+# (in the quote asset for a crypto pair, USD for a stock), the change against 24 hours ago (for
+# stocks: the previous session's close) in percent, and the volume in USD. A row per instrument
+# the source has numbers for; change and volume are null when they cannot be computed.
+STATS_SCHEMA = pl.Schema(
+    {
+        "symbol": pl.String,
+        "price": pl.Float64,
+        "change_24h": pl.Float64,
+        "volume_24h": pl.Float64,
+    }
+)
+
+
+@dataclass(frozen=True, slots=True)
+class InstrumentStats:
+    """An instrument's last price, its 24 h change in percent and its 24 h volume in USD (see
+    ``STATS_SCHEMA``)."""
+
+    price: float
+    change_24h: float | None
+    volume_24h: float | None
+
+
 @dataclass(frozen=True)
 class SearchResult:
     """A page of the instruments found, best first, the number of all of them, and the
     searched markets that were left out because their catalog cannot be loaded right now
-    (their source is down)."""
+    (their source is down). ``stats`` has an entry per item: its stats, or ``None`` when there
+    are none (yet)."""
 
     items: list[Instrument]
     unavailable: list[Market]
     total: int
+    stats: list[InstrumentStats | None]
 
 
 @dataclass(frozen=True)

@@ -35,6 +35,15 @@ def default_logo_dev_rate_limit(app_env: str) -> int:
     return _LOGO_DEV_RATE_LIMITS.get(app_env, _LOGO_DEV_RATE_LIMIT_DEFAULT)
 
 
+# The environments that refresh the instrument stats (24 h volume and change) in the
+# background: the others spend no source budget on them and list instruments without stats.
+_STATS_REFRESH_ENVS = frozenset({"prod", "stage"})
+
+
+def default_stats_refresh(app_env: str) -> bool:
+    return app_env in _STATS_REFRESH_ENVS
+
+
 # Share of requests traced in Sentry: prod has real traffic, stage mostly the smoke tests.
 _TRACES_SAMPLE_RATE_PROD = 0.2
 _TRACES_SAMPLE_RATE_DEFAULT = 1.0
@@ -73,6 +82,10 @@ class Settings(BaseSettings):
     logo_dev_rate_limit: int = Field(
         default_factory=lambda data: default_logo_dev_rate_limit(data.get("app_env", "local")),
         gt=0,
+    )
+
+    stats_refresh: bool = Field(
+        default_factory=lambda data: default_stats_refresh(data.get("app_env", "local"))
     )
 
     sentry_dsn: str = ""

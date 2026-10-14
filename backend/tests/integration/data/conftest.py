@@ -93,6 +93,13 @@ class Upstream:
         body = body or fixture_bytes("binance/rest/exchangeInfo-trading.json")
         return self.router.get(f"{BINANCE_API}/api/v3/exchangeInfo").respond(200, content=body)
 
+    def ticker(self, body: bytes | None = None) -> respx.Route:
+        """The 24 h ticker of every trading pair."""
+        body = body or fixture_bytes("binance/rest/ticker-24hr-trading.json")
+        return self.router.get(
+            f"{BINANCE_API}/api/v3/ticker/24hr", params={"symbolStatus": "TRADING"}
+        ).respond(200, content=body)
+
     def first_kline(self, open_ms: int) -> respx.Route:
         """The first-candle lookup, which asks for the first 1m kline."""
         return self.router.get(
@@ -140,6 +147,21 @@ class Upstream:
         return self.router.get(f"{ALPACA_API}/v2/calendar").respond(
             200, content=fixture_bytes("alpaca/calendar-2024.json")
         )
+
+    def snapshots(self) -> respx.Route:
+        """Snapshots of the requested symbols (``symbols``) out of the sample file, with
+        Alpaca's rate-limit headers."""
+        sample = json.loads(fixture_bytes("alpaca/snapshots-sample.json"))
+
+        def answer(request: httpx.Request) -> httpx.Response:
+            symbols = request.url.params["symbols"].split(",")
+            return httpx.Response(
+                200,
+                json={symbol: sample[symbol] for symbol in symbols if symbol in sample},
+                headers={"X-RateLimit-Limit": "200", "X-RateLimit-Remaining": "187"},
+            )
+
+        return self.router.get(f"{ALPACA_DATA}/v2/stocks/snapshots").mock(side_effect=answer)
 
     def first_bar(self) -> respx.Route:
         return self.router.get(

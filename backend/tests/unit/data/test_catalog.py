@@ -1,3 +1,4 @@
+import polars as pl
 import pytest
 
 from candlestack.data import (
@@ -5,10 +6,13 @@ from candlestack.data import (
     Exchange,
     Instrument,
     InstrumentId,
+    InstrumentSort,
+    InstrumentStats,
     Market,
     normalise_query,
     search,
 )
+from candlestack.data.catalog import MARKET_STATS_SCHEMA, CatalogPage
 
 
 def crypto(symbol: str, base: str, quote: str) -> Instrument:
@@ -56,6 +60,12 @@ def catalog() -> Catalog:
 
 def ids(instruments: list[Instrument]) -> list[str]:
     return [str(instrument.id) for instrument in instruments]
+
+
+def shown(page: CatalogPage) -> tuple[list[Instrument], int]:
+    """The items and the total of a page, whose stats are all ``None`` without stats."""
+    assert page.stats == [None] * len(page.items)
+    return page.items, page.total
 
 
 @pytest.mark.parametrize(
@@ -200,10 +210,10 @@ def test_pages(catalog: Catalog) -> None:
     listed = ids(catalog.search(None, limit=100))
     pages = [catalog.page(None, limit=5, offset=offset) for offset in (0, 5, 10)]
 
-    assert [found for page, _ in pages for found in ids(page)] == listed
-    assert [total for _, total in pages] == [len(INSTRUMENTS)] * 3
+    assert [found for page in pages for found in ids(page.items)] == listed
+    assert [page.total for page in pages] == [len(INSTRUMENTS)] * 3
     assert ids(catalog.search("btc", limit=2, offset=1)) == ids(catalog.search("btc"))[1:3]
-    assert catalog.page("btc", market=Market.STOCK, limit=1) == ([INSTRUMENTS[6]], 2)
+    assert shown(catalog.page("btc", market=Market.STOCK, limit=1)) == ([INSTRUMENTS[6]], 2)
 
 
 def test_filter_by_exchange(catalog: Catalog) -> None:
@@ -212,28 +222,31 @@ def test_filter_by_exchange(catalog: Catalog) -> None:
     assert ids(catalog.search("apple", market=Market.STOCK, exchange=Exchange.NASDAQ)) == [
         "stock:AAPL"
     ]
-    assert catalog.page(None, market=Market.CRYPTO, exchange=Exchange.NASDAQ) == ([], 0)
-    assert catalog.page(None, market=Market.STOCK, exchange=Exchange.BINANCE) == ([], 0)
+    assert shown(catalog.page(None, market=Market.CRYPTO, exchange=Exchange.NASDAQ)) == ([], 0)
+    assert shown(catalog.page(None, market=Market.STOCK, exchange=Exchange.BINANCE)) == ([], 0)
     assert ids(catalog.search("btc", exchange=Exchange.BINANCE)) == [
         "crypto:BTCUSDT",
         "crypto:BTCUSDC",
         "crypto:ETHBTC",
         "crypto:WBTCUSDT",
     ]
-    assert catalog.page(None, exchange=Exchange.BATS) == ([], 0)
-    assert catalog.page(None, limit=1, offset=1, exchange=Exchange.ARCA) == ([INSTRUMENTS[11]], 2)
+    assert shown(catalog.page(None, exchange=Exchange.BATS)) == ([], 0)
+    assert shown(catalog.page(None, limit=1, offset=1, exchange=Exchange.ARCA)) == (
+        [INSTRUMENTS[11]],
+        2,
+    )
     assert ids(search(INSTRUMENTS, "a", exchange=Exchange.NYSE)) == ["stock:APLE", "stock:BRK.B"]
 
 
 @pytest.mark.parametrize("offset", [len(INSTRUMENTS), 10**30])
 def test_page_past_the_end(catalog: Catalog, offset: int) -> None:
-    assert catalog.page(None, limit=20, offset=offset) == ([], len(INSTRUMENTS))
-    assert catalog.page("btc", offset=offset) == ([], 6)
+    assert shown(catalog.page(None, limit=20, offset=offset)) == ([], len(INSTRUMENTS))
+    assert shown(catalog.page("btc", offset=offset)) == ([], 6)
 
 
 def test_page_counts_matches_without_items(catalog: Catalog) -> None:
-    assert catalog.page("btc", limit=0) == ([], 6)
-    assert catalog.page("zzzz") == ([], 0)
+    assert shown(catalog.page("btc", limit=0)) == ([], 6)
+    assert shown(catalog.page("zzzz")) == ([], 0)
 
 
 @pytest.mark.parametrize("query", ["", "   ", "/-.", "zzzz"])
@@ -253,3 +266,108 @@ def test_search_function_takes_a_list() -> None:
         "crypto:ETHUSDT",
         "crypto:ETHBTC",
     ]
+
+
+# market, symbol, price, 24 h change, 24 h volume in USD; the other instruments have no stats.
+STATS = pl.DataFrame(
+    [
+        ("crypto", "BTCUSDT", 83249.35, 1.51, 1.26e9),
+        ("crypto", "BTCUSDC", 83250.0, 1.49, 2.1e8),
+        ("crypto", "ETHUSDT", 2499.82, -2.4, 6.85e8),
+        ("crypto", "ETHBTC", 0.03, 0.5, None),
+        ("stock", "AAPL", 247.85, 0.46, 3.41e8),
+        ("stock", "SPY", 668.9, None, 0.0),
+        ("stock", "BTC", 51.2, 6.6, 4.1e6),
+    ],
+    schema=MARKET_STATS_SCHEMA,
+    orient="row",
+)
+
+
+def test_list_by_volume_puts_the_most_traded_first_and_no_stats_last(catalog: Catalog) -> None:
+    assert ids(catalog.search(None, stats=STATS)) == [
+        "crypto:BTCUSDT",
+        "crypto:ETHUSDT",
+        "stock:AAPL",
+        "crypto:BTCUSDC",
+        "stock:BTC",
+        "stock:SPY",
+        # no volume: by symbol, as without stats
+        "stock:APLE",
+        "stock:BRK.B",
+        "crypto:ETHBTC",
+        "crypto:WBTCUSDT",
+        "stock:XBTC",
+        "crypto:币安人生USDT",
+    ]
+
+
+def test_list_by_change_both_ways_keeps_no_stats_last(catalog: Catalog) -> None:
+    gainers = ids(catalog.search(None, sort=InstrumentSort.CHANGE, stats=STATS, limit=7))
+    losers = ids(catalog.search(None, sort=InstrumentSort.LOSERS, stats=STATS, limit=7))
+
+    assert gainers == [
+        "stock:BTC",
+        "crypto:BTCUSDT",
+        "crypto:BTCUSDC",
+        "crypto:ETHBTC",
+        "stock:AAPL",
+        "crypto:ETHUSDT",
+        "stock:APLE",  # SPY has a price but no change: with the instruments without stats
+    ]
+    assert losers == [
+        "crypto:ETHUSDT",
+        "stock:AAPL",
+        "crypto:ETHBTC",
+        "crypto:BTCUSDC",
+        "crypto:BTCUSDT",
+        "stock:BTC",
+        "stock:APLE",
+    ]
+
+
+def test_list_by_symbol_ignores_the_stats(catalog: Catalog) -> None:
+    assert ids(catalog.search(None, sort=InstrumentSort.SYMBOL, stats=STATS)) == ids(
+        catalog.search(None, stats=None)
+    )
+
+
+def test_sort_only_breaks_ties_of_the_ranking(catalog: Catalog) -> None:
+    # "btc": the top pair, the exact symbol, the other pairs of BTC, then prefix and substring
+    # matches. By volume, the pairs of BTC keep their order by quote asset (USDC before ...);
+    # by change too. Only equal ranks are reordered.
+    by_symbol = ids(catalog.search("btc", sort=InstrumentSort.SYMBOL, stats=STATS))
+    by_volume = ids(catalog.search("btc", stats=STATS))
+    assert by_symbol == by_volume == ids(catalog.search("btc"))
+    # "bt": three symbol prefixes, a word of a name (ETH/BTC), two symbol substrings. The sort
+    # orders each group.
+    assert ids(catalog.search("bt", stats=STATS)) == [
+        "crypto:BTCUSDT",
+        "crypto:BTCUSDC",
+        "stock:BTC",
+        "crypto:ETHBTC",
+        "stock:XBTC",  # no stats: shorter symbol first
+        "crypto:WBTCUSDT",
+    ]
+    assert ids(catalog.search("bt", sort=InstrumentSort.SYMBOL, stats=STATS))[:3] == [
+        "stock:BTC",
+        "crypto:BTCUSDC",
+        "crypto:BTCUSDT",
+    ]
+    assert ids(catalog.search("eth", market=Market.CRYPTO, sort=InstrumentSort.LOSERS)) == [
+        "crypto:ETHUSDT",
+        "crypto:ETHBTC",
+    ]
+
+
+def test_page_carries_the_stats_of_its_items(catalog: Catalog) -> None:
+    page = catalog.page(None, limit=2, offset=5, stats=STATS)
+
+    assert ids(page.items) == ["stock:SPY", "stock:APLE"]
+    assert page.stats == [InstrumentStats(668.9, None, 0.0), None]
+    assert page.total == len(INSTRUMENTS)
+
+
+def test_instruments_of_a_market(catalog: Catalog) -> None:
+    assert ids(catalog.instruments(Market.CRYPTO)) == ids(INSTRUMENTS[:6])
+    assert ids(catalog.instruments(Market.STOCK)) == ids(INSTRUMENTS[6:])

@@ -57,12 +57,14 @@ export interface paths {
         /**
          * Search instruments
          * @description Searches the instruments of both markets: every Binance spot pair that is trading and
-         *     every active tradable US stock and ETF at Alpaca (without OTC).
+         *     every active tradable US stock and ETF at Alpaca (without OTC). Each item carries its last
+         *     price, 24 h change and 24 h volume in USD, refreshed every few minutes (null without them).
          *
          *     Ranking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`
          *     first), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word
-         *     in the name, substring of the symbol, substring of the name; ties go to the shorter symbol,
-         *     then alphabetically. Without `q`, every instrument comes back in symbol order.
+         *     in the name, substring of the symbol, substring of the name; ties go to `sort`, then to the
+         *     shorter symbol, then alphabetically. Without `q`, every instrument comes back in `sort`:
+         *     the most traded first by default.
          *     `exchange` narrows any of these to the instruments that trade on it.
          *     `total` counts all matches: page through them with `offset` and `limit`.
          *
@@ -406,16 +408,23 @@ export interface components {
             timeframes: components["schemas"]["Timeframe"][];
         };
         /**
-         * InstrumentOut
-         * @description One instrument of a source's catalog.
+         * InstrumentItemOut
+         * @description An instrument of the list with its 24 h stats, refreshed every few minutes; null while
+         *     there are none (yet).
          */
-        InstrumentOut: {
+        InstrumentItemOut: {
             /**
              * Base
              * @description Base asset of a crypto pair; null for stocks.
              * @example BTC
              */
             base: string | null;
+            /**
+             * Change 24H
+             * @description Change of the price in percent: crypto against 24 hours ago, stocks against the previous session's close.
+             * @example 1.51
+             */
+            change_24h: number | null;
             /**
              * Exchange
              * @description Where it trades: the listing exchange of a stock (`NASDAQ`, `NYSE`, `ARCA`, ...), `BINANCE` for a crypto pair (null for crypto before #182; stays nullable).
@@ -444,6 +453,12 @@ export interface components {
              */
             name: string;
             /**
+             * Price
+             * @description Last price: in the quote asset for a crypto pair, in USD for a stock (the last IEX trade, also while the market is closed).
+             * @example 83249.35
+             */
+            price: number | null;
+            /**
              * Quote
              * @description Quote asset of a crypto pair; null for stocks.
              * @example USDT
@@ -461,6 +476,12 @@ export interface components {
              * @example BTCUSDT
              */
             symbol: string;
+            /**
+             * Volume 24H
+             * @description Volume in USD: crypto of the last 24 hours, stocks of the latest session on IEX only (a small share of the market: it ranks stocks by popularity, it is not their whole turnover).
+             * @example 1258811866
+             */
+            volume_24h: number | null;
         };
         /** InstrumentSearchOut */
         InstrumentSearchOut: {
@@ -474,7 +495,7 @@ export interface components {
              * Items
              * @description Best matches first.
              */
-            items: components["schemas"]["InstrumentOut"][];
+            items: components["schemas"]["InstrumentItemOut"][];
             /**
              * Offset
              * @description Number of matches before the first item.
@@ -494,6 +515,13 @@ export interface components {
              */
             unavailable: components["schemas"]["Market"][];
         };
+        /**
+         * InstrumentSort
+         * @description Orders of the instrument list. The stats sorts (volume, change, -change) put instruments
+         *     without stats last; ``symbol`` is the order by symbol alone.
+         * @enum {string}
+         */
+        InstrumentSort: "volume" | "change" | "-change" | "symbol";
         /**
          * Market
          * @enum {string}
@@ -649,6 +677,8 @@ export interface operations {
                 limit?: number;
                 /** @description Matches to skip; past the end, `items` is empty. */
                 offset?: number;
+                /** @description Order: `volume` (24 h volume in USD, highest first), `change` (24 h change, highest first: the top gainers), `-change` (lowest first: the top losers) or `symbol`. Instruments without stats come last in the first three. With `q` the ranking stays first and the order only breaks its ties. */
+                sort?: components["schemas"]["InstrumentSort"];
             };
             header?: never;
             path?: never;

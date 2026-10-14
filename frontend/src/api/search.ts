@@ -5,14 +5,19 @@ import type { Exchange } from './exchanges';
 import type { Market } from './instruments';
 import type { components } from './schema';
 
-export type Instrument = components['schemas']['InstrumentOut'];
+// An instrument of the list, with its 24 h stats (price, change, volume; null without them).
+export type Instrument = components['schemas']['InstrumentItemOut'];
 export type InstrumentSearchResult = components['schemas']['InstrumentSearchOut'];
+// The order of the list: 24 h volume (the API's default), change either way, or symbol.
+export type InstrumentSort = components['schemas']['InstrumentSort'];
 
 export type InstrumentSearchParams = {
   q: string;
   market?: Market;
   // Only the instruments that trade there: BINANCE has the crypto pairs, the others stocks.
   exchange?: Exchange;
+  // Left out for the API's default, the 24 h volume.
+  sort?: InstrumentSort;
   limit: number;
   offset: number;
 };
@@ -23,6 +28,7 @@ export function searchInstruments(params: InstrumentSearchParams, signal?: Abort
   if (params.q !== '') query.set('q', params.q);
   if (params.market) query.set('market', params.market);
   if (params.exchange) query.set('exchange', params.exchange);
+  if (params.sort) query.set('sort', params.sort);
   return get<InstrumentSearchResult>(`/v1/data/instruments?${query.toString()}`, signal);
 }
 

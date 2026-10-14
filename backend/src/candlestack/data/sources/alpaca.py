@@ -3,14 +3,18 @@
 Intraday timeframes are built from regular-session 1m bars; 1d is Alpaca's 1Day bar, which on
 IEX covers exactly the regular session, relabelled from 00:00 New York to the session open.
 Trading days come from ``GET /v2/calendar``. Every request spends our budget
-(``ALPACA_RATE_LIMIT``); Alpaca allows 200 per minute per key.
+(``ALPACA_RATE_LIMIT``); Alpaca allows 200 per minute per key. The 24 h stats come from
+``GET /v2/stocks/snapshots``, many symbols per request, paced to a share of the budget.
 """
 
 import bisect
 import logging
+import math
 import time
 from collections import Counter
+from collections.abc import Sequence
 from datetime import UTC, datetime
+from itertools import batched
 from typing import Any
 
 import httpx
@@ -30,6 +34,7 @@ from candlestack.data.candles import (
 from candlestack.data.errors import DataError, DataIntegrityError, InvalidRequest, SourceUnavailable
 from candlestack.data.models import (
     CANDLE_SCHEMA,
+    STATS_SCHEMA,
     Exchange,
     Feed,
     Instrument,
@@ -45,6 +50,7 @@ from candlestack.data.sources.base import (
     Period,
     get,
     json_body,
+    pause,
     plan_periods,
     spend,
     unavailable,
@@ -65,8 +71,22 @@ CALENDAR_TTL = 7 * DAY
 CALENDAR_MEMORY_SECONDS = 3600
 HISTORY_START = 2016
 BARS_LIMIT = 10_000
+# Snapshots: symbols per request (about 27 requests for the whole catalog, each URL under
+# 4 KB), and the share of our budget per minute they may take, so that chart requests keep the
+# rest (prod 150: 20, stage 100: 20, previews 30: 6).
+SNAPSHOT_SYMBOLS = 500
+STATS_RATE_KEY = "data:rl:alpaca-stats"
+STATS_SHARE_MAX = 20
+STATS_SHARE_DIVISOR = 5
+# A daily bar older than this is from a stock without IEX trades lately: it has no 24 h change
+# and no 24 h volume (0) rather than those of an old session. Covers a long weekend.
+STALE_BAR_SECONDS = 5 * DAY
+
 # The values of Exchange a stock can have; BINANCE is the crypto pairs'.
 STOCK_EXCHANGES = frozenset(str(each) for each in Exchange if each.market is Market.STOCK)
+
+# Patched by tests to move the clock.
+_time = time.time
 
 _COLUMNS = list(CANDLE_SCHEMA)
 _BAR_SCHEMA = {
@@ -141,6 +161,66 @@ def parse_bars(bars: list[Any]) -> pl.DataFrame:
         raise DataIntegrityError(f"Alpaca bars cannot be read: {reason}", source=NAME) from None
 
 
+def _positive(value: Any) -> float | None:
+    """A positive finite number, else ``None``."""
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value) if math.isfinite(value) and value > 0 else None
+
+
+def snapshot_stats(snapshot: Any, now: int) -> tuple[float, float | None, float | None] | None:
+    """Price, 24 h change in percent and 24 h volume in USD of one snapshot, or ``None``
+    without a price.
+
+    The price is the latest trade (the daily bar's close without one), the change is against
+    the previous daily bar's close, and the volume is the daily bar's volume times its
+    volume-weighted price (its close without one). On the IEX feed both cover IEX trades only.
+    A daily bar older than ``STALE_BAR_SECONDS`` gives no change and a volume of 0.
+    """
+    if not isinstance(snapshot, dict):
+        return None
+    trade = snapshot.get("latestTrade") or {}
+    daily = snapshot.get("dailyBar") or {}
+    previous = snapshot.get("prevDailyBar") or {}
+    price = _positive(trade.get("p")) or _positive(daily.get("c"))
+    if price is None:
+        return None
+    try:
+        opened = int(datetime.fromisoformat(daily["t"]).timestamp())
+    except (KeyError, TypeError, ValueError):
+        return price, None, None
+    if now - opened > STALE_BAR_SECONDS:
+        return price, None, 0.0
+    close = _positive(previous.get("c"))
+    change = None if close is None else (price / close - 1) * 100
+    shares = daily.get("v")
+    volume = (
+        shares * (_positive(daily.get("vw")) or price)
+        if isinstance(shares, int | float) and math.isfinite(shares) and shares >= 0
+        else None
+    )
+    return price, change, volume
+
+
+def parse_snapshots(content: bytes, now: int) -> pl.DataFrame:
+    """The stats (``STATS_SCHEMA``) of a ``GET /v2/stocks/snapshots`` body, an object by symbol;
+    symbols without a snapshot or a price have none (``snapshot_stats``)."""
+    try:
+        body = orjson.loads(content)
+    except orjson.JSONDecodeError as exc:
+        raise DataIntegrityError(
+            f"Alpaca snapshots are not valid JSON: {exc}", source=NAME
+        ) from None
+    if not isinstance(body, dict):
+        raise DataIntegrityError("Alpaca snapshots response is not an object.", source=NAME)
+    rows = []
+    for symbol, snapshot in body.items():
+        stats = snapshot_stats(snapshot, now)
+        if stats is not None:
+            rows.append((symbol, *stats))
+    return pl.DataFrame(rows, schema=STATS_SCHEMA, orient="row")
+
+
 def relabel_daily(frame: pl.DataFrame, sessions: list[Session]) -> pl.DataFrame:
     """1Day bars (stamped 00:00 New York) labelled with the open of that day's session; bars of
     days without a session are dropped."""
@@ -207,6 +287,7 @@ class AlpacaSource:
         self._http = http
         self._limiter = limiter
         self._limit = settings.alpaca_rate_limit
+        self._stats_limit = max(1, min(STATS_SHARE_MAX, self._limit // STATS_SHARE_DIVISOR))
         self._cache = cache
         self._sessions: list[Session] = []
         self._sessions_until = 0.0
@@ -268,6 +349,35 @@ class AlpacaSource:
         return SourceHealth(
             ok=True, latency_ms=round((time.perf_counter() - started) * 1000), detail=None
         )
+
+    async def stats(self, instruments: Sequence[Instrument]) -> pl.DataFrame:
+        """Snapshots of ``SNAPSHOT_SYMBOLS`` stocks per request, one after another, each within
+        the stats share of the budget (waiting for it as long as needed) and our whole budget.
+        Logs Alpaca's rate-limit headers of the last answer next to our own count once."""
+        frames, response = [], None
+        symbols_of = (instrument.symbol for instrument in instruments)
+        for symbols in batched(symbols_of, SNAPSHOT_SYMBOLS, strict=False):
+            await self._stats_turn()
+            response = await self._request(
+                f"{self._data}/v2/stocks/snapshots", {"symbols": ",".join(symbols), "feed": "iex"}
+            )
+            frames.append(await to_thread.run_sync(parse_snapshots, response.content, int(_time())))
+        if response is not None:
+            logger.info(
+                "Alpaca stats refreshed in %d requests: X-RateLimit-Limit %s, "
+                "X-RateLimit-Remaining %s; our count this minute %s of %d",
+                len(frames),
+                response.headers.get("x-ratelimit-limit", "-"),
+                response.headers.get("x-ratelimit-remaining", "-"),
+                await self._limiter.used(RATE_KEY),
+                self._limit,
+            )
+        return pl.concat(frames) if frames else pl.DataFrame(schema=STATS_SCHEMA)
+
+    async def _stats_turn(self) -> None:
+        """Waits until the stats share of this minute has room for one more request."""
+        while (wait := await self._limiter.hit(STATS_RATE_KEY, self._stats_limit)) > 0:
+            await pause(wait)
 
     async def _fetch_calendar(self) -> tuple[bytes, int]:
         year = datetime.now(UTC).year

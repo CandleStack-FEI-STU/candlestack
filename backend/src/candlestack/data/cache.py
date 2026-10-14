@@ -175,15 +175,16 @@ class Cache:
             await self._release(lock, token)
         return value
 
-    async def lock(self, name: str) -> str | None:
+    async def lock(self, name: str, ttl_ms: int = LOCK_TTL_MS) -> str | None:
         """Takes the single-flight lock of ``name`` without waiting: a token to give back with
-        ``unlock``, or ``None`` when another holds the lock. Without Redis there is nobody to
-        coordinate with, so the lock is granted."""
+        ``unlock``, or ``None`` when another holds the lock. It expires after ``ttl_ms``, which
+        must outlast the work it guards. Without Redis there is nobody to coordinate with, so
+        the lock is granted."""
         token = secrets.token_hex(8)
         if self._is_down():
             return token
         try:
-            taken = await self._redis.set(lock_key(name), token, nx=True, px=LOCK_TTL_MS)
+            taken = await self._redis.set(lock_key(name), token, nx=True, px=ttl_ms)
         except _REDIS_ERRORS as exc:
             self._failed(exc)
             return token

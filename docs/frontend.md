@@ -104,11 +104,10 @@ minute.
 - **Gaps.** When `meta.gaps_total > 0`, the chart shows a small note: it joins sessions, so
   real gaps in the data would be hidden otherwise.
 - **Phones.** Every page fits a 360 px screen without sideways scrolling, in both themes. Long
-  text gives way instead of the layout: the instrument list has fixed column widths (symbol half
-  the row on a phone; symbol, market and exchange 35, 12 and 15 % from `sm` up and 40, 10 and
-  12 % from `lg` up; the name takes the rest), so names, symbols, markets and exchanges truncate
-  (their title shows them in full); an instrument's id and name wrap, and error messages break
-  their long paths (`break-words`). Below `sm` the instrument page shows the symbol fact only to
+  text gives way instead of the layout: the instrument list has fixed column widths (see
+  [Instrument list](#instrument-list); the name takes the rest), so names, symbols and exchanges
+  truncate (their title shows them in full); an instrument's id and name wrap, and error messages
+  break their long paths (`break-words`). Below `sm` the instrument page shows the symbol fact only to
   screen readers (it ends the id above the name) and narrows the gaps of the facts and the
   timeframe switch, so each fits one line.
 - **Chart height.** The layout is at least as tall as the visible screen (`100dvh`, `100vh`
@@ -145,29 +144,66 @@ minute.
   positioning parent) with a 16 px gutter on both sides; from `sm` up it is right-aligned under
   the search box and never wider than the screen.
 
+## Instrument list
+
+The list (`src/features/instruments/InstrumentTable.tsx`, #184) opens with the most traded
+instruments first and shows each one's 24 h stats from the API (`price`, `change_24h`,
+`volume_24h`, see [data.md](data.md#stats)):
+
+| Column | Width | Content |
+| --- | --- | --- |
+| Symbol | 168 px | 32 px icon, 10 px gap, the symbol (the row's link) |
+| Price | 128 px, right | 2 decimals from 10 (83,249.35), 4 between 1 and 10 (1.3662), up to 4 significant digits below 1 (0.08438, 0.0000042) |
+| 24h | 104 px, right | an 8 px triangle and the change without a sign, 2 decimals (1.51%); up `--up` (#1a7f37, dark #43b049), down `--down`, 0.00% muted without a triangle |
+| Volume 24h | 112 px, right | USD with 3 significant digits ($1.26B, $685M, $62K) |
+| Name | the rest | muted, one line with an ellipsis |
+| Type | 88 px | Stock or Crypto, muted; from `lg` (1024 px) |
+| Exchange | 104 px | muted |
+
+- Numbers are in Geist Mono, rows 41 px (cell padding 4 12). Without stats the price, change and
+  volume are "—". No market open or closed hint: a stock shows its last price.
+- The header is 12/16 medium and muted; the sorted column's header is ink with a 12 px arrow:
+  Volume 24h ↓ (default), 24h ↓ (Top gainers) or ↑ (Top losers), Symbol ↑.
+- Phones (below `md`, 768 px): two columns. The symbol over "exchange · volume" (12/14; "NYSE ·
+  no stats yet"), and in 100 px the price over the change with its sign (+1.51%, −0.71%; "No
+  stats yet"). The header says "Symbol · by volume ↓", "Symbol ↑", "Price", or "Price · 24h ↓/↑"
+  when sorted by change. Cells have 8 px between the columns and 12 px at the sides.
+- From `md` to `lg` the Type column is left out, so the name keeps about 100 px at 768 px; from
+  `lg` every column shows. Nothing scrolls sideways at any width.
+- The formats are pure functions with unit tests (`numbers.ts`).
+- The 10-day mini chart of the approved design comes with #189.
+
 ## Instrument filters
 
-The list filters by type (the market) and exchange, both in the URL
-(`/?market=stock&exchange=NYSE`, `/?exchange=BINANCE`), behind one **Filters** button
-(`src/features/instruments/Filters.tsx`, rules in `filterRules.ts`, #182):
+The list filters by type (the market) and exchange and sorts by 24 h volume, change or symbol,
+all in the URL (`/?market=stock&exchange=NYSE`, `/?exchange=BINANCE`, `/?sort=gainers`), behind one
+**Filters** button (`src/features/instruments/Filters.tsx`, rules in `filterRules.ts` and
+`sorting.ts`, #182, #184):
 
 - The button is 34 × 200 px whatever it says ("All instruments", "Stocks · NYSE", "Crypto ·
-  Binance"), so nothing in the row moves when the filters change. Its panel is 412 px wide
-  (Type 128 px and Exchange side by side, 12 px padding, at most 480 px high), right-aligned
-  under it; on phones the sections stack and the panel is the screen width minus 32 px.
+  Binance", "Top gainers", "Stocks · Top losers"), so nothing in the row moves when the filters
+  change. Its panel is 412 px wide (Type over Sort by in the 128 px left column, Exchange on the
+  right, 12 px padding, at most 480 px high), right-aligned under it. On phones Type and Sort by
+  sit side by side with Exchange below, the panel is the screen width minus 32 px and tightened
+  (8 px padding and gaps, headings 4 px above their list, group labels 24 px, 2 px around the
+  separators) to 476 px, so every entry shows without scrolling.
+- Sort by: Volume (the default, left out of the URL), Top gainers (`?sort=gainers`), Top losers
+  (`?sort=losers`) and Symbol (`?sort=symbol`); the API gets `sort=change`, `-change` or `symbol`.
+  The summary adds any order but Volume. With a query the search ranking stays first and the
+  order only breaks its ties.
 - Exchange: All exchanges, then the stock exchanges (NASDAQ, NYSE, ARCA, AMEX, BATS), then the
   crypto exchanges (Binance). Under Stocks, Binance is disabled and marked "Crypto only"; under
   Crypto, the stock exchanges are disabled and marked "Stocks only": shown, not hidden, so the
   list keeps its shape and says why. Under All every exchange can be picked, and Type stays All.
 - Changing the type keeps an exchange it has and drops one it does not; picking an exchange
-  never changes the type. Every pick starts at page 1 and adds a history entry, so Back undoes
+  never changes the type, and an order changes neither. Every pick starts at page 1 and adds a history entry, so Back undoes
   it; the panel stays open for the second pick.
 - A link the panel cannot make (`/?market=crypto&exchange=NYSE`) shows an empty list that says
   why ("No crypto pairs on NYSE", "NYSE lists stocks only.") with a "Show all exchanges" link,
   and the panel shows NYSE chosen but disabled.
 - Keyboard: Enter, Space or ArrowDown on the button opens the panel on the chosen type. The
-  arrows, Home and End move through both sections and skip disabled entries, ArrowLeft and
-  ArrowRight jump between the sections, a letter jumps to the next entry starting with it, and
+  arrows, Home and End move through the sections (Type, Sort by, Exchange) and skip disabled
+  entries, ArrowLeft and ArrowRight go to the previous or next section, a letter jumps to the next entry starting with it, and
   Enter or Space picks. Escape closes the panel and the focus returns to the button; Tab and
   Shift+Tab close it and move on to the element after or before the button, like leaving any
   other control; a click outside closes it too. Each section is an ARIA listbox; the focus

@@ -2,6 +2,7 @@
 
 import asyncio
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
@@ -79,6 +80,12 @@ class DataSource(Protocol):
         """Whether the source answers its cheapest request."""
         ...
 
+    async def stats(self, instruments: Sequence[Instrument]) -> pl.DataFrame:
+        """The 24 h stats (``STATS_SCHEMA``) of the given instruments of the catalog, one row
+        per instrument the source has numbers for. Runs in the background, never for a
+        request: it may wait for its share of the request budget."""
+        ...
+
 
 def utc(ts: int) -> datetime:
     return datetime.fromtimestamp(ts, UTC)
@@ -142,6 +149,11 @@ def plan_periods(  # noqa: PLR0913
     if end > today:
         periods.append(Period("live", today, now, f"{utc(today):%Y-%m-%d}-live", LIVE_TTL))
     return periods
+
+
+async def pause(seconds: float) -> None:
+    """Waits ``seconds``: background work waiting for its share of a budget."""
+    await _sleep(seconds)
 
 
 async def spend(
