@@ -76,3 +76,26 @@ async def test_lets_requests_through_when_redis_fails(caplog: pytest.LogCaptureF
     await dead_redis.aclose()
 
     assert caplog.text.count("rate limits are not counted") == 1
+
+
+async def test_used_reads_the_count_of_the_current_window(redis: Redis, key: str, clock):
+    limiter = RateLimiter(redis)
+
+    assert await limiter.used(key) == 0
+    await limiter.hit(key, 10, cost=3)
+    assert await limiter.used(key) == 3
+    clock[0] = MINUTE + 60
+    assert await limiter.used(key) == 0
+
+
+async def test_used_is_unknown_when_redis_fails(caplog: pytest.LogCaptureFixture):
+    dead_redis = create_redis("redis://127.0.0.1:1/0")
+    limiter = RateLimiter(dead_redis)
+
+    with caplog.at_level(logging.WARNING):
+        assert await limiter.used("test:rl:dead") is None
+        await limiter.hit("test:rl:dead", 1)  # Redis is skipped for a while now
+        assert await limiter.used("test:rl:dead") is None
+    await dead_redis.aclose()
+
+    assert "the test:rl:dead count is not known" in caplog.text

@@ -34,6 +34,12 @@ describe('searchInstruments', () => {
     expect(fetch).toHaveBeenCalledWith('/api/v1/data/instruments?limit=50&offset=0&exchange=NYSE', expect.anything());
   });
 
+  it('sends a sort', async () => {
+    const fetch = stubFetch();
+    await searchInstruments({ q: '', sort: '-change', limit: 25, offset: 0 });
+    expect(fetch).toHaveBeenCalledWith('/api/v1/data/instruments?limit=25&offset=0&sort=-change', expect.anything());
+  });
+
   it('leaves out an empty query and "all markets", so the API lists everything', async () => {
     const fetch = stubFetch();
     await searchInstruments({ q: '', limit: 50, offset: 0 });

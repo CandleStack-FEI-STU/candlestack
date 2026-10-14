@@ -4,6 +4,9 @@ A candles request is checked (catalog, period, candle count), its period is spli
 source's chunks (closed months or years, closed days, today), every chunk comes from Redis or
 the source (single-flight, a few at once), and the chunks are joined, resampled for stocks,
 sliced to ``[start, end)``, checked for gaps and fingerprinted in a worker thread.
+
+The instrument list is sorted by the 24 h stats that ``keep_stats_fresh`` refreshes in the
+background (``StatsStore``); a search only reads them.
 """
 
 import asyncio
@@ -52,16 +55,19 @@ from candlestack.data.models import (
     Instrument,
     InstrumentId,
     InstrumentInfo,
+    InstrumentSort,
     Market,
     SearchResult,
     SourceHealth,
+    SourceStats,
     Timeframe,
     empty_candles,
 )
 from candlestack.data.sessions import Session, sessions_between
 from candlestack.data.sources.alpaca import AlpacaSource
-from candlestack.data.sources.base import DAY, DataSource, Period
+from candlestack.data.sources.base import DAY, DataSource, Period, pause
 from candlestack.data.sources.binance import BinanceSource
+from candlestack.data.stats_store import StatsStore
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +78,8 @@ FIRST_TTL = 7 * DAY
 # An instrument without any candle yet (a new listing) is asked again after an hour.
 FIRST_NONE_TTL = 3600
 HEALTH_TTL = 60
+# How often the background task looks for stats that are due (StatsStore.REFRESH_SECONDS).
+STATS_CHECK_SECONDS = 60
 
 # Patched by tests to move the clock.
 _time = time.time
@@ -118,12 +126,14 @@ class DataService:
         catalogs: CatalogStore,
         icons: Icons,
         candles_max: int,
+        stats: StatsStore,
     ) -> None:
         self._sources = sources
         self._cache = cache
         self._catalogs = catalogs
         self._icons = icons
         self._candles_max = candles_max
+        self._stats = stats
 
     async def search(
         self,
@@ -133,22 +143,57 @@ class DataService:
         offset: int = 0,
         *,
         exchange: Exchange | None = None,
+        sort: InstrumentSort = InstrumentSort.VOLUME,
     ) -> SearchResult:
         """``limit`` instruments from ``offset`` on that match ``q``, best first (ranking in
-        ``candlestack.data.catalog``), or of every instrument by symbol without ``q``, in the
-        markets whose catalog can be loaded; ``unavailable`` names the others. Raises the
-        source's error when none can be loaded. ``exchange`` keeps only the instruments that
-        trade there."""
+        ``candlestack.data.catalog``, ties in ``sort``), or of every instrument in ``sort``
+        without ``q``, in the markets whose catalog can be loaded; ``unavailable`` names the
+        others. Raises the source's error when none can be loaded. ``exchange`` keeps only the
+        instruments that trade there. The stats are what the background refresh last stored:
+        instruments without them sort last."""
         if q is not None and not normalise_query(q):
-            return SearchResult([], [], 0)
+            return SearchResult([], [], 0, [])
         if exchange is not None:
             # An exchange lists one market only: the other market's catalog is not needed.
             if market not in (None, exchange.market):
-                return SearchResult([], [], 0)
+                return SearchResult([], [], 0, [])
             market = exchange.market
         catalog = await self._catalogs.catalog(market)
-        items, total = catalog.page(q, market, limit, offset, exchange=exchange)
-        return SearchResult(items, self._catalogs.missing(market), total)
+        # Taken with the catalog, before anything else is awaited: a market that finishes loading
+        # meanwhile is not in this catalog, so it must still count as unavailable.
+        unavailable = self._catalogs.missing(market)
+        stats = await self._stats.table()
+        # Sorting about 15k instruments takes a few ms: in a thread, off the event loop.
+        found = await to_thread.run_sync(
+            partial(
+                catalog.page, q, market, limit, offset, exchange=exchange, sort=sort, stats=stats
+            )
+        )
+        return SearchResult(found.items, unavailable, found.total, found.stats)
+
+    async def keep_stats_fresh(self) -> None:
+        """Refreshes the stats of every market when they are due, checking once a minute, until
+        cancelled (the app's lifespan runs it in prod and stage, ``STATS_REFRESH``)."""
+        while True:
+            await self.refresh_stats()
+            await pause(STATS_CHECK_SECONDS)
+
+    async def refresh_stats(self) -> None:
+        """One round: each market whose stats are due is fetched from its source for the
+        instruments of its catalog (``StatsStore.refresh``), all markets at once, so crypto does
+        not wait for the paced stock requests. A market whose refresh fails unexpectedly is
+        logged for a developer, and the others still run."""
+        await asyncio.gather(*(self._refresh_market(market) for market in self._sources))
+
+    async def _refresh_market(self, market: Market) -> None:
+        try:
+            await self._stats.refresh(market, partial(self._fetch_stats, market))
+        except Exception:
+            logger.exception("Refreshing the %s stats failed", market)
+
+    async def _fetch_stats(self, market: Market) -> SourceStats:
+        catalog = await self._catalogs.catalog(market)
+        return await self._sources[market].stats(catalog.instruments(market))
 
     async def instrument(self, instrument_id: InstrumentId) -> InstrumentInfo:
         """The instrument and its available period. ``available_from`` is ``None`` when the
@@ -359,6 +404,7 @@ def build_data_service(settings: Settings, redis: Redis, http: httpx.AsyncClient
         catalogs=CatalogStore(cache, sources),
         icons=Icons(settings, http, limiter, cache),
         candles_max=settings.candles_max,
+        stats=StatsStore(cache, sources),
     )
 
 

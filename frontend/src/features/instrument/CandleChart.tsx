@@ -15,11 +15,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { Market } from '@/api';
 import { Button } from '@/components/ui/button';
+import { priceDecimals } from '@/lib/numbers';
 import { useTheme } from '@/theme';
 
 import type { Bar } from './bars';
 import { ChartLegend } from './ChartLegend';
-import { legendFor, priceDecimals } from './legend';
+import { legendFor } from './legend';
 import { chartTimeZone, crosshairFormatter, tickFormatter } from './time';
 
 // Start loading the older page this many bars before the left edge, so it is there in time.

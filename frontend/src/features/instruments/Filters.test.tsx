@@ -23,6 +23,11 @@ describe('Filters', () => {
     expect(html).not.toContain('role="listbox"');
   });
 
+  it('adds an order other than Volume to the summary', async () => {
+    const html = await render({ market: 'stock', exchange: undefined, sort: 'losers' });
+    expect(html).toContain('aria-label="Filters: Stocks · Top losers"');
+  });
+
   it('says "All instruments" without filters', async () => {
     expect(await render({ market: undefined, exchange: undefined })).toContain('>All instruments</span>');
   });

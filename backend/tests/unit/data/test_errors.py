@@ -123,6 +123,7 @@ def test_source_unavailable() -> None:
     assert (error.source, error.retry_after) == ("binance", 17)
     assert error.detail == "Binance weight budget is spent."
     assert SourceUnavailable("alpaca", "down").retry_after is None
+    assert SourceUnavailable("alpaca", "down").rejected is False
 
 
 def test_data_integrity_error() -> None:

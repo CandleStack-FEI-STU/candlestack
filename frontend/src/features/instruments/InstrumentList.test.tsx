@@ -25,6 +25,7 @@ describe('InstrumentList', () => {
       query: 'a',
       market: 'crypto',
       exchange: 'NYSE',
+      sort: undefined,
       page: 2,
     });
     expect(html).toContain('No crypto pairs on NYSE');
@@ -38,6 +39,7 @@ describe('InstrumentList', () => {
       query: '',
       market: 'crypto',
       exchange: 'BINANCE',
+      sort: undefined,
       page: 1,
     });
     expect(html).toContain('Loading instruments…');

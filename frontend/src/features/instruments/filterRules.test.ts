@@ -13,8 +13,10 @@ import {
   sectionStart,
   usableActive,
   withExchange,
+  withSort,
   withType,
   type FilterOption,
+  type PanelLayout,
 } from './filterRules';
 
 const STOCK_EXCHANGES: Exchange[] = ['NASDAQ', 'NYSE', 'ARCA', 'AMEX', 'BATS'];
@@ -60,6 +62,13 @@ describe('filtersSummary', () => {
     // an impossible link says what it holds
     expect(filtersSummary('crypto', 'NYSE')).toBe('Crypto · NYSE');
   });
+
+  it('adds an order other than Volume', () => {
+    expect(filtersSummary(undefined, undefined, 'gainers')).toBe('Top gainers');
+    expect(filtersSummary('stock', undefined, 'losers')).toBe('Stocks · Top losers');
+    expect(filtersSummary('stock', 'NYSE', 'symbol')).toBe('Stocks · NYSE · Symbol');
+    expect(filtersSummary(undefined, undefined, undefined)).toBe('All instruments');
+  });
 });
 
 // Tests compare with toEqual, which takes a key holding undefined as missing: the URL leaves
@@ -85,12 +94,27 @@ describe('withExchange', () => {
   });
 });
 
+describe('withSort', () => {
+  it('keeps the filters and starts at page 1', () => {
+    expect(withSort({ q: 'a', market: 'stock', page: 3 }, 'gainers')).toEqual({
+      q: 'a',
+      market: 'stock',
+      sort: 'gainers',
+    });
+    expect(withSort({ sort: 'losers', page: 2 }, undefined)).toEqual({});
+  });
+});
+
 describe('filterOptions', () => {
-  it('lists the types, then All exchanges, the stock exchanges and Binance, with the choice checked', () => {
+  it('lists the types, the orders, then All exchanges, the stock exchanges and Binance, with the choice checked', () => {
     expect(show(filterOptions(undefined, undefined))).toEqual([
       '✓ All types',
       'Stocks',
       'Crypto',
+      '✓ Volume',
+      'Top gainers',
+      'Top losers',
+      'Symbol',
       '✓ All exchanges',
       'NASDAQ',
       'NYSE',
@@ -103,6 +127,10 @@ describe('filterOptions', () => {
       'type',
       'type',
       'type',
+      'sort',
+      'sort',
+      'sort',
+      'sort',
       'all-exchanges',
       'stock',
       'stock',
@@ -113,8 +141,17 @@ describe('filterOptions', () => {
     ]);
   });
 
+  it('checks the chosen order', () => {
+    expect(show(filterOptions(undefined, undefined, 'losers')).slice(3, 7)).toEqual([
+      'Volume',
+      'Top gainers',
+      '✓ Top losers',
+      'Symbol',
+    ]);
+  });
+
   it('disables the exchanges the type does not have and says why, without hiding them', () => {
-    expect(show(filterOptions('stock', 'NYSE')).slice(3)).toEqual([
+    expect(show(filterOptions('stock', 'NYSE')).slice(7)).toEqual([
       'All exchanges',
       'NASDAQ',
       '✓ NYSE',
@@ -123,7 +160,7 @@ describe('filterOptions', () => {
       'BATS',
       'Binance (Crypto only)',
     ]);
-    expect(show(filterOptions('crypto', undefined)).slice(3)).toEqual([
+    expect(show(filterOptions('crypto', undefined)).slice(7)).toEqual([
       '✓ All exchanges',
       'NASDAQ (Stocks only)',
       'NYSE (Stocks only)',
@@ -133,6 +170,10 @@ describe('filterOptions', () => {
       'Binance',
     ]);
     expect(filterOptions('crypto', undefined).map(canPick)).toEqual([
+      true,
+      true,
+      true,
+      true,
       true,
       true,
       true,
@@ -148,20 +189,25 @@ describe('filterOptions', () => {
 
   it('shows the exchange of an impossible link as chosen but disabled', () => {
     const options = filterOptions('crypto', 'NYSE');
-    expect(show(options)[5]).toBe('✓ NYSE (Stocks only)');
-    expect(canPick(options[5] as FilterOption)).toBe(false);
+    expect(show(options)[9]).toBe('✓ NYSE (Stocks only)');
+    expect(canPick(options[9] as FilterOption)).toBe(false);
   });
 });
 
 describe('applyOption', () => {
-  it('picks a type or an exchange', () => {
-    const options = filterOptions('stock', 'NYSE');
+  it('picks a type, an order or an exchange', () => {
+    const options = filterOptions('stock', 'NYSE', 'gainers');
     const pick = (label: string) =>
-      applyOption({ market: 'stock', exchange: 'NYSE', page: 2 }, options[indexOf(options, label)] as FilterOption);
-    expect(pick('All types')).toEqual({ exchange: 'NYSE' });
-    expect(pick('Crypto')).toEqual({ market: 'crypto' });
-    expect(pick('ARCA')).toEqual({ market: 'stock', exchange: 'ARCA' });
-    expect(pick('All exchanges')).toEqual({ market: 'stock' });
+      applyOption(
+        { market: 'stock', exchange: 'NYSE', sort: 'gainers', page: 2 },
+        options[indexOf(options, label)] as FilterOption,
+      );
+    expect(pick('All types')).toEqual({ exchange: 'NYSE', sort: 'gainers' });
+    expect(pick('Crypto')).toEqual({ market: 'crypto', sort: 'gainers' });
+    expect(pick('Top losers')).toEqual({ market: 'stock', exchange: 'NYSE', sort: 'losers' });
+    expect(pick('Volume')).toEqual({ market: 'stock', exchange: 'NYSE' });
+    expect(pick('ARCA')).toEqual({ market: 'stock', exchange: 'ARCA', sort: 'gainers' });
+    expect(pick('All exchanges')).toEqual({ market: 'stock', sort: 'gainers' });
   });
 });
 
@@ -170,9 +216,11 @@ describe('sectionStart', () => {
     const options = filterOptions('crypto', 'BINANCE');
     expect(sectionStart(options, 'type')).toBe(indexOf(options, 'Crypto'));
     expect(sectionStart(options, 'exchange')).toBe(indexOf(options, 'Binance'));
-    expect(sectionStart(filterOptions(undefined, undefined), 'exchange')).toBe(3);
+    expect(sectionStart(filterOptions(undefined, undefined), 'exchange')).toBe(7);
+    expect(sectionStart(filterOptions(undefined, undefined), 'sort')).toBe(3);
+    expect(sectionStart(filterOptions(undefined, undefined, 'symbol'), 'sort')).toBe(6);
     // the chosen NYSE cannot be picked under Crypto
-    expect(sectionStart(filterOptions('crypto', 'NYSE'), 'exchange')).toBe(3);
+    expect(sectionStart(filterOptions('crypto', 'NYSE'), 'exchange')).toBe(7);
   });
 });
 
@@ -198,35 +246,57 @@ describe('nextActive', () => {
   const crypto = filterOptions('crypto', undefined);
   const stock = filterOptions('stock', 'NYSE');
   const at = (options: FilterOption[], label: string) => indexOf(options, label);
-  const move = (options: FilterOption[], from: string, key: string) => {
-    const next = nextActive(options, at(options, from), key);
+  const move = (options: FilterOption[], from: string, key: string, layout?: PanelLayout) => {
+    const next = nextActive(options, at(options, from), key, layout);
     return next === undefined ? undefined : options[next]?.label;
   };
 
-  it('moves through both sections with the arrows and stops at the ends', () => {
+  // Wide (from sm up): Type over Sort by in the left column, Exchange on the right.
+  it('moves up and down within a column of the wide panel and stops at its ends', () => {
     expect(move(all, 'All types', 'ArrowDown')).toBe('Stocks');
-    expect(move(all, 'Crypto', 'ArrowDown')).toBe('All exchanges');
-    expect(move(all, 'All exchanges', 'ArrowUp')).toBe('Crypto');
+    expect(move(all, 'Crypto', 'ArrowDown')).toBe('Volume');
+    expect(move(all, 'Volume', 'ArrowUp')).toBe('Crypto');
+    expect(move(all, 'Symbol', 'ArrowDown')).toBe('Symbol');
+    expect(move(all, 'All exchanges', 'ArrowUp')).toBe('All exchanges');
     expect(move(all, 'Binance', 'ArrowDown')).toBe('Binance');
     expect(move(all, 'All types', 'ArrowUp')).toBe('All types');
-    expect(move(all, 'NYSE', 'Home')).toBe('All types');
-    expect(move(all, 'Stocks', 'End')).toBe('Binance');
+    expect(move(all, 'NYSE', 'Home')).toBe('All exchanges');
+    expect(move(all, 'Stocks', 'End')).toBe('Symbol');
+    expect(move(all, 'Volume', 'Home')).toBe('All types');
   });
 
   it('skips disabled entries', () => {
     expect(move(crypto, 'All exchanges', 'ArrowDown')).toBe('Binance');
     expect(move(crypto, 'Binance', 'ArrowUp')).toBe('All exchanges');
     expect(move(stock, 'BATS', 'ArrowDown')).toBe('BATS');
-    expect(move(stock, 'Crypto', 'End')).toBe('BATS');
+    expect(move(stock, 'NASDAQ', 'End')).toBe('BATS');
   });
 
-  it('jumps between the sections with ArrowLeft and ArrowRight', () => {
+  it('goes between the columns of the wide panel with ArrowLeft and ArrowRight', () => {
     expect(move(stock, 'All types', 'ArrowRight')).toBe('NYSE');
+    expect(move(stock, 'Top losers', 'ArrowRight')).toBe('NYSE');
     expect(move(stock, 'ARCA', 'ArrowLeft')).toBe('Stocks');
     expect(move(all, 'Crypto', 'ArrowRight')).toBe('All exchanges');
-    // within its section it stays
+    // at the sides it stays
     expect(move(stock, 'ARCA', 'ArrowRight')).toBe('ARCA');
     expect(move(stock, 'Crypto', 'ArrowLeft')).toBe('Crypto');
+    expect(move(stock, 'Symbol', 'ArrowLeft')).toBe('Symbol');
+  });
+
+  // Phone: Type and Sort by side by side, Exchange below them.
+  it('follows the phone panel: Type and Sort by side by side, Exchange below', () => {
+    expect(move(all, 'Stocks', 'ArrowRight', 'phone')).toBe('Volume');
+    expect(move(all, 'Top losers', 'ArrowLeft', 'phone')).toBe('All types');
+    expect(move(all, 'Crypto', 'ArrowLeft', 'phone')).toBe('Crypto');
+    expect(move(all, 'Symbol', 'ArrowRight', 'phone')).toBe('Symbol');
+    expect(move(all, 'NYSE', 'ArrowLeft', 'phone')).toBe('NYSE');
+    // down from either column into Exchange, up from Exchange into Type
+    expect(move(all, 'Crypto', 'ArrowDown', 'phone')).toBe('All exchanges');
+    expect(move(all, 'Symbol', 'ArrowDown', 'phone')).toBe('All exchanges');
+    expect(move(all, 'Top gainers', 'ArrowDown', 'phone')).toBe('Top losers');
+    expect(move(all, 'All exchanges', 'ArrowUp', 'phone')).toBe('Crypto');
+    expect(move(all, 'Stocks', 'End', 'phone')).toBe('Binance');
+    expect(move(stock, 'Volume', 'Home', 'phone')).toBe('Volume');
   });
 
   it('jumps to the next entry that starts with a typed letter, round the end', () => {
@@ -234,6 +304,8 @@ describe('nextActive', () => {
     expect(move(all, 'NASDAQ', 'N')).toBe('NYSE');
     expect(move(all, 'NYSE', 'n')).toBe('NASDAQ');
     expect(move(all, 'Binance', 'c')).toBe('Crypto');
+    expect(move(all, 'Stocks', 's')).toBe('Symbol');
+    expect(move(all, 'Symbol', 't')).toBe('Top gainers');
     expect(move(all, 'All types', 'a')).toBe('All exchanges');
     // disabled entries are skipped here too
     expect(move(crypto, 'All types', 'n')).toBeUndefined();

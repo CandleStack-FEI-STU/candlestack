@@ -59,7 +59,7 @@ async def test_search_both_markets(service: DataService, upstream):
     assert ids(await service.search("币安")) == ["crypto:币安人生USDT"]
     assert ids(await service.search("eth", Market.CRYPTO)) == ["crypto:ETHUSDT", "crypto:ETHBTC"]
     assert ids(await service.search("eth", Market.STOCK)) == []
-    assert await service.search("  ") == SearchResult([], [], 0)
+    assert await service.search("  ") == SearchResult([], [], 0, [])
     assert (await service.search("btc")).unavailable == []
     assert (catalog.call_count, assets.call_count) == (1, 1)
 
@@ -98,7 +98,7 @@ async def test_filter_by_exchange_needs_only_the_stocks(service: DataService, up
     assert ids(await service.search(None, exchange=Exchange.NYSE)) == ["stock:BRK.B"]
     assert ids(await service.search("s", exchange=Exchange.ARCA)) == ["stock:SPY"]
     assert await service.search(None, Market.CRYPTO, exchange=Exchange.NYSE) == SearchResult(
-        [], [], 0
+        [], [], 0, []
     )
     found = await service.search(None, exchange=Exchange.NASDAQ)
     assert (ids(found), found.unavailable, found.total) == (["stock:AAPL"], [], 1)
@@ -114,7 +114,7 @@ async def test_binance_lists_the_crypto_pairs_and_needs_only_them(service: DataS
     assert {item.exchange for item in found.items} == {"BINANCE"}
     assert (found.unavailable, found.total) == ([], len(found.items))
     assert await service.search(None, Market.STOCK, exchange=Exchange.BINANCE) == SearchResult(
-        [], [], 0
+        [], [], 0, []
     )
     assert assets.call_count == 0
 
@@ -144,7 +144,7 @@ async def test_search_leaves_out_a_market_that_cannot_be_loaded(service: DataSer
 
     found = await service.search("btcusdt")
     assert (ids(found), found.unavailable) == (["crypto:BTCUSDT"], [Market.STOCK])
-    assert (await service.search("apple")) == SearchResult([], [Market.STOCK], 0)
+    assert (await service.search("apple")) == SearchResult([], [Market.STOCK], 0, [])
     with pytest.raises(SourceUnavailable, match="Alpaca failed with HTTP 503"):
         await service.search("apple", Market.STOCK)
 

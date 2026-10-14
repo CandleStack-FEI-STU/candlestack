@@ -2,6 +2,7 @@
 
 import asyncio
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
@@ -12,7 +13,15 @@ import polars as pl
 
 from candlestack.core import RateLimiter, request_with_retry, retry_after
 from candlestack.data.errors import DataIntegrityError, SourceUnavailable
-from candlestack.data.models import Feed, Instrument, Market, Source, SourceHealth, Timeframe
+from candlestack.data.models import (
+    Feed,
+    Instrument,
+    Market,
+    Source,
+    SourceHealth,
+    SourceStats,
+    Timeframe,
+)
 from candlestack.data.sessions import Session
 
 DAY = 86_400
@@ -77,6 +86,13 @@ class DataSource(Protocol):
 
     async def health(self) -> SourceHealth:
         """Whether the source answers its cheapest request."""
+        ...
+
+    async def stats(self, instruments: Sequence[Instrument]) -> SourceStats:
+        """The 24 h stats (``STATS_SCHEMA``) of the given instruments of the catalog, one row
+        per instrument the source has numbers for, and the symbols it could not ask for. Runs
+        in the background, never for a request: it may wait for its share of the request
+        budget. Raises the source's error when it got nothing."""
         ...
 
 
@@ -144,6 +160,11 @@ def plan_periods(  # noqa: PLR0913
     return periods
 
 
+async def pause(seconds: float) -> None:
+    """Waits ``seconds``: background work waiting for its share of a budget."""
+    await _sleep(seconds)
+
+
 async def spend(
     limiter: RateLimiter, source: Source, what: str, key: str, limit: int, *, cost: int = 1
 ) -> None:
@@ -203,7 +224,11 @@ def unavailable(source: Source, title: str, response: httpx.Response) -> SourceU
             retry_after=seconds,
         )
     if status >= 500:
-        detail = f"{title} failed with HTTP {status}. Try again in a minute."
-    else:
-        detail = f"{title} rejected our request with HTTP {status}. Try again later."
-    return SourceUnavailable(source, detail)
+        return SourceUnavailable(
+            source, f"{title} failed with HTTP {status}. Try again in a minute."
+        )
+    return SourceUnavailable(
+        source,
+        f"{title} rejected our request with HTTP {status}. Try again later.",
+        rejected=400 <= status < 500,
+    )

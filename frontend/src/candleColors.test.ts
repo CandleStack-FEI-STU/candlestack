@@ -59,3 +59,15 @@ describe.each([
     expect(contrast(variable(block, 'candle-down'), bg)).toBeGreaterThanOrEqual(3);
   });
 });
+
+// #184: the 24 h change of the instrument list is text, so it needs 4.5:1.
+describe.each([
+  ['light', light],
+  ['dark', dark],
+])('change colors in the %s theme', (_, block) => {
+  it('read on the background at 4.5:1 or more', () => {
+    const bg = variable(block, 'bg');
+    expect(contrast(variable(block, 'up'), bg)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(variable(block, 'down'), bg)).toBeGreaterThanOrEqual(4.5);
+  });
+});

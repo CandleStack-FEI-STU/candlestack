@@ -16,18 +16,24 @@ from candlestack.core import RateLimiter, Settings
 from candlestack.data import (
     CANDLE_SCHEMA,
     DataIntegrityError,
+    Instrument,
+    InstrumentId,
+    Market,
     Session,
     SourceUnavailable,
     Timeframe,
 )
 from candlestack.data.cache import Cache, Fetch
+from candlestack.data.models import STATS_SCHEMA
 from candlestack.data.sources import base
 from candlestack.data.sources.alpaca import (
     AlpacaSource,
     parse_assets,
     parse_bars,
+    parse_snapshots,
     regular_candles,
     relabel_daily,
+    snapshot_stats,
 )
 from candlestack.data.sources.base import DAY, Period, plan_periods, spend
 from candlestack.data.sources.binance import (
@@ -35,7 +41,9 @@ from candlestack.data.sources.binance import (
     parse_archive,
     parse_exchange_info,
     parse_klines,
+    parse_ticker,
     to_seconds,
+    usd_prices,
 )
 
 FIXTURES = Path(__file__).parents[2] / "fixtures"
@@ -596,3 +604,181 @@ async def test_malformed_bars_response_is_a_data_integrity_error(
         await alpaca.fetch_period("AAPL", Timeframe.M1, JUNE)
 
     assert info.value.source == "alpaca"
+
+
+# --- 24 h stats -------------------------------------------------------------------------------
+
+
+def stats_rows(frame: pl.DataFrame) -> dict[str, tuple[Any, ...]]:
+    assert frame.schema == STATS_SCHEMA
+    return {symbol: tuple(rest) for symbol, *rest in frame.iter_rows()}
+
+
+def test_ticker_gives_the_stats_of_the_catalog_pairs_in_usd() -> None:
+    pairs = parse_exchange_info(fixture_bytes("binance/rest/exchangeInfo-trading.json"))
+
+    stats = stats_rows(parse_ticker(fixture_bytes("binance/rest/ticker-24hr-trading.json"), pairs))
+
+    assert stats["BTCUSDT"] == (83162.0, 1.592, pytest.approx(1231893002.5523036))
+    # ETH/BTC: the volume in BTC at the price of BTCUSDT
+    assert stats["ETHBTC"] == (0.03005, 0.502, pytest.approx(296.85208692 * 83162.0))
+    assert set(stats) == {"BTCUSDT", "ETHUSDT", "SOLUSDT", "ETHBTC", "币安人生USDT"}
+
+
+def test_ticker_converts_quote_assets_both_ways_and_skips_what_it_cannot() -> None:
+    pairs = [
+        crypto_pair("BTCUSDT", "BTC", "USDT"),
+        crypto_pair("USDTTRY", "USDT", "TRY"),
+        crypto_pair("BTCTRY", "BTC", "TRY"),
+        crypto_pair("XYZABC", "XYZ", "ABC"),  # ABC has no USD price
+        crypto_pair("DEADUSDT", "DEAD", "USDT"),  # no price: no stats
+        crypto_pair("ODDUSDT", "ODD", "USDT"),  # change and volume are not numbers
+        crypto_pair("GONEUSDT", "GONE", "USDT"),  # not in the ticker
+    ]
+    body = json.dumps(
+        [
+            ticker_row("BTCUSDT", "80000", "1.5", "1000000"),
+            ticker_row("USDTTRY", "40", "0.1", "500"),
+            ticker_row("BTCTRY", "3200000", "-0.5", "80000"),
+            ticker_row("XYZABC", "2", "3", "100"),
+            ticker_row("DEADUSDT", "0", "0", "0"),
+            ticker_row("ODDUSDT", "1", "NaN", "inf"),
+            ticker_row("NOTLISTED", "1", "1", "1"),
+        ]
+    ).encode()
+
+    stats = stats_rows(parse_ticker(body, pairs))
+
+    assert stats == {
+        "BTCUSDT": (80000.0, 1.5, 1000000.0),
+        "USDTTRY": (40.0, 0.1, 500 / 40),
+        "BTCTRY": (3200000.0, -0.5, 80000 / 40),
+        "XYZABC": (2.0, 3.0, None),
+        "ODDUSDT": (1.0, None, None),
+    }
+
+
+def test_usd_prices() -> None:
+    assert usd_prices([("BTC", "USDT", 80000.0), ("USDT", "TRY", 40.0), ("ETH", "BTC", 0.03)]) == {
+        "USDT": 1.0,
+        "BTC": 80000.0,
+        "TRY": 1 / 40,
+    }
+
+
+@pytest.mark.parametrize("body", [b'{"code": -1121}', b"[{", b"not json"])
+def test_malformed_ticker_is_a_data_integrity_error(body: bytes) -> None:
+    with pytest.raises(DataIntegrityError, match="24h ticker"):
+        parse_ticker(body, [])
+
+
+SNAPSHOTS_AT = utc("2026-10-14T00:00")
+
+
+def test_snapshots_give_price_change_and_iex_volume_in_usd() -> None:
+    frame, malformed = parse_snapshots(fixture_bytes("alpaca/snapshots-sample.json"), SNAPSHOTS_AT)
+    stats = stats_rows(frame)
+
+    assert stats == {
+        "AAPL": (247.85, pytest.approx(0.458, abs=1e-4), pytest.approx(1375210 * 247.42)),
+        # no volume-weighted price: the daily volume at the last price
+        "SPY": (668.9, pytest.approx(0.3496, abs=1e-4), pytest.approx(2201000 * 668.9)),
+        # the last daily bar is six weeks old: no change, no volume
+        "BRK.B": (488.1, None, 0.0),
+        # no trade: the daily close; no previous bar: no change
+        "UUU": (2.15, None, pytest.approx(300 * 2.12)),
+    }
+    assert malformed == 0
+
+
+@pytest.mark.parametrize(
+    ("snapshot", "stats"),
+    [
+        ({"latestTrade": {"p": 0}}, None),
+        ({"latestTrade": {"p": True}}, None),
+        ({"latestTrade": {"p": "1.5"}}, None),
+        ({"latestTrade": {"p": 10.0}}, (10.0, None, None)),  # no daily bar
+        ({"latestTrade": {"p": 10.0}, "dailyBar": {"t": "yesterday"}}, (10.0, None, None)),
+        (
+            {"latestTrade": {"p": 10.0}, "dailyBar": {"t": "2026-10-13T04:00:00Z", "v": -1}},
+            (10.0, None, None),
+        ),
+        (
+            {
+                "latestTrade": {"p": 10.0},
+                "dailyBar": {"t": "2026-10-13T04:00:00Z", "v": 5, "vw": float("nan")},
+                "prevDailyBar": {"c": 8.0},
+            },
+            (10.0, 25.0, 50.0),
+        ),
+        (None, None),
+    ],
+)
+def test_snapshot_stats_of_odd_snapshots(snapshot: Any, stats: tuple[Any, ...] | None) -> None:
+    assert snapshot_stats(snapshot, SNAPSHOTS_AT) == stats
+
+
+@pytest.mark.parametrize("body", [b"[]", b"{"])
+def test_malformed_snapshots_are_a_data_integrity_error(body: bytes) -> None:
+    with pytest.raises(DataIntegrityError, match="Alpaca snapshots"):
+        parse_snapshots(body, SNAPSHOTS_AT)
+
+
+def test_empty_snapshots_have_no_stats() -> None:
+    frame, malformed = parse_snapshots(b"{}", SNAPSHOTS_AT)
+    assert (frame.schema, frame.height, malformed) == (STATS_SCHEMA, 0, 0)
+
+
+@pytest.mark.parametrize(
+    "snapshot",
+    [
+        [],
+        "AAPL",
+        {"latestTrade": [], "dailyBar": None},
+        {"latestTrade": {"p": 1.0}, "dailyBar": "today"},
+        {"latestTrade": {"p": 1.0}, "prevDailyBar": 5},
+    ],
+)
+def test_a_malformed_snapshot_is_an_error_of_its_own(snapshot: Any) -> None:
+    with pytest.raises(TypeError, match="not an object"):
+        snapshot_stats(snapshot, SNAPSHOTS_AT)
+
+
+def test_malformed_snapshots_are_skipped_and_counted() -> None:
+    body = json.dumps(
+        {
+            "GOOD": {"latestTrade": {"p": 10.0}},
+            "LIST": [],
+            "BADBAR": {"latestTrade": {"p": 10.0}, "dailyBar": "x"},
+            "NONE": None,
+        }
+    ).encode()
+
+    frame, malformed = parse_snapshots(body, SNAPSHOTS_AT)
+
+    assert stats_rows(frame) == {"GOOD": (10.0, None, None)}
+    assert malformed == 2
+
+
+def crypto_pair(symbol: str, base_asset: str, quote: str) -> Instrument:
+    return Instrument(
+        InstrumentId(Market.CRYPTO, symbol),
+        f"{base_asset}/{quote}",
+        "binance",
+        "spot",
+        "BINANCE",
+        base_asset,
+        quote,
+    )
+
+
+def ticker_row(symbol: str, price: str, change: str, quote_volume: str) -> dict[str, Any]:
+    return {
+        "symbol": symbol,
+        "priceChange": "0",
+        "priceChangePercent": change,
+        "lastPrice": price,
+        "volume": "1",
+        "quoteVolume": quote_volume,
+        "count": 1,
+    }

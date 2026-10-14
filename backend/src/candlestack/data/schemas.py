@@ -5,16 +5,19 @@ straight from the Polars columns, and ``CandlesOut`` only documents it.
 """
 
 from collections.abc import Mapping
-from typing import Literal, Self
+from dataclasses import asdict
+from typing import Any, Literal, Self
 
 import orjson
 from pydantic import BaseModel, Field
 
 from candlestack.data.models import (
+    NO_STATS,
     CandleSet,
     Feed,
     Instrument,
     InstrumentInfo,
+    InstrumentStats,
     Market,
     Source,
     SourceHealth,
@@ -51,21 +54,51 @@ class InstrumentOut(BaseModel):
 
     @classmethod
     def of(cls, instrument: Instrument) -> Self:
-        return cls(
-            id=str(instrument.id),
-            market=instrument.market,
-            symbol=instrument.symbol,
-            name=instrument.name,
-            source=instrument.source,
-            feed=instrument.feed,
-            exchange=instrument.exchange,
-            base=instrument.base,
-            quote=instrument.quote,
-        )
+        return cls(**_instrument_fields(instrument))
+
+
+def _instrument_fields(instrument: Instrument) -> dict[str, Any]:
+    return {
+        "id": str(instrument.id),
+        "market": instrument.market,
+        "symbol": instrument.symbol,
+        "name": instrument.name,
+        "source": instrument.source,
+        "feed": instrument.feed,
+        "exchange": instrument.exchange,
+        "base": instrument.base,
+        "quote": instrument.quote,
+    }
+
+
+class InstrumentItemOut(InstrumentOut):
+    """An instrument of the list with its 24 h stats, refreshed every few minutes; null while
+    there are none (yet)."""
+
+    price: float | None = Field(
+        description="Last price: in the quote asset for a crypto pair, in USD for a stock "
+        "(the last IEX trade, also while the market is closed).",
+        examples=[83249.35],
+    )
+    change_24h: float | None = Field(
+        description="Change of the price in percent: crypto against 24 hours ago, stocks "
+        "against the previous session's close.",
+        examples=[1.51],
+    )
+    volume_24h: float | None = Field(
+        description="Volume in USD: crypto of the last 24 hours, stocks of the latest session "
+        "on IEX only (a small share of the market: it ranks stocks by popularity, it is not "
+        "their whole turnover).",
+        examples=[1258811866.0],
+    )
+
+    @classmethod
+    def of_item(cls, instrument: Instrument, stats: InstrumentStats | None) -> Self:
+        return cls(**_instrument_fields(instrument), **asdict(stats or NO_STATS))
 
 
 class InstrumentSearchOut(BaseModel):
-    items: list[InstrumentOut] = Field(description="Best matches first.")
+    items: list[InstrumentItemOut] = Field(description="Best matches first.")
     count: int = Field(description="Number of items.", examples=[1])
     total: int = Field(
         description="Number of all matches; page with `offset` while `offset + count` is less.",

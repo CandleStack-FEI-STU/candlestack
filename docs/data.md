@@ -23,6 +23,8 @@ and for the code behind them. Architecture and configuration: [architecture.md](
   change after a corporate action (see [Fingerprint](#fingerprint)).
 - Instrument icons come from a third source, logo.dev (see [Icons](#icons)); without an icon
   the instruments and candles work the same.
+- The instrument list's 24 h stats (last price, change, volume) come from Binance's 24 h ticker
+  and Alpaca's snapshots, refreshed in the background (see [Stats](#stats)).
 
 ## Instruments
 
@@ -47,15 +49,18 @@ Since #182 crypto pairs carry `"exchange": "BINANCE"` where they had `"exchange"
 the search, the instrument and every other answer with an instrument. The field stays nullable
 (a stock on an exchange outside the list below has `null`), so a client still handles `null`.
 
-`GET /api/v1/data/instruments?q=&market=&exchange=&limit=&offset=` searches the cached catalogs of both
+`GET /api/v1/data/instruments?q=&market=&exchange=&sort=&limit=&offset=` searches the cached catalogs of both
 markets (no source call per item) and returns one page,
 `{"items": [<instrument>, ...], "count": <n>, "total": <all matches>, "offset": <offset>, "unavailable": []}`.
+Each item is an instrument with its 24 h stats (see [Stats](#stats)): `price`, `change_24h` and
+`volume_24h`, each `null` while the instrument has none.
 
 | Parameter | Rule |
 | --- | --- |
-| `q` | optional, 1-50 characters; without it, every instrument in symbol order (equal symbols: crypto first). A query without letters or digits finds nothing. Case-insensitive; separators are ignored in symbols: `btc/usdt`, `btc-usdt` and `BTC USDT` all match `BTCUSDT`, `brkb` matches `BRK.B` |
+| `q` | optional, 1-50 characters; without it, every instrument in the order of `sort` (equal symbols: crypto first). A query without letters or digits finds nothing. Case-insensitive; separators are ignored in symbols: `btc/usdt`, `btc-usdt` and `BTC USDT` all match `BTCUSDT`, `brkb` matches `BRK.B` |
 | `market` | optional, `crypto` or `stock` |
 | `exchange` | optional, `AMEX`, `ARCA`, `BATS`, `BINANCE`, `NASDAQ` or `NYSE` (upper case); only the instruments that trade there. `BINANCE` lists the crypto pairs and the others stocks, so with the other `market` (`market=crypto&exchange=NYSE`) nothing matches. Only the catalog of the exchange's market is searched: while it cannot be loaded, the answer is 503 `source-unavailable`, not 200 with `unavailable`. Works with `q`, `market` and paging. A stock Alpaca reports on an exchange outside this list (or on `BINANCE`) gets `exchange: null`, and the values are logged as a warning when the catalog is fetched from Alpaca |
+| `sort` | optional: `volume` (default: 24 h volume in USD, highest first, so the most traded crypto pairs and stocks come first, mixed), `change` (24 h change, highest first: the top gainers), `-change` (lowest first: the top losers) or `symbol` (by symbol, the order before #184). Instruments without stats come last in `volume`, `change` and `-change`, by symbol among themselves. With `q` the ranking below stays first and `sort` only breaks its ties |
 | `limit` | default 20, max 100 |
 | `offset` | default 0; matches to skip. Past the end, `items` is empty and `total` still counts all matches |
 
@@ -63,7 +68,9 @@ Ranking: the top pair of a crypto base asset equal to the query, the one whose q
 the most pairs in the catalog (USDT, so `btc` finds `crypto:BTCUSDT` first, before the stock
 `BTC`); exact symbol; the other pairs of that base asset, most common quote asset first; symbol
 prefix; prefix of a word in the name; substring of the symbol; substring of the name. Other
-ties: shorter symbol first, then alphabetical.
+ties: `sort` (by default the higher 24 h volume first; `symbol` adds nothing), then the shorter
+symbol, then alphabetical. Before #184 the list without `q` was in symbol order and ties of the
+ranking went to the shorter symbol: `sort=symbol` gives both.
 
 Once the catalog of one market is loaded, a search over both markets does not wait for the
 other: it is loaded in the background (retried at most every 30 s while its source is down and
@@ -103,6 +110,51 @@ source:
 - `max_candles`: `CANDLES_MAX`.
 
 Values in the examples of this document are illustrative.
+
+## Stats
+
+The instrument list shows and sorts by three numbers per instrument, its 24 h stats. A
+background task of the backend refreshes them (prod and stage, `STATS_REFRESH`) and keeps them
+in Redis, so a search never waits for a source; the other environments have none unless
+`STATS_REFRESH=true`.
+
+| Field | Crypto (Binance) | Stock (Alpaca, IEX) |
+| --- | --- | --- |
+| `price` | `lastPrice`, in the quote asset (USDT for BTCUSDT, BTC for ETHBTC) | the latest IEX trade (the daily bar's close without one), USD, also while the market is closed |
+| `change_24h` | `priceChangePercent`: against the price 24 hours ago (rolling) | against the previous daily bar's close: today's session, or the latest one while the market is closed |
+| `volume_24h` | `quoteVolume` of the last 24 hours in USD: as is for USDT pairs, otherwise at the USDT price of the quote asset (`<quote>USDT`, or the inverse of `USDT<quote>` such as USDTTRY); `null` for a quote asset without one | the daily bar's volume times its volume-weighted price (its close without one), USD |
+
+- Crypto: one `GET /api/v3/ticker/24hr?symbolStatus=TRADING` (weight 80, 0.7 MB) every 5
+  minutes for every pair; only the pairs of the catalog are kept. A pair without a positive last
+  price has no stats.
+- Stocks: `GET /v2/stocks/snapshots?symbols=<500 symbols>&feed=iex` for every stock of the
+  catalog, every 10 minutes: about 27 requests, one after another, at most a fifth of
+  `ALPACA_RATE_LIMIT` a minute and never more than 20 (prod and stage 20, previews 6), so chart
+  requests keep the rest; each also counts against `ALPACA_RATE_LIMIT`. A request that fails
+  (our whole budget spent by chart requests, an Alpaca error) is tried once more after the
+  others. One Alpaca still refuses (a 4xx other than 429) is split in halves, down to single
+  symbols, so a symbol it refuses costs only itself its stats (logged once per refresh); the
+  stocks of a request that still fails otherwise keep their last stats, each row until 2 hours
+  after it was fetched, and the others get new ones. A malformed snapshot is skipped (one
+  warning per refresh). A stock without a snapshot or
+  a price has no stats. A daily bar more than 5 days old (no IEX trade since) gives
+  no change and a volume of 0.
+- **The stock volume is IEX volume only**, about 1% of the market (the plan has no SIP data).
+  It ranks stocks by popularity, it is not their full turnover, and it is the volume of the
+  latest session, not a rolling 24 hours. Crypto volume is Binance's whole spot volume, so in a
+  mixed list stocks rank lower than their real turnover.
+- Both markets refresh at the same time, so crypto never waits for the paced stock requests;
+  an unexpected failure of one is logged as an error and the other still refreshes.
+- Each market's stats are one Redis value (`data:v1:stats:<market>`, see [Cache](#cache)) kept
+  until 2 hours after their refresh began; every row carries its own fetch time. A refresh runs once per environment at a time (a lock
+  in Redis, renewed while the refresh runs), and when a source fails the last stats stay until
+  they are 2 hours old. A process checks the stored stats at most once a minute, reading only
+  their 8-byte fetch time unless they changed, and keeps its own copy, so stats Redis has
+  evicted still serve until then.
+  Without stats (a new environment, a long outage) every instrument has `null` stats and sorts
+  last, by symbol: the list still works.
+- After each stock refresh the backend logs Alpaca's `X-RateLimit-Limit` and
+  `X-RateLimit-Remaining` of the last answer next to our own count of the minute.
 
 ## Icons
 
@@ -317,6 +369,7 @@ requested timeframe.
 | --- | --- | --- | --- |
 | Clients: `CLIENT_RATE_LIMIT` | client IP (`CF-Connecting-IP`, else the peer address; an IPv6 address counts as its /64 network); every candle and instrument-detail request, cached or not | 60 per minute, `0` disables | 429 `rate-limited` with `Retry-After` |
 | Alpaca: `ALPACA_RATE_LIMIT` | environment; each Alpaca request | prod 150, stage 100, `pr-*` 30 | 503 `source-unavailable` with `Retry-After` |
+| Alpaca, stats refresh | environment; each snapshots request, on top of the above | a fifth of `ALPACA_RATE_LIMIT`, at most 20 | the refresh waits for the next minute |
 | Binance REST: `BINANCE_WEIGHT_LIMIT` | environment; request weight of each REST call | 1000 | 503 `source-unavailable` with `Retry-After` |
 | logo.dev: `LOGO_DEV_RATE_LIMIT` | environment; each logo.dev request | prod 50, stage 20, `pr-*` 5 | the fallback icon, no waiting |
 | `data.binance.vision` | not limited | | |
@@ -330,7 +383,8 @@ requested timeframe.
   months fetched so far stay cached and the retry continues from there.
 - Binance limits request weight to 6000 per minute per IP, and all environments on the VM
   share one IP. When `X-MBX-USED-WEIGHT-1M` reaches 5000, REST calls pause until the minute
-  ends. Weights: `exchangeInfo` 20, `klines` 2 (any `limit`), `ping` 1.
+  ends. Weights: `exchangeInfo` 20, `ticker/24hr` of every pair 80, `klines` 2 (any `limit`),
+  `ping` 1.
 - A 429 from a source is retried with backoff when its `Retry-After` is at most 10 s; when
   retries run out the request gets 503 `source-unavailable`. After a 429 or 418 (IP ban) from
   Binance, REST calls pause for its `Retry-After` (60 s without one).
@@ -348,10 +402,11 @@ again. Keys:
 | `data:v2:candles:<instrument>:<base timeframe>:<chunk>` | one chunk of validated candles, Arrow IPC + zstd | see below |
 | `data:v1:first:<instrument>` | `available_from` | 7 days; 1 hour while the instrument has no candle |
 | `data:v1:health:<source>` | reachability of the source | 60 s |
+| `data:v1:stats:<market>` | the 24 h stats of the market's instruments (symbol, price, change, volume): their fetch time (8 bytes), then Arrow IPC + zstd, as a candle chunk | until 2 hours after the fetch began; replaced every 5 (crypto) or 10 (stocks) minutes by the background refresh |
 | `data:v1:icon:ticker/<symbol>`, `data:v1:icon:crypto/<base asset>` | the logo (`<media type>` + newline + image), `none` or `failed` | 30 days; `none` 7 days; `failed` 60 s |
-| `data:lock:vN:<key without data:vN:>` | single-flight lock for a key being fetched, with the key's version (`data:lock:v2:catalog:crypto`) | 30 s |
+| `data:lock:vN:<key without data:vN:>` | single-flight lock for a key being fetched, with the key's version (`data:lock:v2:catalog:crypto`) | 30 s; 2 minutes for a stats refresh, renewed every 40 s while it runs |
 | `data:fail:vN:<key without data:vN:>` | the error of a failed fetch of that key (source unavailable or invalid data) | 10 s, or the error's `Retry-After` when shorter |
-| `data:rl:client:<ip>:<minute>`, `data:rl:alpaca:<minute>`, `data:rl:binance:<minute>`, `data:rl:logodev:<minute>` | fixed-window counters; `<ip>` is an IPv4 address or an IPv6 /64 network, `<minute>` is Unix time // 60 | 61 s |
+| `data:rl:client:<ip>:<minute>`, `data:rl:alpaca:<minute>`, `data:rl:alpaca-stats:<minute>` (the stats' share), `data:rl:binance:<minute>`, `data:rl:logodev:<minute>` | fixed-window counters; `<ip>` is an IPv4 address or an IPv6 /64 network, `<minute>` is Unix time // 60 | 61 s |
 
 | Chunk | `<chunk>` | Crypto | Stock |
 | --- | --- | --- | --- |
