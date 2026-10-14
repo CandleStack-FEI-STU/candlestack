@@ -211,11 +211,14 @@ class SourceStats:
 @dataclass(frozen=True, slots=True)
 class InstrumentStats:
     """An instrument's last price, its 24 h change in percent and its 24 h volume in USD (see
-    ``STATS_SCHEMA``)."""
+    ``STATS_SCHEMA``); ``NO_STATS`` stands for an instrument without them."""
 
-    price: float
+    price: float | None
     change_24h: float | None
     volume_24h: float | None
+
+
+NO_STATS = InstrumentStats(None, None, None)
 
 
 @dataclass(frozen=True)

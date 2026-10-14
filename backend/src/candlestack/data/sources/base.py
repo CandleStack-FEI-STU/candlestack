@@ -224,7 +224,11 @@ def unavailable(source: Source, title: str, response: httpx.Response) -> SourceU
             retry_after=seconds,
         )
     if status >= 500:
-        detail = f"{title} failed with HTTP {status}. Try again in a minute."
-    else:
-        detail = f"{title} rejected our request with HTTP {status}. Try again later."
-    return SourceUnavailable(source, detail)
+        return SourceUnavailable(
+            source, f"{title} failed with HTTP {status}. Try again in a minute."
+        )
+    return SourceUnavailable(
+        source,
+        f"{title} rejected our request with HTTP {status}. Try again later.",
+        rejected=400 <= status < 500,
+    )

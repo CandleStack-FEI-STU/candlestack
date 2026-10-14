@@ -389,7 +389,7 @@ async def test_a_failed_snapshot_batch_keeps_the_others_and_the_last_stats(
     def answer(request: httpx.Request) -> httpx.Response:
         symbol = request.url.params["symbols"]
         if symbol == "SPY":
-            return httpx.Response(404)
+            return httpx.Response(503)
         return httpx.Response(200, json={symbol: sample[symbol]})
 
     snapshots.mock(side_effect=answer)
@@ -402,12 +402,9 @@ async def test_a_failed_snapshot_batch_keeps_the_others_and_the_last_stats(
     assert now["AAPL"].price == 250.0
     assert now["SPY"] == first["SPY"]  # its last stats stay
     assert now["BRK.B"] == first["BRK.B"]
-    assert [call.request.url.params["symbols"] for call in snapshots.calls[3:]] == [
-        "AAPL",
-        "SPY",
-        "BRK.B",
-        "SPY",
-    ]
+    asked = [call.request.url.params["symbols"] for call in snapshots.calls[3:]]
+    # SPY's request is repeated on 503 (three tries), then once more after the others.
+    assert asked == ["AAPL", "SPY", "SPY", "SPY", "BRK.B", "SPY", "SPY", "SPY"]
     assert "Alpaca snapshots of 1 of 3 stocks failed" in caplog.text
     # Stored that way too: another process sees the same.
     table = await fresh_store(service).table()
@@ -522,3 +519,122 @@ async def test_stats_too_old_to_keep_are_not_read(
 
     assert (await fresh_store(service).table()).height == 0
     assert await redis.exists("data:v1:stats:crypto") == 1  # left to expire, not decoded
+
+
+async def test_carried_over_stats_expire_with_their_own_fetch_time(
+    service: DataService, monkeypatch: pytest.MonkeyPatch
+):
+    clock = [time.time()]
+    monkeypatch.setattr(stats_store, "_time", lambda: clock[0])
+    store = fresh_store(service)
+    both = pl.DataFrame(
+        [("AAPL", 1.0, 1.0, 1.0), ("SPY", 2.0, 2.0, 2.0)], schema=STATS_SCHEMA, orient="row"
+    )
+    aapl = both.filter(symbol="AAPL")
+
+    async def everything():
+        return SourceStats(both)
+
+    async def without_spy():
+        return SourceStats(aapl, frozenset({"SPY"}))
+
+    await store.refresh(Market.STOCK, everything)
+    # Every later refresh cannot ask for SPY: its row is carried over with its own time.
+    for _ in range(11):
+        clock[0] += stats_store.REFRESH_SECONDS[Market.STOCK]
+        await store.refresh(Market.STOCK, without_spy)
+        assert set((await store.table())["symbol"]) == {"AAPL", "SPY"}
+
+    clock[0] += stats_store.REFRESH_SECONDS[Market.STOCK]  # SPY's row is 2 hours old now
+    assert set((await store.table())["symbol"]) == {"AAPL"}
+    await store.refresh(Market.STOCK, without_spy)
+    assert set((await store.table())["symbol"]) == {"AAPL"}
+    # Stored with each row's time: another process sees the same.
+    assert set((await fresh_store(service).table())["symbol"]) == {"AAPL"}
+
+
+async def test_stats_another_process_stored_while_waiting_for_the_lock_are_not_fetched_again(
+    service: DataService, redis: Redis, monkeypatch: pytest.MonkeyPatch
+):
+    other = StatsStore(Cache(redis), [Market.CRYPTO])
+    store = StatsStore(Cache(redis), [Market.CRYPTO])
+    fresh = pl.DataFrame([("BTCUSDT", 1.0, 1.0, 1.0)], schema=STATS_SCHEMA, orient="row")
+    lock = store._cache.lock
+
+    async def lock_after_another_refresh(name, ttl_ms):
+        # The other process refreshes between this one's check and its lock.
+        async def fetch():
+            return SourceStats(fresh)
+
+        await other.refresh(Market.CRYPTO, fetch)
+        return await lock(name, ttl_ms)
+
+    async def never():
+        raise AssertionError("fetched although another process has just stored them")
+
+    monkeypatch.setattr(store._cache, "lock", lock_after_another_refresh)
+    await store.refresh(Market.CRYPTO, never)
+
+    assert (await store.table()).height == 1
+    assert await redis.exists("data:lock:v1:stats:crypto") == 0
+
+
+async def test_a_refused_batch_is_split_to_find_the_symbol(
+    service: DataService, upstream, monkeypatch: pytest.MonkeyPatch, caplog
+):
+    upstream.exchange_info()
+    upstream.assets()
+    upstream.ticker()
+    sample = json.loads(upstream.fixture_bytes("alpaca/snapshots-sample.json"))
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        symbols = request.url.params["symbols"].split(",")
+        if "SPY" in symbols:  # Alpaca refuses any request with SPY
+            return httpx.Response(400, json={"message": "invalid symbol"})
+        return httpx.Response(200, json={symbol: sample[symbol] for symbol in symbols})
+
+    snapshots = upstream.router.get(f"{upstream.ALPACA_DATA}/v2/stocks/snapshots").mock(
+        side_effect=answer
+    )
+    with caplog.at_level(logging.WARNING):
+        await service.refresh_stats()
+
+    asked = [call.request.url.params["symbols"] for call in snapshots.calls]
+    # AAPL,SPY,BRK.B twice, then halves: AAPL and SPY,BRK.B; then SPY and BRK.B.
+    assert asked == [
+        "AAPL,SPY,BRK.B",
+        "AAPL,SPY,BRK.B",
+        "AAPL",
+        "SPY,BRK.B",
+        "SPY",
+        "BRK.B",
+    ]
+    found = await service.search(None, Market.STOCK)
+    with_stats = {item.symbol for item, stats in _stocks(found) if stats is not None}
+    assert with_stats == {"AAPL", "BRK.B"}
+    assert caplog.text.count("Alpaca refused the snapshots of SPY: no stats for them") == 1
+
+
+async def test_the_markets_refresh_at_the_same_time(
+    service: DataService, upstream, monkeypatch: pytest.MonkeyPatch
+):
+    upstream.exchange_info()
+    upstream.assets()
+    crypto_done = asyncio.Event()
+    binance, alpaca_source = service._sources[Market.CRYPTO], service._sources[Market.STOCK]
+
+    async def crypto_stats(_instruments):
+        crypto_done.set()
+        return SourceStats(pl.DataFrame(schema=STATS_SCHEMA))
+
+    async def stock_stats(_instruments):
+        # Waits for crypto, as a paced stock refresh would take minutes: crypto must not wait
+        # for it.
+        await crypto_done.wait()
+        return SourceStats(pl.DataFrame(schema=STATS_SCHEMA))
+
+    monkeypatch.setattr(binance, "stats", crypto_stats)
+    monkeypatch.setattr(alpaca_source, "stats", stock_stats)
+
+    await asyncio.wait_for(service.refresh_stats(), 5)
+    assert crypto_done.is_set()

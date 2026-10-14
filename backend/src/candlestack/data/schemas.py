@@ -5,12 +5,14 @@ straight from the Polars columns, and ``CandlesOut`` only documents it.
 """
 
 from collections.abc import Mapping
-from typing import Literal, Self
+from dataclasses import asdict
+from typing import Any, Literal, Self
 
 import orjson
 from pydantic import BaseModel, Field
 
 from candlestack.data.models import (
+    NO_STATS,
     CandleSet,
     Feed,
     Instrument,
@@ -52,17 +54,21 @@ class InstrumentOut(BaseModel):
 
     @classmethod
     def of(cls, instrument: Instrument) -> Self:
-        return cls(
-            id=str(instrument.id),
-            market=instrument.market,
-            symbol=instrument.symbol,
-            name=instrument.name,
-            source=instrument.source,
-            feed=instrument.feed,
-            exchange=instrument.exchange,
-            base=instrument.base,
-            quote=instrument.quote,
-        )
+        return cls(**_instrument_fields(instrument))
+
+
+def _instrument_fields(instrument: Instrument) -> dict[str, Any]:
+    return {
+        "id": str(instrument.id),
+        "market": instrument.market,
+        "symbol": instrument.symbol,
+        "name": instrument.name,
+        "source": instrument.source,
+        "feed": instrument.feed,
+        "exchange": instrument.exchange,
+        "base": instrument.base,
+        "quote": instrument.quote,
+    }
 
 
 class InstrumentItemOut(InstrumentOut):
@@ -88,12 +94,7 @@ class InstrumentItemOut(InstrumentOut):
 
     @classmethod
     def of_item(cls, instrument: Instrument, stats: InstrumentStats | None) -> Self:
-        return cls(
-            **InstrumentOut.of(instrument).model_dump(),
-            price=None if stats is None else stats.price,
-            change_24h=None if stats is None else stats.change_24h,
-            volume_24h=None if stats is None else stats.volume_24h,
-        )
+        return cls(**_instrument_fields(instrument), **asdict(stats or NO_STATS))
 
 
 class InstrumentSearchOut(BaseModel):

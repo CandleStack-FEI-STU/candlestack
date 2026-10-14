@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Bar } from './bars';
-import { formatVolume, legendFor, priceDecimals } from './legend';
+import { legendFor } from './legend';
 
 const bar = (time: number, open: number, close: number, volume = 1000): Bar => ({
   time,
@@ -30,7 +30,7 @@ describe('chart legend', () => {
 
   it('measures the change from the previous close, and colors by the candle itself', () => {
     const legend = legendFor(BARS, 1, 2);
-    expect(legend?.change).toBe('-10.00%');
+    expect(legend?.change).toBe('−10.00%');
     expect(legend?.volume).toBe('1.23M');
     expect(legend?.up).toBe(false);
   });
@@ -43,12 +43,10 @@ describe('chart legend', () => {
     expect(legendFor([], null, 2)).toBeNull();
   });
 
-  it('gives cheap prices enough decimals', () => {
-    expect(priceDecimals(82859.12)).toBe(2);
-    expect(priceDecimals(1)).toBe(2);
-    expect(priceDecimals(0.1234)).toBe(4);
-    expect(priceDecimals(0.00001234)).toBe(8);
-    expect(priceDecimals(0)).toBe(2);
-    expect(formatVolume(7.67)).toBe('7.67');
+  it('writes prices with the given decimals and thousands separators, like the list', () => {
+    const legend = legendFor([bar(1, 83000, 83249.35, 12345)], null, 2);
+    expect(legend?.close).toBe('83,249.35');
+    expect(legend?.volume).toBe('12.3K');
+    expect(legendFor([bar(1, 1.3, 1.3662)], null, 4)?.close).toBe('1.3662');
   });
 });

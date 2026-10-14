@@ -1,6 +1,6 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import {
   hasNextPage,
@@ -19,7 +19,7 @@ import { InstrumentTable } from './InstrumentTable';
 import { describeListError, emptyMessage, mismatchMessage, unavailableMessage, type ListError } from './messages';
 import { Pager } from './Pager';
 import { clampedPage, listBodyState } from './pagination';
-import { apiSort } from './sorting';
+import { apiSort, shownSort } from './sorting';
 
 // Rows per page. The API allows up to 100; 25 fits about one screen.
 export const LIST_PAGE_SIZE = 25;
@@ -88,7 +88,7 @@ function PastTheEnd() {
 function Mismatch({ market, exchange }: { market: Market; exchange: Exchange }) {
   const { title, hint } = mismatchMessage(market, exchange);
   return (
-    <div className="flex flex-col items-center gap-1.5 px-3 py-10 text-center text-sm">
+    <div className="flex flex-col items-center gap-1.5 rounded-lg border px-3 py-10 text-center text-sm">
       <p className="font-medium">{title}</p>
       <p className="text-muted-foreground">{hint}</p>
       <Button asChild variant="outline" size="sm" className="mt-1.5">
@@ -119,6 +119,13 @@ function ListBody({ items, sort, waiting, page, empty }: BodyProps) {
   return <Note>{empty}</Note>;
 }
 
+// The order of the rows on screen (shownSort): the last order that had its own result.
+function useShownSort(sort: ListSort | undefined, placeholder: boolean): ListSort | undefined {
+  const [previous, setPrevious] = useState(sort);
+  if (!placeholder && previous !== sort) setPrevious(sort);
+  return shownSort(sort, previous, placeholder);
+}
+
 // The API request of a page of the list.
 function searchParams({ query, market, exchange, sort, page }: Props) {
   const offset = (page - 1) * LIST_PAGE_SIZE;
@@ -132,14 +139,9 @@ export function InstrumentList(props: Props) {
   const mismatch = mismatchOf(market, exchange);
   const result = useQuery({ ...instrumentSearchQueryOptions(searchParams(props)), enabled: !mismatch });
   const clamping = useClampPage(result, page);
+  const shown = useShownSort(sort, result.isPlaceholderData);
 
-  if (mismatch) {
-    return (
-      <div className="rounded-lg border">
-        <Mismatch {...mismatch} />
-      </div>
-    );
-  }
+  if (mismatch) return <Mismatch {...mismatch} />;
   if (result.isPending) return <Note>Loading instruments…</Note>;
   if (result.isError) {
     return <ErrorState error={describeListError(result.error, query)} onRetry={() => void result.refetch()} />;
@@ -153,7 +155,7 @@ export function InstrumentList(props: Props) {
       <div className={result.isPlaceholderData ? 'rounded-lg border opacity-60' : 'rounded-lg border'}>
         <ListBody
           items={data.items}
-          sort={sort}
+          sort={shown}
           waiting={result.isPlaceholderData || clamping}
           page={page}
           empty={emptyMessage(query, market, exchange)}

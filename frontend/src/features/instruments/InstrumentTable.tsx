@@ -4,10 +4,10 @@ import type { ReactNode } from 'react';
 
 import { exchangeName, type Instrument, type Market } from '@/api';
 import { InstrumentIcon } from '@/components/InstrumentIcon';
+import { changeTone, formatChange, formatPrice, formatSignedChange, formatVolume } from '@/lib/numbers';
 import { cn } from '@/lib/utils';
 import type { ListSort } from '@/routes/instrumentsSearch';
 
-import { changeTone, formatChange, formatPrice, formatSignedChange, formatVolume } from './numbers';
 import { sortedColumn, type SortedColumn } from './sorting';
 
 // Phones (below md) show two columns, the symbol and the price; from md the stats get their own

@@ -293,6 +293,18 @@ class _Snapshots:
     malformed: int = 0
     response: httpx.Response | None = None
     error: DataError | None = None
+    # Symbols Alpaca refused even alone (a 4xx for a request of just that symbol).
+    refused: list[str] = field(default_factory=list)
+
+
+Batch = tuple[str, ...]
+"""Symbols asked for in one snapshots request."""
+
+
+def _refused(error: DataError) -> bool:
+    """Whether Alpaca refused the request itself (a 4xx other than 429): splitting it can find
+    the symbol it refuses."""
+    return isinstance(error, SourceUnavailable) and error.rejected
 
 
 class AlpacaSource:
@@ -384,9 +396,10 @@ class AlpacaSource:
     async def stats(self, instruments: Sequence[Instrument]) -> SourceStats:
         """Snapshots of ``SNAPSHOT_SYMBOLS`` stocks per request, one after another, each within
         the stats share of the budget (waiting for it as long as needed) and our whole budget. A
-        request that fails is tried once more after the others; the symbols that still fail
-        keep their last stats. Logs Alpaca's rate-limit headers of the last answer next to our
-        own count, once."""
+        request that fails is tried once more after the others; one Alpaca still refuses (a
+        4xx) is split in halves until the symbols it refuses are found, which get no stats. The
+        stocks of a request that still fails otherwise keep their last stats. Logs Alpaca's
+        rate-limit headers of the last answer next to our own count, once."""
         batches = list(batched((i.symbol for i in instruments), SNAPSHOT_SYMBOLS, strict=False))
         got = _Snapshots()
         failed = await self._snapshots(batches, got)
@@ -394,28 +407,24 @@ class AlpacaSource:
             # The whole budget may have been spent by chart requests: wait as it says, once.
             if isinstance(got.error, SourceUnavailable) and got.error.retry_after:
                 await pause(min(got.error.retry_after, 60))
-            failed = await self._snapshots(failed, got)
-        if failed and got.error is not None:
-            if not got.frames:
-                raise got.error
-            logger.warning(
-                "Alpaca snapshots of %d of %d stocks failed (%s): their last stats stay",
-                sum(len(batch) for batch in failed),
-                len(instruments),
-                got.error.detail,
-            )
-        if got.malformed:
-            logger.warning("Skipped %d malformed Alpaca snapshots", got.malformed)
+            failed = await self._snapshots([batch for batch, _ in failed], got)
+        unanswered: list[Batch] = []
+        for batch, error in failed:
+            unanswered += await self._narrow(batch, got) if _refused(error) else [batch]
+        if not got.frames and got.error is not None and (unanswered or got.refused):
+            raise got.error
+        self._log_stats(got, unanswered, len(instruments))
         await self._log_rate_limit(got)
         return SourceStats(
             pl.concat(got.frames) if got.frames else pl.DataFrame(schema=STATS_SCHEMA),
-            frozenset(symbol for batch in failed for symbol in batch),
+            frozenset(symbol for batch in unanswered for symbol in batch),
         )
 
     async def _snapshots(
-        self, batches: list[tuple[str, ...]], got: _Snapshots
-    ) -> list[tuple[str, ...]]:
-        """Asks for the snapshots of each batch into ``got``; returns the batches that failed."""
+        self, batches: list[Batch], got: _Snapshots
+    ) -> list[tuple[Batch, DataError]]:
+        """Asks for the snapshots of each batch into ``got``; returns the batches that failed,
+        each with its error."""
         failed = []
         for symbols in batches:
             await self._stats_turn()
@@ -428,13 +437,42 @@ class AlpacaSource:
                     parse_snapshots, response.content, int(_time())
                 )
             except DataError as exc:
-                failed.append(symbols)
+                failed.append((symbols, exc))
                 got.error = exc
                 continue
             got.frames.append(frame)
             got.malformed += malformed
             got.response = response
         return failed
+
+    async def _narrow(self, batch: Batch, got: _Snapshots) -> list[Batch]:
+        """Asks for the two halves of a batch Alpaca refused, and so on down to single symbols,
+        which go to ``got.refused``; returns the parts that failed for another reason."""
+        if len(batch) == 1:
+            got.refused.extend(batch)
+            return []
+        half = len(batch) // 2
+        unanswered: list[Batch] = []
+        for part, error in await self._snapshots([batch[:half], batch[half:]], got):
+            unanswered += await self._narrow(part, got) if _refused(error) else [part]
+        return unanswered
+
+    @staticmethod
+    def _log_stats(got: _Snapshots, unanswered: list[Batch], total: int) -> None:
+        if unanswered and got.error is not None:
+            logger.warning(
+                "Alpaca snapshots of %d of %d stocks failed (%s): their last stats stay",
+                sum(len(batch) for batch in unanswered),
+                total,
+                got.error.detail,
+            )
+        if got.refused:
+            logger.warning(
+                "Alpaca refused the snapshots of %s: no stats for them",
+                ", ".join(got.refused),
+            )
+        if got.malformed:
+            logger.warning("Skipped %d malformed Alpaca snapshots", got.malformed)
 
     async def _log_rate_limit(self, got: _Snapshots) -> None:
         if got.response is None:

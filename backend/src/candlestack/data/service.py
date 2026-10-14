@@ -160,7 +160,12 @@ class DataService:
             market = exchange.market
         catalog = await self._catalogs.catalog(market)
         stats = await self._stats.table()
-        found = catalog.page(q, market, limit, offset, exchange=exchange, sort=sort, stats=stats)
+        # Sorting about 15k instruments takes a few ms: in a thread, off the event loop.
+        found = await to_thread.run_sync(
+            partial(
+                catalog.page, q, market, limit, offset, exchange=exchange, sort=sort, stats=stats
+            )
+        )
         return SearchResult(found.items, self._catalogs.missing(market), found.total, found.stats)
 
     async def keep_stats_fresh(self) -> None:
@@ -172,13 +177,16 @@ class DataService:
 
     async def refresh_stats(self) -> None:
         """One round: each market whose stats are due is fetched from its source for the
-        instruments of its catalog (``StatsStore.refresh``). A market whose refresh fails
-        unexpectedly is logged for a developer, and the others still run."""
-        for market in self._sources:
-            try:
-                await self._stats.refresh(market, partial(self._fetch_stats, market))
-            except Exception:
-                logger.exception("Refreshing the %s stats failed", market)
+        instruments of its catalog (``StatsStore.refresh``), all markets at once, so crypto does
+        not wait for the paced stock requests. A market whose refresh fails unexpectedly is
+        logged for a developer, and the others still run."""
+        await asyncio.gather(*(self._refresh_market(market) for market in self._sources))
+
+    async def _refresh_market(self, market: Market) -> None:
+        try:
+            await self._stats.refresh(market, partial(self._fetch_stats, market))
+        except Exception:
+            logger.exception("Refreshing the %s stats failed", market)
 
     async def _fetch_stats(self, market: Market) -> SourceStats:
         catalog = await self._catalogs.catalog(market)

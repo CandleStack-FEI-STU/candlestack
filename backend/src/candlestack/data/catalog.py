@@ -90,6 +90,9 @@ class Catalog:
                 "words": pl.String,
             },
         ).with_row_index("index")
+        # The catalog joined with the stats it was last searched with, kept while they are the
+        # same frame (the store hands out one frame until its stats change).
+        self._joined: tuple[pl.DataFrame | None, pl.DataFrame] = (None, self._with_stats(None))
 
     def __len__(self) -> int:
         return len(self._items)
@@ -155,11 +158,7 @@ class Catalog:
         stats: pl.DataFrame | None,
     ) -> pl.DataFrame:
         """The ``index`` and the stats of every match, in order."""
-        frame = self._filter(market, exchange).join(
-            pl.DataFrame(schema=MARKET_STATS_SCHEMA) if stats is None else stats,
-            on=["market", "symbol"],
-            how="left",
-        )
+        frame = self._filter(self._joined_with(stats), market, exchange)
         columns = ["index", *_STATS]
         # Instruments without stats go last in the stats sorts, whichever way they sort.
         by: list[pl.Expr] = []
@@ -198,8 +197,26 @@ class Catalog:
             .select(columns)
         )
 
-    def _filter(self, market: Market | None, exchange: Exchange | None) -> pl.DataFrame:
-        frame = self._frame
+    def _joined_with(self, stats: pl.DataFrame | None) -> pl.DataFrame:
+        """The catalog with the columns of ``stats``, joined once per stats frame."""
+        joined_stats, joined = self._joined
+        if stats is not joined_stats:
+            joined = self._with_stats(stats)
+            self._joined = (stats, joined)
+        return joined
+
+    def _with_stats(self, stats: pl.DataFrame | None) -> pl.DataFrame:
+        return self._frame.join(
+            pl.DataFrame(schema=MARKET_STATS_SCHEMA) if stats is None else stats,
+            on=["market", "symbol"],
+            how="left",
+            maintain_order="left",
+        )
+
+    @staticmethod
+    def _filter(
+        frame: pl.DataFrame, market: Market | None, exchange: Exchange | None
+    ) -> pl.DataFrame:
         if market is not None:
             frame = frame.filter(pl.col("market") == str(market))
         if exchange is not None:

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { LIST_SORTS, apiSort, sortLabel, sortedColumn } from './sorting';
+import { LIST_SORTS, apiSort, shownSort, sortLabel, sortedColumn } from './sorting';
 
 describe('the orders of the list', () => {
   it('are Volume (the default), Top gainers, Top losers and Symbol', () => {
@@ -22,5 +22,14 @@ describe('the orders of the list', () => {
     expect(sortedColumn('gainers')).toEqual({ column: 'change', direction: 'descending' });
     expect(sortedColumn('losers')).toEqual({ column: 'change', direction: 'ascending' });
     expect(sortedColumn('symbol')).toEqual({ column: 'symbol', direction: 'ascending' });
+  });
+});
+
+describe('shownSort', () => {
+  it('keeps the order of the rows on screen until the new result arrives', () => {
+    // Top gainers picked; the volume-sorted rows stay on screen meanwhile.
+    expect(shownSort('gainers', undefined, true)).toBeUndefined();
+    expect(shownSort('gainers', undefined, false)).toBe('gainers');
+    expect(shownSort(undefined, 'losers', true)).toBe('losers');
   });
 });

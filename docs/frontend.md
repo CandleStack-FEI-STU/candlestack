@@ -171,7 +171,13 @@ instruments first and shows each one's 24 h stats from the API (`price`, `change
   the order a phone shows. Cells have 8 px between the columns and 12 px at the sides.
 - From `md` to `lg` the Type column is left out, so the name keeps about 100 px at 768 px; from
   `lg` every column shows. Nothing scrolls sideways at any width.
-- The formats are pure functions with unit tests (`numbers.ts`).
+- While the previous page stands in for the next one, the header's arrow stays with the rows on
+  screen and moves when the new rows arrive.
+- The formats are pure functions with unit tests in `src/lib/numbers.ts`, which the chart legend
+  uses too, so both write an instrument's numbers alike: since #184 the legend groups thousands
+  (83,249.35), gives prices between 1 and 10 four decimals like the list (the chart's price
+  scale too), writes volumes with 3 significant digits (12.3K) and a falling change with a minus
+  sign (−1.20%).
 - The 10-day mini chart of the approved design comes with #189.
 
 ## Instrument filters

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Any
 
 import httpx
@@ -10,8 +11,8 @@ from redis.asyncio import Redis
 from candlestack.core import RateLimiter, Settings
 from candlestack.core.redis import get_redis
 from candlestack.data import DataService
+from candlestack.main import _report_death, create_app
 from candlestack.main import app as module_app
-from candlestack.main import create_app
 
 
 def test_lifespan_opens_and_closes_the_shared_clients(app: FastAPI) -> None:
@@ -58,3 +59,35 @@ def test_lifespan_without_the_stats_refresh(app: FastAPI, monkeypatch: pytest.Mo
 def test_module_level_app_for_granian() -> None:
     assert isinstance(module_app, FastAPI)
     assert module_app.openapi_url == "/api/v1/openapi.json"
+
+
+async def _fails() -> None:
+    raise RuntimeError("boom")
+
+
+async def _waits() -> None:
+    await asyncio.Event().wait()
+
+
+@pytest.mark.anyio
+async def test_a_stats_task_that_dies_is_an_error_for_a_developer(caplog: pytest.LogCaptureFixture):
+    task = asyncio.create_task(_fails())
+    await asyncio.wait([task])
+
+    with caplog.at_level(logging.ERROR):
+        _report_death(task)
+
+    assert "The stats refresh stopped: RuntimeError('boom')" in caplog.text
+    assert caplog.records[-1].exc_info is not None
+
+
+@pytest.mark.anyio
+async def test_a_cancelled_stats_task_is_no_error(caplog: pytest.LogCaptureFixture):
+    task = asyncio.create_task(_waits())
+    await asyncio.sleep(0)
+    task.cancel()
+    await asyncio.wait([task])
+
+    _report_death(task)
+
+    assert caplog.text == ""

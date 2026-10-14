@@ -371,3 +371,12 @@ def test_page_carries_the_stats_of_its_items(catalog: Catalog) -> None:
 def test_instruments_of_a_market(catalog: Catalog) -> None:
     assert ids(catalog.instruments(Market.CRYPTO)) == ids(INSTRUMENTS[:6])
     assert ids(catalog.instruments(Market.STOCK)) == ids(INSTRUMENTS[6:])
+
+
+def test_the_join_with_the_stats_is_made_once_per_stats_frame() -> None:
+    catalog = Catalog(INSTRUMENTS)
+
+    first = catalog._joined_with(STATS)
+    assert catalog._joined_with(STATS) is first
+    assert catalog._joined_with(STATS.clone()) is not first
+    assert ids(catalog.search(None, stats=STATS))[0] == "crypto:BTCUSDT"

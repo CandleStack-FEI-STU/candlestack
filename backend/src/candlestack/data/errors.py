@@ -100,11 +100,21 @@ class SourceUnavailable(DataError):
     """A source is down, timed out, or our request budget for it is spent.
 
     ``retry_after`` (seconds) is set when waiting helps, e.g. until the budget window resets.
+    ``rejected`` is set when the source refused this very request (a 4xx other than 429), so
+    sending it again unchanged will not help.
     """
 
-    def __init__(self, source: str, detail: str, *, retry_after: int | None = None) -> None:
+    def __init__(
+        self,
+        source: str,
+        detail: str,
+        *,
+        retry_after: int | None = None,
+        rejected: bool = False,
+    ) -> None:
         self.source = source
         self.retry_after = retry_after
+        self.rejected = rejected
         super().__init__(detail)
 
 

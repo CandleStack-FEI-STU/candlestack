@@ -35,3 +35,14 @@ export function sortedColumn(sort: ListSort | undefined): SortedColumn {
   if (sort === 'symbol') return { column: 'symbol', direction: 'ascending' };
   return { column: 'volume', direction: 'descending' };
 }
+
+// The order of the rows on screen: while the previous result stands in for the new one (the
+// list keeps it until the new page arrives), the order it was sorted in, so the header's arrow
+// matches the rows; then the order asked for.
+export function shownSort(
+  asked: ListSort | undefined,
+  previous: ListSort | undefined,
+  placeholder: boolean,
+): ListSort | undefined {
+  return placeholder ? previous : asked;
+}

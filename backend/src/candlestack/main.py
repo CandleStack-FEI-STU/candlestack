@@ -1,6 +1,7 @@
 """The CandleStack API app, served by granian: ``candlestack.main:app``."""
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from importlib.resources import files
@@ -25,6 +26,8 @@ from candlestack.core import (
     setup_sentry,
 )
 from candlestack.data import DataService, build_data_service, data_router
+
+logger = logging.getLogger(__name__)
 
 TITLE = "CandleStack API"
 # The icon is served by the frontend on the same host, like the rest of the site.
@@ -79,6 +82,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.redis.aclose()
 
 
+def _report_death(task: asyncio.Task[None]) -> None:
+    """Makes a background task that ended other than by its cancellation a developer's issue
+    (Sentry), so the stats cannot stop being refreshed silently."""
+    if task.cancelled():
+        return
+    error = task.exception()
+    logger.error("The stats refresh stopped: %r", error, exc_info=error)
+
+
 @asynccontextmanager
 async def _background(service: DataService, *, stats: bool) -> AsyncIterator[None]:
     """Runs the stats refresh while the app runs, when ``stats``; cancels it on shutdown."""
@@ -86,6 +98,7 @@ async def _background(service: DataService, *, stats: bool) -> AsyncIterator[Non
         yield
         return
     task = asyncio.create_task(service.keep_stats_fresh())
+    task.add_done_callback(_report_death)
     try:
         yield
     finally:

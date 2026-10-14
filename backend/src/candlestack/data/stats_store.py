@@ -2,7 +2,9 @@
 process memory, refreshed in the background.
 
 Each market's stats are one Redis value (``data:v1:stats:<market>``, the frame as Arrow IPC after
-its fetch time, like a candle chunk) that a refresh replaces every few minutes. Searches only
+the time of the refresh, like a candle chunk) that a refresh replaces every few minutes. Every
+row keeps the time it was fetched: a refresh that could not ask for some instruments carries
+their last rows over, until those are ``KEEP_SECONDS`` old. Searches only
 read: the process's copy, checked against Redis at most once a minute (only the 8-byte fetch
 time is read unless it changed), so a search never waits for a source. Stats live
 ``KEEP_SECONDS`` from their fetch time, in Redis and in the process alike; without any,
@@ -53,6 +55,9 @@ _time = time.time
 Fetch = Callable[[], Awaitable[SourceStats]]
 """Fetches a market's stats from its source."""
 
+# A market's stats as stored: ``STATS_SCHEMA`` and when each row was fetched (epoch seconds).
+STORED_SCHEMA = pl.Schema({**STATS_SCHEMA, "fetched_at": pl.Int64})
+
 
 @dataclass(frozen=True, slots=True)
 class _Entry:
@@ -71,6 +76,7 @@ class StatsStore:
         self._entries: dict[Market, _Entry] = {}
         self._reload_at: dict[Market, float] = {}
         self._table: pl.DataFrame | None = None
+        self._table_until = 0.0  # when the oldest row of the table expires
 
     async def table(self) -> pl.DataFrame:
         """The stats of every market that has them (``MARKET_STATS_SCHEMA``). Reads Redis at most
@@ -80,13 +86,9 @@ class StatsStore:
                 self._reload_at[market] = time.monotonic() + RELOAD_SECONDS
                 await self._reload(market)
         self._forget_old()
-        if self._table is None:
-            self._table = pl.concat(
-                [
-                    entry.frame.select(pl.lit(str(market)).alias("market"), *STATS_SCHEMA)
-                    for market, entry in self._entries.items()
-                ]
-                or [pl.DataFrame(schema=MARKET_STATS_SCHEMA)]
+        if self._table is None or _time() >= self._table_until:
+            self._table, self._table_until = await to_thread.run_sync(
+                _table, dict(self._entries), _time()
             )
         return self._table
 
@@ -96,20 +98,21 @@ class StatsStore:
         could not ask for keep their last stats. A source that fails leaves the last stats in
         place (logged); the next call tries again."""
         name = _name(market)
-        await self._reload(market)
-        entry = self._entries.get(market)
         started = int(_time())
-        if entry is not None and started - entry.fetched_at < REFRESH_SECONDS[market]:
+        if not await self._due(market, started):
             return
         token = await self._cache.lock(name, LOCK_MS)
         if token is None:
             return  # another process is refreshing them; adopted on its next reload
         try:
+            # It may have stored new ones between the check and the lock.
+            if not await self._due(market, started):
+                return
             async with _renewing(self._cache, name, token):
                 found = await fetch()
-            frame = _merged(found, entry)
+            frame = _merged(found, self._entries.get(market), started, int(_time()))
             blob = await to_thread.run_sync(encode_chunk, frame, started)
-            # Redis keeps them as long as the process does: KEEP_SECONDS from the fetch.
+            # Redis keeps them as long as the process does: KEEP_SECONDS from the refresh.
             await self._cache.set(name, blob, max(1, KEEP_SECONDS - (int(_time()) - started)))
         except DataError as exc:
             logger.warning("Refreshing the %s stats failed: %s", market, exc.detail)
@@ -118,6 +121,13 @@ class StatsStore:
             await self._cache.unlock(name, token)
         self._adopt(market, _Entry(started, frame))
         logger.info("Refreshed the %s stats: %d instruments", market, frame.height)
+
+    async def _due(self, market: Market, now: int) -> bool:
+        """Whether the market's stats, in Redis or this process, are ``REFRESH_SECONDS`` old or
+        missing."""
+        await self._reload(market)
+        entry = self._entries.get(market)
+        return entry is None or now - entry.fetched_at >= REFRESH_SECONDS[market]
 
     async def _reload(self, market: Market) -> None:
         """Adopts the stats in Redis when they are newer than the process's copy and not too
@@ -137,7 +147,7 @@ class StatsStore:
             if blob is None:
                 return
             frame, fetched_at = await to_thread.run_sync(decode_chunk, blob)
-            if frame.schema != STATS_SCHEMA:
+            if frame.schema != STORED_SCHEMA:
                 raise ValueError(f"columns {frame.schema}")
         except (struct.error, OSError, ValueError, pl.exceptions.PolarsError) as exc:
             # An unreadable value must not break the list: it goes, a refresh writes a new one.
@@ -158,13 +168,33 @@ class StatsStore:
                 self._table = None
 
 
-def _merged(found: SourceStats, last: _Entry | None) -> pl.DataFrame:
-    """The new stats, plus the last ones of the symbols the source could not ask for."""
-    frame = found.frame.select(*STATS_SCHEMA)
+def _merged(found: SourceStats, last: _Entry | None, started: int, now: int) -> pl.DataFrame:
+    """The new stats, fetched at ``started``, plus the last rows of the symbols the source could
+    not ask for, with their own fetch time, while they are younger than ``KEEP_SECONDS``."""
+    frame = found.frame.select(*STATS_SCHEMA).with_columns(fetched_at=pl.lit(started, pl.Int64))
     if not found.failed or last is None:
         return frame
-    kept = last.frame.filter(pl.col("symbol").is_in(list(found.failed)))
-    return pl.concat([frame, kept.select(*STATS_SCHEMA)])
+    kept = last.frame.filter(
+        pl.col("symbol").is_in(list(found.failed)), pl.col("fetched_at") > now - KEEP_SECONDS
+    )
+    return pl.concat([frame, kept])
+
+
+def _table(entries: dict[Market, _Entry], now: float) -> tuple[pl.DataFrame, float]:
+    """The rows of every market younger than ``KEEP_SECONDS`` (``MARKET_STATS_SCHEMA``), and
+    when the oldest of them expires (CPU work, run in a thread)."""
+    frames = [
+        entry.frame.filter(pl.col("fetched_at") > now - KEEP_SECONDS).with_columns(
+            market=pl.lit(str(market))
+        )
+        for market, entry in entries.items()
+    ]
+    rows = (
+        pl.concat(frames) if frames else pl.DataFrame(schema={**STORED_SCHEMA, "market": pl.String})
+    )
+    oldest = rows.select(pl.col("fetched_at").min()).item()
+    until = float("inf") if oldest is None else oldest + KEEP_SECONDS
+    return rows.select(*MARKET_STATS_SCHEMA), until
 
 
 @asynccontextmanager
