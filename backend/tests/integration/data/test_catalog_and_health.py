@@ -151,6 +151,17 @@ async def test_search_leaves_out_a_market_that_cannot_be_loaded(service: DataSer
     assert assets.call_count == 3  # one load with its retries; the failure is then remembered
 
 
+async def test_first_search_waits_for_a_market_not_tried_yet(service: DataService, upstream):
+    upstream.exchange_info()
+    upstream.assets()
+    # The background refresh of the stats loads the stocks first, right after a start.
+    await service.search(None, Market.STOCK)
+
+    found = await service.search("btc")
+
+    assert (ids(found)[0], found.unavailable) == ("crypto:BTCUSDT", [])
+
+
 async def test_search_does_not_wait_for_a_market_being_loaded(
     service: DataService, upstream, redis, monkeypatch: pytest.MonkeyPatch
 ):
@@ -377,14 +388,21 @@ async def test_market_that_fails_to_load_in_the_background_stays_out(
 
 
 async def test_crash_of_a_background_load_is_logged_and_tried_again(
-    service: DataService, upstream, caplog: pytest.LogCaptureFixture
+    service: DataService,
+    upstream,
+    redis,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
 ):
+    monkeypatch.setattr(catalog_store, "LOAD_RETRY_SECONDS", 0)  # retry at once
     upstream.exchange_info()
     listed = upstream.fixture_bytes("alpaca/assets.json")
+    down = [httpx.Response(503)] * 3  # the first load and its two retries
     assets = upstream.router.get(f"{upstream.ALPACA_API}/v2/assets").mock(
-        side_effect=[RuntimeError("a bug"), httpx.Response(200, content=listed)]
+        side_effect=[*down, RuntimeError("a bug"), httpx.Response(200, content=listed)]
     )
-    await service.search("btcusdt", Market.CRYPTO)
+    await service.search("btcusdt")  # loads crypto; stocks fail and are retried in the background
+    await redis.delete("data:fail:v2:catalog:stock")  # the error Redis keeps for 10 s
 
     with caplog.at_level(logging.WARNING):
         found = await and_background(service.search("apple"))
@@ -395,7 +413,7 @@ async def test_crash_of_a_background_load_is_logged_and_tried_again(
     [crash] = [r for r in caplog.records if r.getMessage() == "Loading the stock catalog failed"]
     assert (crash.levelno, crash.exc_info is not None) == (logging.ERROR, True)
     assert ids(await service.search("apple")) == ["stock:AAPL"]
-    assert assets.call_count == 2
+    assert assets.call_count == 5
 
 
 async def test_sources_health_is_checked_once_a_minute(service: DataService, upstream):
