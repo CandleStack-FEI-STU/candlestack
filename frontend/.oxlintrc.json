@@ -4,7 +4,7 @@
   "categories": {
     "correctness": "error"
   },
-  "ignorePatterns": ["dist", "site", "src/api/schema.d.ts"],
+  "ignorePatterns": ["dist", "src/api/schema.d.ts"],
   "rules": {
     "complexity": ["error", { "max": 10 }],
     "max-lines": ["error", { "max": 400, "skipBlankLines": true, "skipComments": true }],

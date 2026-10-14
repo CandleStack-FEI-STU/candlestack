@@ -79,9 +79,20 @@ check_docs() {
   grep -qi scalar "$work/body" || fail "the page does not load Scalar"
 }
 
+# The app, on / and on a direct link to one of its routes (the frontend's Caddy answers a path
+# that is no file with index.html), and the script that index.html loads.
 check_frontend() {
-  get /
-  expect 200 text/html
+  local path script
+  for path in / '/instrument/crypto:BTCUSDT?tf=1h'; do
+    get "$path"
+    expect 200 text/html
+    grep -q '<div id="root">' "$work/body" || fail "$path: not the app's index.html: ${body:0:300}"
+  done
+  script=$(grep -o 'src="/assets/[^"]*\.js"' "$work/body" | head -n 1 | cut -d '"' -f 2) || true
+  [[ -n $script ]] || fail "index.html loads no script from /assets/"
+  get "$script"
+  expect 200 text/javascript
+  grep -qi '^cache-control: .*immutable' "$work/headers" || fail "$script: not cached as immutable"
 }
 
 # The security headers the edge Caddy adds (infra/edge/caddy/Caddyfile), on a page and on the API.

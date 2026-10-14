@@ -35,5 +35,3 @@ API_TARGET=http://localhost:8000 npm run dev
 | `npm run api:types` | regenerate `src/api/schema.d.ts` from `docs/openapi.json` after an API change |
 
 Run `npm run build`, `npm run lint` and `npm test` before every push.
-
-`site/` is the placeholder page that prod serves until the app is released.

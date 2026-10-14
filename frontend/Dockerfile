@@ -1,9 +1,8 @@
 # syntax=docker/dockerfile:1
 
-# CandleStack frontend: the app, built here with Node, and the placeholder page that prod shows
-# until the app is released. The same image runs in every environment and the Caddyfile picks
-# what to serve by APP_ENV; the edge Caddy routes /api/* to the backend and everything else
-# here. Build context: frontend/.
+# CandleStack frontend: the app, built here with Node and served by Caddy. The same image runs in
+# every environment; the edge Caddy routes /api/* to the backend and everything else here. Build
+# context: frontend/.
 #   docker build -t candlestack-frontend --build-arg APP_COMMIT=$(git rev-parse HEAD) frontend
 
 # The app's static build. Node on the release line the CI job `frontend` uses, pinned by digest:
@@ -26,7 +25,6 @@ ENV APP_COMMIT=$APP_COMMIT \
     XDG_DATA_HOME=/tmp/data
 
 COPY Caddyfile /etc/caddy/Caddyfile
-COPY site /srv/site
 COPY --from=build /app/dist /srv/app
 
 # The upstream binary carries cap_net_bind_service, which cannot be executed once the
