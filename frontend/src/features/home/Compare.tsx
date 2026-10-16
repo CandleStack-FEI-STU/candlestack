@@ -1,4 +1,5 @@
-import { Bar, ComingSoon } from './ComingSoon';
+import { Bar, ComingSoon } from '@/components/ComingSoon';
+
 import { Section, SectionIntro } from './Section';
 
 // The sketch of the comparison: a table of runs under its header, the fourth column their return.
