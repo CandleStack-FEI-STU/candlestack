@@ -1,8 +1,9 @@
 import { Link, useRouterState } from '@tanstack/react-router';
 
-import { Logo } from '@/brand/Logo';
+import { ACCENT_BUTTON, HEADER_BUTTON, HeaderBar } from '@/components/HeaderBar';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Button } from '@/components/ui/button';
+import { AccountMenu, useMe } from '@/features/account';
 import { cn } from '@/lib/utils';
 
 type Section = 'product' | 'instruments';
@@ -16,8 +17,6 @@ function sectionOf(pathname: string): Section | undefined {
 
 const NAV = 'text-muted-foreground hover:text-foreground';
 const ON = 'font-medium text-foreground';
-// The mockup's 34 px buttons (design repository, mockups/home), each with a 1 px border.
-const BUTTON = 'h-[34px] border border-transparent px-3.5';
 
 // No room on a phone: the logo leads home and the list is a link on the home page.
 function MainNav() {
@@ -42,39 +41,43 @@ function MainNav() {
   );
 }
 
-// No action yet: the backtest builder and accounts are not designed. Sign in waits for md: with
-// the nav, the row needs about 675 px. Sign in hovers with the full surface in dark too, as in the
-// mockup: the ghost variant alone would halve it there.
+// Signed out: Sign in and Try Backtest, both to the sign-in page (the first sign-in creates the
+// account), which leaves them out. Sign in waits for md: with the nav, the row needs about 675 px.
+// It hovers with the full surface in dark too, as in the mockup: the ghost variant alone would
+// halve it there. Signed in: Dashboard and the avatar with its menu.
 function Actions() {
+  const me = useMe();
+  const onSignIn = useRouterState({ select: (state) => state.location.pathname === '/signin' });
   return (
     <div className="ml-auto flex items-center gap-2">
-      <Button type="button" variant="ghost" className={cn(BUTTON, 'max-md:hidden dark:hover:bg-accent')}>
-        Sign in
-      </Button>
-      <Button
-        type="button"
-        className={cn(BUTTON, 'border-primary shadow-none hover:bg-[color-mix(in_srgb,var(--accent)_86%,var(--ink))]')}
-      >
-        Try Backtest
-      </Button>
+      {me ? (
+        <Button asChild variant="ghost" className={cn(HEADER_BUTTON, 'dark:hover:bg-accent')}>
+          <Link to="/dashboard">Dashboard</Link>
+        </Button>
+      ) : (
+        !onSignIn && (
+          <>
+            <Button asChild variant="ghost" className={cn(HEADER_BUTTON, 'max-md:hidden dark:hover:bg-accent')}>
+              <Link to="/signin">Sign in</Link>
+            </Button>
+            <Button asChild className={cn(HEADER_BUTTON, ACCENT_BUTTON)}>
+              <Link to="/signin">Try Backtest</Link>
+            </Button>
+          </>
+        )
+      )}
       <ThemeToggle />
+      {me && <AccountMenu user={me} />}
     </div>
   );
 }
 
-// Sticky on top of every page, a little see-through, blurring what scrolls under it. z-30: above
-// the list's mini candles and the chart's legend (z-10, z-20), which would otherwise scroll over
-// it. The safe-area insets keep it clear of a notch once the page is drawn under one.
+// The public pages' header: Product, Instruments and the API docs.
 export function Header() {
   return (
-    <header className="sticky top-[env(safe-area-inset-top,0px)] z-30 border-b bg-background/88 pr-[max(24px,env(safe-area-inset-right,0px))] pl-[max(24px,env(safe-area-inset-left,0px))] backdrop-blur-sm max-sm:pr-[max(12px,env(safe-area-inset-right,0px))] max-sm:pl-[max(12px,env(safe-area-inset-left,0px))]">
-      <div className="mx-auto flex h-14 max-w-[72rem] items-center gap-5 max-sm:gap-2.5">
-        <Link to="/" aria-label="CandleStack home" className="shrink-0 rounded-md leading-[0]">
-          <Logo className="max-sm:h-6" />
-        </Link>
-        <MainNav />
-        <Actions />
-      </div>
-    </header>
+    <HeaderBar home="/" homeLabel="CandleStack home">
+      <MainNav />
+      <Actions />
+    </HeaderBar>
   );
 }

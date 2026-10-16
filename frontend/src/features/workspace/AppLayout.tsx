@@ -1,0 +1,39 @@
+import { Outlet, useRouterState } from '@tanstack/react-router';
+
+import { PageFrame } from '@/components/Layout';
+import { SignedInUserContext, useMe } from '@/features/account';
+
+import { AppHeader } from './AppHeader';
+import { Sidebar } from './Sidebar';
+
+// The sidebar beside the page, which fades up 6 px whenever another one opens (keyed by its
+// path, so only the page that just appeared moves). Up to 980 px the sidebar lies above it.
+function Workspace() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  return (
+    <div className="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-6 text-sm/[1.5] max-[980px]:grid-cols-[minmax(0,1fr)] max-[980px]:gap-4">
+      <Sidebar />
+      <div
+        key={pathname}
+        className="min-w-0 animate-in duration-200 ease-out fade-in slide-in-from-bottom-[6px] motion-reduce:animate-none"
+      >
+        <Outlet />
+      </div>
+    </div>
+  );
+}
+
+// The signed-in pages (mockups/app): the app header, the workspace and the footer. The route's
+// guard has loaded the user. Signing out forgets it before leaving for the home page: nothing to
+// show for that moment.
+export function AppLayout() {
+  const user = useMe();
+  if (!user) return null;
+  return (
+    <SignedInUserContext value={user}>
+      <PageFrame header={<AppHeader />}>
+        <Workspace />
+      </PageFrame>
+    </SignedInUserContext>
+  );
+}

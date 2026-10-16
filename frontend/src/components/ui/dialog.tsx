@@ -1,0 +1,106 @@
+import * as React from 'react';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
+import { XIcon } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+
+// shadcn/ui's Dialog with the app design's modal (mockups/app, modalShell): 560 px wide and at
+// most the screen high less 16 px around it, a title row with the close button, a body that
+// scrolls. It fades and scales in from 10 px lower; the backdrop fades in.
+
+function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
+  return <DialogPrimitive.Root data-slot="dialog" {...props} />;
+}
+
+function DialogTrigger({ ...props }: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
+  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />;
+}
+
+function DialogOverlay({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
+  return (
+    <DialogPrimitive.Overlay
+      data-slot="dialog-overlay"
+      className={cn(
+        'fixed inset-0 z-50 bg-black/45 duration-160 ease-out data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 motion-reduce:animate-none',
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+function DialogContent({ className, children, ...props }: React.ComponentProps<typeof DialogPrimitive.Content>) {
+  return (
+    <DialogPrimitive.Portal data-slot="dialog-portal">
+      <DialogOverlay />
+      <DialogPrimitive.Content
+        data-slot="dialog-content"
+        className={cn(
+          'fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100vh-32px)] w-[min(560px,calc(100%-32px))] -translate-1/2 flex-col rounded-xl border bg-background text-sm/[1.5] shadow-[0_20px_50px_var(--shadow)] outline-none supports-[height:100dvh]:max-h-[calc(100dvh-32px)]',
+          'duration-220 ease-[cubic-bezier(0.2,0.8,0.2,1)] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-97 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-97 data-[state=open]:slide-in-from-bottom-[10px] motion-reduce:animate-none',
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </DialogPrimitive.Content>
+    </DialogPrimitive.Portal>
+  );
+}
+
+// The title row: the title, and the close button at the right.
+function DialogHeader({ className, children, ...props }: React.ComponentProps<'div'>) {
+  return (
+    <div
+      data-slot="dialog-header"
+      className={cn('flex items-center justify-between gap-3 pt-3.5 pr-4 pb-2.5 pl-5', className)}
+      {...props}
+    >
+      {children}
+      <DialogPrimitive.Close asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="Close"
+          className="size-[34px] dark:hover:bg-accent"
+        >
+          <XIcon />
+        </Button>
+      </DialogPrimitive.Close>
+    </div>
+  );
+}
+
+function DialogTitle({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Title>) {
+  return (
+    <DialogPrimitive.Title
+      data-slot="dialog-title"
+      className={cn('text-[17px] leading-normal font-semibold', className)}
+      {...props}
+    />
+  );
+}
+
+function DialogBody({ className, ...props }: React.ComponentProps<'div'>) {
+  return (
+    <div
+      data-slot="dialog-body"
+      className={cn('flex min-h-0 flex-col gap-3.5 overflow-auto px-5 pt-1 pb-[18px]', className)}
+      {...props}
+    />
+  );
+}
+
+function DialogDescription({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Description>) {
+  return (
+    <DialogPrimitive.Description
+      data-slot="dialog-description"
+      className={cn('text-[12.5px] text-muted-foreground', className)}
+      {...props}
+    />
+  );
+}
+
+export { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger };
