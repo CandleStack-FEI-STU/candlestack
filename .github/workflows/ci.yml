@@ -189,8 +189,23 @@ jobs:
           --health-interval 2s
           --health-timeout 2s
           --health-retries 15
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: candlestack
+          POSTGRES_PASSWORD: candlestack
+          POSTGRES_DB: candlestack
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready --username candlestack --dbname candlestack"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
     env:
       REDIS_URL: redis://127.0.0.1:6379/0
+      # The tests create this database and migrate it (tests/integration/conftest.py).
+      DATABASE_URL: postgresql+asyncpg://candlestack:candlestack@127.0.0.1:5432/candlestack_test
     defaults:
       run:
         working-directory: backend
@@ -207,8 +222,9 @@ jobs:
           cache-dependency-glob: backend/uv.lock
 
       - run: uv sync --locked
-      # Unit and integration tests together, serially (the integration tests share one Redis),
-      # measured against the coverage gate of pyproject.toml (95%, branches included).
+      # Unit and integration tests together, serially (the integration tests share one Redis
+      # and one Postgres), measured against the coverage gate of pyproject.toml (95%, branches
+      # included).
       - run: uv run pytest -m "not e2e and not slow" --cov --cov-report=xml
 
       # At least 90% of the lines a pull request changes are covered.
@@ -361,6 +377,8 @@ jobs:
         run: |
           ENV_NAME=stage APP_VERSION=check BACKEND_IMAGE=backend FRONTEND_IMAGE=frontend \
             REDIS_MAXMEMORY=256mb REDIS_MEM_LIMIT=288m EDGE_NETWORK=edge \
+            POSTGRES_SHARED_BUFFERS=32MB POSTGRES_MEM_LIMIT=128m POSTGRES_PASSWORD=check \
+            COMPOSE_PROFILES=backup \
             docker compose -f infra/env/compose.yaml config --quiet
           docker compose -f infra/edge/compose.yaml config --quiet
           IMAGE=agent docker compose -f infra/agent/compose.yaml config --quiet
