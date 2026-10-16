@@ -1,8 +1,8 @@
 """Server agent: what ops.candlestack.tech knows about this machine.
 
-Every INTERVAL seconds the agent samples host CPU, memory and disk (from /proc), the
-containers (through a read-only Docker socket proxy) and the health of every PR preview
-(through the edge Caddy). GET /api/snapshot returns the latest sample.
+Every INTERVAL seconds the agent samples host CPU, memory and disk (from /proc) and the
+containers (through a read-only Docker socket proxy). GET /api/snapshot returns the latest
+sample.
 
 The ops Worker (github.com/CandleStack-FEI-STU/ops) fetches the snapshot every minute through
 Cloudflare Access and keeps all history, so the status page stays up when this server is
@@ -26,41 +26,12 @@ from pathlib import Path
 INTERVAL = int(os.environ.get("INTERVAL", "60"))
 DOCKER_URL = os.environ.get("DOCKER_URL", "http://socket-proxy:2375")
 VM_LABEL = os.environ.get("VM_LABEL", "")
-# The previews run pull requests' code on a network of their own that the agent does not join
-# (infra/edge/compose.yaml): their health is asked of the edge Caddy, by their hostname.
-EDGE_URL = os.environ.get("EDGE_URL", "http://edge-caddy")
 SCHEMA = 1
-PREVIEW_RE = re.compile(r"^pr-(\d{1,6})$")
-# Environments first, then the services that run them, then previews by number.
+# Environments first, then the services that run them.
 ORDER = {"prod": 0, "stage": 1, "edge": 2, "agent": 3}
 
 
 # --- collection ------------------------------------------------------------------------
-
-
-def http_json(url, timeout=10, host=None):
-    headers = {"User-Agent": "candlestack-agent/1.0"}
-    if host:
-        headers["Host"] = host
-    request = urllib.request.Request(url, headers=headers)
-    started = time.monotonic()
-    with urllib.request.urlopen(request, timeout=timeout) as resp:
-        body = json.loads(resp.read().decode())
-    return body, int((time.monotonic() - started) * 1000)
-
-
-def check_preview(env):
-    try:
-        body, ms = http_json(f"{EDGE_URL}/api/health", host=f"{env}-preview.candlestack.tech")
-        version = body.get("version")
-        return {
-            "env": env,
-            "ok": body.get("status") == "ok",
-            "ms": ms,
-            "version": version if isinstance(version, str) else None,
-        }
-    except Exception:
-        return {"env": env, "ok": False, "ms": None, "version": None}
 
 
 def docker(path):
@@ -144,8 +115,7 @@ def host_metrics():
 
 def sort_key(container):
     env = container["env"]
-    preview = PREVIEW_RE.match(env)
-    return (ORDER.get(env, 4), int(preview[1]) if preview else 0, env, container["name"])
+    return (ORDER.get(env, 4), env, container["name"])
 
 
 LATEST = None  # the last complete snapshot
@@ -153,17 +123,15 @@ LATEST = None  # the last complete snapshot
 
 def sample():
     running = docker("/containers/json")
-    projects = {c.get("Labels", {}).get("com.docker.compose.project", "") for c in running}
-    previews = sorted((p for p in projects if PREVIEW_RE.match(p)), key=lambda p: int(p[3:]))
     with ThreadPoolExecutor(max_workers=8) as pool:
-        preview_checks = list(pool.map(check_preview, previews))
         containers = list(pool.map(container_stats, running))
     return {
         "schema": SCHEMA,
         "sampled_at": int(time.time()),
         "host": host_metrics(),
         "containers": sorted(containers, key=sort_key),
-        "previews": preview_checks,
+        # Schema 1 requires the list (ops checks it); the server runs no previews any more.
+        "previews": [],
     }
 
 

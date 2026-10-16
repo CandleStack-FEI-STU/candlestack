@@ -1,9 +1,8 @@
 """Tests of the server agent: the schema-1 snapshot, a contract with the ops repository (README
 "Agent contract" there), the order of its containers and the answers of its HTTP server.
 
-Docker is a stub HTTP server, /proc a directory of fixture files and the previews' health
-checks a stub, so nothing of the machine is read. Standard library only, like the agent;
-from infra/agent, with Python 3.13 on Linux:
+Docker is a stub HTTP server and /proc a directory of fixture files, so nothing of the machine
+is read. Standard library only, like the agent; from infra/agent, with Python 3.13 on Linux:
     python -m unittest -v
 """
 
@@ -22,7 +21,6 @@ from unittest import mock
 
 import agent
 
-HTTP_JSON = agent.http_json  # setUp stubs it
 NOW = 1_790_400_000  # 2026-09-26T05:20:00Z
 
 
@@ -43,11 +41,9 @@ def container(project, service, version=None):
 
 # In no particular order, as Docker lists them; the last one was not started by compose.
 CONTAINERS = [
-    container("pr-12", "backend", "pr-12-4f00d"),
     container("agent", "socket-proxy"),
     container("prod", "redis"),
     container("stage", "backend", "main-0123abc"),
-    container("pr-7", "frontend", "pr-7-cafe0"),
     container("edge", "caddy"),
     container("prod", "backend", "v0.2.0"),
     container("agent", "agent"),
@@ -105,27 +101,6 @@ class Server(ThreadingHTTPServer):
     request_queue_size = 32
 
 
-def previews_health(url, timeout=10, host=None):
-    """The previews' /api/health through the edge Caddy: pr-7 answers, pr-12 does not."""
-    if (url, host) == ("http://edge-caddy/api/health", "pr-7-preview.candlestack.tech"):
-        return {"status": "ok", "version": "pr-7-cafe0"}, 12
-    raise urllib.error.HTTPError(url, 502, "Bad Gateway", {}, None)
-
-
-class FakeEdge(BaseHTTPRequestHandler):
-    """The edge Caddy: /api/health of the preview that the Host header names."""
-
-    def do_GET(self):
-        data = json.dumps({"status": "ok", "version": self.headers["Host"]}).encode()
-        self.send_response(200)
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
-
-    def log_message(self, *args):
-        pass
-
-
 class AgentTest(unittest.TestCase):
     def setUp(self):
         stats_calls.clear()
@@ -147,7 +122,6 @@ class AgentTest(unittest.TestCase):
             "DOCKER_URL": docker_url,
             "VM_LABEL": "AWS t3.small · eu-north-1",
             "Path": path,
-            "http_json": previews_health,
             "time": SimpleNamespace(time=lambda: self.clock[0], monotonic=time.monotonic),
             "_prev_cpu": {},
             "_prev_host_cpu": None,
@@ -229,10 +203,7 @@ class AgentTest(unittest.TestCase):
                         "version": (str, NoneType),
                     },
                 )
-            for row in snapshot["previews"]:
-                self.assert_shape(
-                    row, {"env": str, "ok": bool, "ms": (int, NoneType), "version": (str, NoneType)}
-                )
+            self.assertEqual(snapshot["previews"], [])
         self.assertEqual((first["host"]["cpu"], type(second["host"]["cpu"])), (None, float))
 
     def test_snapshot_values(self):
@@ -283,15 +254,8 @@ class AgentTest(unittest.TestCase):
                 "version": None,
             },
         )
-        self.assertEqual(
-            snapshot["previews"],
-            [
-                {"env": "pr-7", "ok": True, "ms": 12, "version": "pr-7-cafe0"},
-                {"env": "pr-12", "ok": False, "ms": None, "version": None},
-            ],
-        )
 
-    def test_containers_are_ordered_environments_services_then_previews_by_number(self):
+    def test_containers_are_ordered_environments_then_services(self):
         snapshot = agent.sample()
 
         self.assertEqual(
@@ -305,18 +269,8 @@ class AgentTest(unittest.TestCase):
                 ("agent", "agent"),
                 ("agent", "socket-proxy"),
                 ("", "adhoc"),
-                ("pr-7", "frontend"),
-                ("pr-12", "backend"),  # by number: 7 before 12
             ],
         )
-
-    def test_preview_health_is_asked_of_the_edge_by_the_preview_hostname(self):
-        self.enterContext(mock.patch.object(agent, "EDGE_URL", self.serve(FakeEdge)))
-        self.enterContext(mock.patch.object(agent, "http_json", HTTP_JSON))
-
-        check = agent.check_preview("pr-7")
-
-        self.assertEqual((check["ok"], check["version"]), (True, "pr-7-preview.candlestack.tech"))
 
     def test_http_answers_starting_then_the_snapshot_then_stale(self):
         base = self.serve(agent.Handler)

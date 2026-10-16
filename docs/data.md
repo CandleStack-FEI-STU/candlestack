@@ -137,7 +137,7 @@ in Redis, so a search never waits for a source; the other environments have none
   price has no stats.
 - Stocks: `GET /v2/stocks/snapshots?symbols=<500 symbols>&feed=delayed_sip` for every stock of the
   catalog, every 10 minutes: about 27 requests, one after another, at most a fifth of
-  `ALPACA_RATE_LIMIT` a minute and never more than 20 (prod and stage 20, previews 6), so chart
+  `ALPACA_RATE_LIMIT` a minute and never more than 20 (prod and stage 20), so chart
   requests keep the rest; each also counts against `ALPACA_RATE_LIMIT`. A request that fails
   (our whole budget spent by chart requests, an Alpaca error) is tried once more after the
   others. One Alpaca still refuses (a 4xx other than 429) is split in halves, down to single
@@ -192,7 +192,7 @@ last daily close is refreshed at once, on the next check:
 - Stocks: `GET /v2/stocks/bars?symbols=<500 symbols>&timeframe=1Day&feed=sip&adjustment=all`
   of the last 10 sessions (about 27 requests), within their own share of the Alpaca budget
   (`data:rl:alpaca-spark`: a twentieth of `ALPACA_RATE_LIMIT`, at most 5 a minute; prod and
-  stage 5, previews 1), so they never slow the stats' share, with the same retry and splitting
+  stage 5), so they never slow the stats' share, with the same retry and splitting
   as the snapshots. A malformed bar is skipped (one warning per refresh), not its whole request.
 - A pair or batch that still fails keeps its last candles and is asked again every 30 minutes,
   alone, until it is answered or the next daily close; a refresh that gets nothing keeps all of
@@ -230,9 +230,9 @@ into an `<img>`; the browser never calls logo.dev itself.
   call of logo.dev counts against `LOGO_DEV_RATE_LIMIT` (see [Limits](#limits)).
 - The free plan of logo.dev allows 500,000 requests a month, 100 a minute and 5 at once for
   the whole account, which all environments share: each environment sends at most 2 at once
-  (an icon waits at most 10 s for one) and `LOGO_DEV_RATE_LIMIT` keeps prod, stage and four
-  previews under 100 a minute together. It asks for the attribution "Logos provided by
-  Logo.dev" with a link wherever the logos are shown.
+  (an icon waits at most 10 s for one) and `LOGO_DEV_RATE_LIMIT` keeps prod and stage under 100
+  a minute together. It asks for the attribution "Logos provided by Logo.dev" with a link
+  wherever the logos are shown.
 - Coverage on 2026-10-12: 305 of the 507 base assets of Binance's trading pairs (951 of 1375
   pairs) have a logo; stocks are covered better, e.g. `AAPL` and `BRK.B`.
 
@@ -437,8 +437,7 @@ requested timeframe.
 
 - When our budget at a source is spent, a request waits for the next window if it begins
   within 5 s; otherwise it gets 503 `source-unavailable` with `Retry-After`.
-- Alpaca allows 200 requests per minute per key. Prod has its own key; stage and previews
-  share one, so stage plus four previews stay within it.
+- Alpaca allows 200 requests per minute per key. Prod and stage have one each.
 - Intraday stock candles need two or three Alpaca requests per month of 1m bars (SIP has
   extended hours), so a cold request for years of them can need more than a minute's budget.
   It then gets 503 with `Retry-After`; the months fetched so far stay cached and the retry

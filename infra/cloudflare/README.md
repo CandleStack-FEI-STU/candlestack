@@ -15,11 +15,14 @@ dashboard, so it can be reviewed, compared after a change and set up again.
 
 How the pieces fit: the tunnel CNAMEs send `app`, `stage`, `ssh` and every other name (`*`) to the
 VM. Access decides who gets through: `app` is public (application `prod-public`), `ssh` accepts
-only the deploy and preview service tokens (`ssh-deploy`), the previews (`*-preview`) need a
-GitHub login from the organization or the preview service token (`previews`), and everything
-else (stage, `vm`, `ops`) needs a GitHub login from the organization or the deploy or ops
-service token (`team-only`). The preview token, used by workflows that deploy pull requests'
-code, opens only `ssh` and the previews. `ops` is served by the Worker, not the tunnel.
+only the deploy service token (`ssh-deploy`), and everything else (stage, `vm`, `ops`) needs a
+GitHub login from the organization or the deploy or ops service token (`team-only`). `ops` is
+served by the Worker, not the tunnel.
+
+The pull request previews were removed on 2026-10-17, and with them the Access application
+`previews`, the reusable policy `github-actions-preview` (it was also on `ssh-deploy`) and the
+service token `github-actions-preview`; `access.json` records that state. Hostnames that were
+previews (`*-preview`) now fall under `team-only`.
 
 ## Not in the snapshot
 

@@ -1,4 +1,4 @@
-# Server agent: host metrics, containers and previews for ops.candlestack.tech, served at
+# Server agent: host metrics and containers for ops.candlestack.tech, served at
 # vm.candlestack.tech/api/snapshot (behind Cloudflare Access). The page and its history
 # live in the ops Worker: github.com/CandleStack-FEI-STU/ops.
 # Deployed from main by infra/vm/candlestack-deploy ("agent <image@digest>").

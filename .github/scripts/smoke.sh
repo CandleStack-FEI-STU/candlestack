@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Smoke test of a deployed environment, run by the deploy workflows after the health check:
 #   .github/scripts/smoke.sh https://stage.candlestack.tech
-# stage and previews are behind Cloudflare Access: set CF_ACCESS_CLIENT_ID and
+# stage is behind Cloudflare Access: set CF_ACCESS_CLIENT_ID and
 # CF_ACCESS_CLIENT_SECRET to send the service token. prod is checked without it.
 #
 # Every check is a function check_<name> listed in CHECKS. It calls get, then fails with a
@@ -111,7 +111,7 @@ check_headers() {
   done
 }
 
-# stage and previews are team-only: without the service token, Cloudflare Access answers
+# stage is team-only: without the service token, Cloudflare Access answers
 # instead of the app, with a redirect to its login (or 401/403). prod is public: skipped.
 check_access() {
   local meta status location

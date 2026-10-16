@@ -359,8 +359,9 @@ jobs:
       # With dummy values for the variables the deploy script sets.
       - name: Compose files
         run: |
-          ENV_NAME=pr-1 APP_VERSION=check BACKEND_IMAGE=backend FRONTEND_IMAGE=frontend \
-            REDIS_MAXMEMORY=64mb REDIS_MEM_LIMIT=96m docker compose -f infra/env/compose.yaml config --quiet
+          ENV_NAME=stage APP_VERSION=check BACKEND_IMAGE=backend FRONTEND_IMAGE=frontend \
+            REDIS_MAXMEMORY=256mb REDIS_MEM_LIMIT=288m EDGE_NETWORK=edge \
+            docker compose -f infra/env/compose.yaml config --quiet
           docker compose -f infra/edge/compose.yaml config --quiet
           IMAGE=agent docker compose -f infra/agent/compose.yaml config --quiet
 

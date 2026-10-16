@@ -89,13 +89,13 @@ HISTORY_START = 2016
 BARS_LIMIT = 10_000
 # Snapshots: symbols per request (about 27 requests for the whole catalog, each URL under
 # 4 KB), and the share of our budget per minute they may take, so that chart requests keep the
-# rest (prod 150: 20, stage 100: 20, previews 30: 6).
+# rest (prod 150: 20, stage 100: 20).
 SNAPSHOT_SYMBOLS = 500
 STATS_RATE_KEY = "data:rl:alpaca-stats"
 STATS_SHARE_MAX = 20
 STATS_SHARE_DIVISOR = 5
 # The daily bars of the mini charts (about 27 requests once a day after the close) have their own,
-# smaller share, so they do not slow the stats refresh (prod 150: 5, stage 100: 5, previews 30: 1).
+# smaller share, so they do not slow the stats refresh (prod 150: 5, stage 100: 5).
 SPARK_RATE_KEY = "data:rl:alpaca-spark"
 SPARK_SHARE_MAX = 5
 SPARK_SHARE_DIVISOR = 20
