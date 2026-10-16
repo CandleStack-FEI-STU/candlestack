@@ -5,7 +5,7 @@
 }
 
 # Everything outside /api/*: the edge Caddy sends /api/* to the backend. The app, the same in
-# every environment (prod, stage, pr-<N>, local).
+# every environment (prod, stage, local).
 :8080 {
 	header -Server
 	root * /srv/app

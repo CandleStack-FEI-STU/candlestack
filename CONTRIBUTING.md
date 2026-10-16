@@ -72,19 +72,6 @@ The Trivy scans fail on a HIGH or CRITICAL vulnerability in an image that has a 
 a newer base image or dependency fixes it. One that cannot be fixed yet goes to
 `.trivyignore.yaml` with a date to look again, and only with the tech lead's approval.
 
-## Preview environment
-
-Add the `preview` label to a pull request into `main` to deploy its current commit to
-`https://pr-<N>-preview.candlestack.tech` (team only). The server has room for one preview at a
-time: when another pull request holds it, the label comes off again and a comment says until
-when. A preview lives at most 6 hours (then the label comes off with a comment); a new commit,
-removing the label or closing the pull request removes it sooner. A new commit removes the
-label too: add it again to deploy that commit.
-
-The pull request's own workflow only builds the images (`preview-build.yml`); `main`'s
-`preview.yml` deploys them with `main`'s deploy action and smoke test, so a change to those
-reaches previews once it is merged (details in [infra/README.md](infra/README.md)).
-
 ## Backend
 
 Needs [uv](https://docs.astral.sh/uv/) and Docker. The uv release line is `required-version`
@@ -167,6 +154,6 @@ the tech lead grants access). What it records is in
 - Never swallow an exception (`except Exception: pass`), and never put keys, tokens or personal
   data in a log message or its `extra`.
 - Only `candlestack.core` imports `sentry_sdk`; `lint-imports` checks it.
-- Without `SENTRY_DSN` (local runs, tests, previews) nothing is sent. To check that errors
+- Without `SENTRY_DSN` (local runs, tests) nothing is sent. To check that errors
   reach Sentry, open https://stage.candlestack.tech/api/debug/sentry-error (stage only): it
   fails on purpose, and the error shows up in Sentry under the environment `stage`.

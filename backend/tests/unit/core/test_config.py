@@ -35,7 +35,7 @@ def test_defaults() -> None:
 
 @pytest.mark.parametrize(
     ("app_env", "limit"),
-    [("prod", 150), ("stage", 100), ("pr-42", 30), ("local", 60), ("test", 60)],
+    [("prod", 150), ("stage", 100), ("local", 60), ("test", 60)],
 )
 def test_alpaca_rate_limit_default_depends_on_env(
     monkeypatch: pytest.MonkeyPatch, app_env: str, limit: int
@@ -46,7 +46,7 @@ def test_alpaca_rate_limit_default_depends_on_env(
 
 
 def test_alpaca_rate_limit_default_follows_init_arguments() -> None:
-    assert Settings(app_env="pr-7").alpaca_rate_limit == 30
+    assert Settings(app_env="stage").alpaca_rate_limit == 100
 
 
 def test_alpaca_rate_limit_can_be_set(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -96,7 +96,7 @@ def test_alpaca_keys_are_stripped_and_hidden(monkeypatch: pytest.MonkeyPatch) ->
 
 @pytest.mark.parametrize(
     ("app_env", "limit"),
-    [("prod", 50), ("stage", 20), ("pr-42", 5), ("local", 20), ("test", 20)],
+    [("prod", 50), ("stage", 20), ("local", 20), ("test", 20)],
 )
 def test_logo_dev_rate_limit_default_depends_on_env(
     monkeypatch: pytest.MonkeyPatch, app_env: str, limit: int
@@ -108,7 +108,7 @@ def test_logo_dev_rate_limit_default_depends_on_env(
 
 @pytest.mark.parametrize(
     ("app_env", "refresh"),
-    [("prod", True), ("stage", True), ("pr-42", False), ("local", False), ("test", False)],
+    [("prod", True), ("stage", True), ("local", False), ("test", False)],
 )
 def test_stats_refresh_default_depends_on_env(
     monkeypatch: pytest.MonkeyPatch, app_env: str, refresh: bool
@@ -119,7 +119,7 @@ def test_stats_refresh_default_depends_on_env(
 
 
 def test_stats_refresh_can_be_set(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("APP_ENV", "pr-7")
+    monkeypatch.setenv("APP_ENV", "local")
     monkeypatch.setenv("STATS_REFRESH", "true")
 
     assert Settings().stats_refresh is True
@@ -138,7 +138,7 @@ def test_logo_dev_key_is_stripped_and_hidden(monkeypatch: pytest.MonkeyPatch) ->
     ("name", "value"),
     [
         ("APP_ENV", "staging"),
-        ("APP_ENV", "pr-"),
+        ("APP_ENV", "pr-42"),
         ("LOG_LEVEL", "LOUD"),
         ("CANDLES_MAX", "0"),
         ("CLIENT_RATE_LIMIT", "-1"),

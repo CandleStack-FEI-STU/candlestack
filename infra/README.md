@@ -1,7 +1,7 @@
 # infra
 
 Everything needed to run CandleStack on a single VM: one edge proxy in front of the
-prod, stage and pull-request preview environments.
+prod and stage environments.
 
 ```text
 Internet -> Cloudflare (TLS) -> Tunnel -> cloudflared on the VM -> edge Caddy -> environment
@@ -17,7 +17,6 @@ are proxied CNAMEs to the tunnel, so moving to another server does not touch DNS
 | --- | --- | --- | --- |
 | prod | https://app.candlestack.tech | a `v*` tag is pushed on a commit of `main` | tech lead (GitHub environment `production`) |
 | stage | https://stage.candlestack.tech | every push to `main` | none |
-| preview | `https://pr-<N>-preview.candlestack.tech` | the `preview` label is added to a pull request; one at a time, for 6 hours at most | none |
 
 Every environment is one compose project (`env/compose.yaml`) with three containers. The edge
 Caddy sends `/api/*` of the environment's hostname to its backend and everything else to its
@@ -46,38 +45,25 @@ Redis is a cache for the backend: no persistence, least recently used keys are e
 | --- | --- | --- |
 | prod | `256mb` | `288m` |
 | stage | `256mb` | `288m` |
-| `pr-<N>` | `64mb` | `96m` |
 
 All containers of an environment run with a read-only root filesystem, no Linux capabilities
 and `no-new-privileges`.
 
-The Docker networks keep the previews, which run the code of pull requests, away from the rest
-of the VM. Docker does not route between two networks, and only the edge Caddy is on both edge
-networks:
+The Docker networks:
 
 | Network | Who is on it |
 | --- | --- |
-| `edge` | the edge Caddy (also as `edge-caddy`), the backend and frontend of prod and stage, the server agent (`vm-agent`) |
-| `edge-preview` (`10.99.0.0/24`) | the edge Caddy and the backend and frontend of the previews |
+| `edge` | the edge Caddy, the backend and frontend of prod and stage, the server agent (`vm-agent`) |
 | `<env>_default` | the backend and Redis of that environment |
 | `agent_docker` (internal) | the server agent and its Docker socket proxy |
 
-`vm/candlestack-deploy` puts an environment on `edge` or `edge-preview` by its name, so a pull
-request cannot choose. The edge Caddy answers 403 to every request from `edge-preview`, so a
-preview cannot reach prod, stage or the agent through it either, and the agent checks the
-previews' health through the edge Caddy, by their hostname. A preview's backend still reaches
-the internet (Binance, Alpaca) through its `pr-<N>_default` network. `edge` creates
-`edge-preview` with the edge Caddy (`edge/compose.yaml`) on the running VM, as cloud-init does
-on a new one.
-
-Every push to `main` builds the backend, frontend and agent images once, a preview deployment
-builds the backend and frontend images, and a release builds nothing. The images that keep
+Every push to `main` builds the backend, frontend and agent images once, and a release builds
+nothing. The images that keep
 running on the VM (Redis, the edge Caddy, the agent's Docker socket proxy) are pinned in the
 compose files, and Dependabot proposes their updates; `edge` recreates the edge Caddy when its
 version changes.
 
-stage, previews and https://ops.candlestack.tech (the team status page) are behind Cloudflare
-Access: members of the `CandleStack-FEI-STU` GitHub organization sign in with GitHub. prod is
+stage and https://ops.candlestack.tech (the team status page) are behind Cloudflare Access: members of the `CandleStack-FEI-STU` GitHub organization sign in with GitHub. prod is
 public. Any new subdomain is team-only by default (Access application `*.candlestack.tech`).
 
 ## Monitoring
@@ -86,7 +72,7 @@ https://ops.candlestack.tech is a Cloudflare Worker in its own repository,
 [CandleStack-FEI-STU/ops](https://github.com/CandleStack-FEI-STU/ops), so it keeps working and
 records the outage when this VM is down. Every minute it checks prod and stage from outside and
 reads `https://vm.candlestack.tech/api/snapshot`, served by the server agent (`agent/`): host
-CPU, memory and disk, containers and the health of every preview. The agent keeps no history
+CPU, memory and disk, and the containers. The agent keeps no history
 and holds no secrets; its JSON is a contract with the ops repository (schema 1).
 
 The backend of prod and stage also reports to Sentry (organization `candlestack`, EU): errors,
@@ -101,31 +87,6 @@ resetting it to origin/main on every stage deploy). The VM takes those images fr
 record (below), not from the registry: any workflow run allowed to write packages, including
 one from a pull request's branch, could move a registry tag.
 
-A preview is deployed on demand and runs for a few hours (`preview-build.yml`, `preview.yml`,
-`preview-cleanup.yml`):
-the VM has room for one (`max_previews` in `vm/candlestack-deploy`; prod and stage take about
-1.28 GB of its 2 GB with their container limits, a preview up to 450 MB). Adding the `preview`
-label deploys the pull request's current commit, unless another pull request holds the slot:
-then the label comes off and a comment says until when. A new commit, removing the label or
-closing the pull request removes the preview, a new commit the label too. Every hour
-`preview-cleanup.yml` removes the previews that have run for 6 hours (label off, with a
-comment) and any whose pull request is closed or unlabeled, and deletes preview images (tags
-`pr-*`) older than a week from the registry. Pull requests from forks and pull requests into
-another branch than `main` never deploy.
-
-A pull request's code never runs next to the preview's secrets (the deploy key, the Access
-service token, the Alpaca keys). `preview-build.yml` runs the workflow of the pull request's
-branch, so it holds no secret: it only builds the images (`pr-<N>-<commit>`) with a token that
-may push packages. `preview.yml` holds the secrets, and GitHub always runs it as it is on `main`
-(`workflow_run` after a successful build, `pull_request_target` for a new commit, the label
-removed or the pull request closed; it never checks out the pull request). Before deploying it
-reads the pull request's current state from GitHub (open, from this repository, into `main`,
-labeled, still at the built commit) and looks the images' digests up in the registry by their
-tag; `candlestack-deploy` checks their form again. The GitHub environment `preview` accepts
-deployments from `main` only, so a changed copy of the workflow on another branch cannot use its
-secrets. The smoke test and `.github/actions/deploy` are `main`'s too: a change to them takes
-effect on previews once merged.
-
 To release: `git tag v0.2.0 <commit on main> && git push origin v0.2.0`, then approve the
 deployment in the Actions tab. Only a commit that stage has deployed can be released; any other
 fails before prod changes. After every deployment the workflow waits for `/api/health` to
@@ -138,7 +99,7 @@ only warns when it fails):
 | `health` | `/api/health` answers 200 with `status` `ok` |
 | `openapi`, `docs` | the OpenAPI schema, and the API reference page that loads Scalar |
 | `frontend` | the page at `/` |
-| `access` | stage and previews only: `/api/health` without the Access token gets Access (a redirect to its login, or 401/403), not the app |
+| `access` | stage only: `/api/health` without the Access token gets Access (a redirect to its login, or 401/403), not the app |
 | `sources` | `/api/health/sources`: Binance and Alpaca reachable |
 | `search` | `btc` finds `crypto:BTCUSDT` and `apple` finds `stock:AAPL` first, with both markets loaded |
 | `instruments` | the detail of both, with `available_from` |
@@ -156,7 +117,7 @@ The edge Caddy adds to every response HSTS (a year; no subdomains or preload, si
 `Referrer-Policy: strict-origin-when-cross-origin` and a `Permissions-Policy` without camera,
 microphone and location, and drops the `Via` header. A Content-Security-Policy runs in
 report-only mode: browsers report what it would block to the Sentry project `frontend`
-(environments `prod`, `stage`, `preview`), and once the reports show nothing the pages need, it
+(environments `prod`, `stage`), and once the reports show nothing the pages need, it
 becomes enforcing. The smoke test checks these headers after every deploy.
 
 Trivy scans the images for vulnerabilities. In CI the backend image (job `e2e`) and the frontend
@@ -170,15 +131,13 @@ its release channels were compromised in March 2026.
 ## How a deployment reaches the VM
 
 GitHub Actions connects over SSH to `ssh.candlestack.tech` through the tunnel. That hostname
-is a Cloudflare Access application that only lets in two service tokens: `github-actions-deploy`
-(environments `production` and `staging`) and `github-actions-preview` (environment `preview`).
-Previews run the code of pull requests, so their token opens only `ssh` and the previews
-(Access application `*-preview.candlestack.tech`), not stage, `vm` or `ops`.
-Behind it, the `deploy` user has one key per environment, and each key is forced to run
-`vm/candlestack-deploy` for its own scope only (for example, the preview key cannot touch prod).
+is a Cloudflare Access application that only lets in the service token `github-actions-deploy`
+(environments `production` and `staging`). Behind it, the `deploy` user has one key per
+environment, and each key is forced to run `vm/candlestack-deploy` for its own scope only (for
+example, the stage key cannot touch prod).
 
 ```text
-up <env> <version> <backend image@digest> <frontend image@digest>     (stage and pr-<N>)
+up stage <version> <backend image@digest> <frontend image@digest>
 up prod <release tag>
 ```
 
@@ -194,21 +153,20 @@ lines with the backend's secrets. Only `ALPACA_KEY_ID`, `ALPACA_SECRET_KEY` and 
 accepted (at most 256 printable characters, no spaces or quotes). The script hands them to
 `docker compose` in its environment only: it never writes them to a file or prints them (Docker
 itself keeps them in the container's configuration, as with any container environment variable).
-The workflows send them with the `env-secrets` input of `.github/actions/deploy`. After `up` and
-`down` the script removes the images no container uses any more (every backend build adds a
+The workflows send them with the `env-secrets` input of `.github/actions/deploy`. After `up` the
+script removes the images no container uses any more (every backend build adds a
 source layer of about 150 KB, and a dependency layer of about 250 MB when `uv.lock` changes).
-The other commands are `down pr-<N>` and `previews` (preview key; `previews` lists the running
-previews and when each was deployed), `edge` and `agent <image@digest>` (stage key); the header
-of `vm/candlestack-deploy` lists which key may run what.
+The other commands are `edge` and `agent <image@digest>` (stage key); the header of
+`vm/candlestack-deploy` lists which key may run what.
 
 | Secret or variable | Where | What |
 | --- | --- | --- |
-| `DEPLOY_SSH_KEY` | environments `production`, `staging`, `preview` | private deploy key of that scope |
-| `ALPACA_KEY_ID`, `ALPACA_SECRET_KEY` | environments `production`, `staging`, `preview` | Alpaca paper account keys for the backend (US stocks); `staging` and `preview` share the stage account, `production` has its own |
-| `LOGO_DEV_KEY` | environments `production`, `staging`, `preview` | logo.dev publishable key for the instrument icons; one free account for all three |
+| `DEPLOY_SSH_KEY` | environments `production`, `staging` | private deploy key of that scope |
+| `ALPACA_KEY_ID`, `ALPACA_SECRET_KEY` | environments `production`, `staging` | Alpaca paper account keys for the backend (US stocks); each has its own account |
+| `LOGO_DEV_KEY` | environments `production`, `staging` | logo.dev publishable key for the instrument icons; one free account for both |
 | `SENTRY_DSN` | environments `production`, `staging` | where the backend sends errors, traces, profiles and logs (Sentry project `backend`) |
 | `SENTRY_AUTH_TOKEN` | environments `production`, `staging` | Sentry organization token (scope `org:ci`) that records each release |
-| `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | environments `production`, `staging`, `preview` | Access service token: `github-actions-deploy` for `production` and `staging`, `github-actions-preview` for `preview` |
+| `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | environments `production`, `staging` | Access service token `github-actions-deploy` |
 | `DEPLOY_KNOWN_HOSTS` | repository variable | SSH host key of the VM |
 
 ## Files
@@ -222,8 +180,8 @@ of `vm/candlestack-deploy` lists which key may run what.
 | `vm/deploy_authorized_keys` | Public deploy keys with their scopes |
 | `cloudflared/config.yml` | Tunnel ingress: SSH for deployments, everything else to the edge |
 | `edge/` | Caddy that routes each hostname to its environment |
-| `env/compose.yaml` | One environment (prod, stage or `pr-<N>`): backend, frontend and Redis |
-| `agent/` | Server agent for ops: host metrics, containers and preview health as JSON, read-only Docker proxy |
+| `env/compose.yaml` | One environment (prod or stage): backend, frontend and Redis |
+| `agent/` | Server agent for ops: host metrics and containers as JSON, read-only Docker proxy |
 | `github/` | Snapshot of the organization's GitHub settings: rulesets, environments, Actions policy, security, project |
 | `cloudflare/` | Snapshot of the Cloudflare settings: zone, DNS, Access, tunnel, Workers |
 | `sentry/` | Snapshot of the Sentry settings: privacy, alerts, the uptime monitor, the GitHub integration |
@@ -246,13 +204,11 @@ cd backend && uv run ruff check ../infra/agent && uv run ruff format --check ../
 - `vm/test-candlestack-deploy.sh` runs the real `vm/candlestack-deploy` as sshd runs it for each
   key (the scope from `vm/deploy_authorized_keys`, the command in `SSH_ORIGINAL_COMMAND`, the
   token and secrets on stdin) with fake `docker` and `git` that record their calls. It checks
-  which key may run what, that malformed images, versions, preview numbers and secrets are
-  refused before anything runs, that prod takes only a release tag on main's history and starts
+  which key may run what, that malformed images, versions and secrets are refused before
+  anything runs, that prod takes only a release tag on main's history and starts
   with that tag's compose file and the images stage last ran for its commit, that only a
-  successful `up stage` adds to the stage record, that a second preview is refused, that no
-  token or secret is printed, and the Docker commands of every allowed command (with the edge
-  network: `edge-preview` for previews). It touches
-  nothing outside a temporary directory.
+  successful `up stage` adds to the stage record, that no token or secret is printed, and the
+  Docker commands of every allowed command. It touches nothing outside a temporary directory.
 - `agent/test_agent.py` (standard library `unittest`, like the agent) pins the schema-1
   snapshot that ops reads, the order of its containers and the HTTP answers (`starting`, the
   snapshot, `stale`), with a stub Docker API and fixture files for `/proc`. The agent is linted
@@ -293,7 +249,6 @@ needs a fresh deploy afterwards.
    - stage: `stage.yml` has no manual trigger, so re-run its latest workflow run, or push to
      `main`; this also deploys the server agent.
    - prod: re-run the latest release workflow run and approve the deployment again.
-   - previews: add the `preview` label again.
 6. Two things no deploy repeats, on this VM or the next one, because cloud-init only did them
    once at boot: after a change to `infra/cloudflared/config.yml`, restart cloudflared on the
    VM (SSM: `sudo systemctl restart cloudflared`); after a change to

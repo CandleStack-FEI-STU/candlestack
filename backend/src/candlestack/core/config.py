@@ -9,29 +9,23 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
-# Our Alpaca request budget per minute. Alpaca allows 200 per key: prod has its own key,
-# stage and the pull request previews share one (100 + 30 for one preview).
+# Our Alpaca request budget per minute. Alpaca allows 200 per key: prod and stage have one
+# each.
 _ALPACA_RATE_LIMITS = {"prod": 150, "stage": 100}
-_ALPACA_RATE_LIMIT_PREVIEW = 30
 _ALPACA_RATE_LIMIT_DEFAULT = 60
 
 
 def default_alpaca_rate_limit(app_env: str) -> int:
-    if app_env.startswith("pr-"):
-        return _ALPACA_RATE_LIMIT_PREVIEW
     return _ALPACA_RATE_LIMITS.get(app_env, _ALPACA_RATE_LIMIT_DEFAULT)
 
 
 # Our logo.dev request budget per minute. logo.dev allows 100 per minute for the whole account,
-# which every environment shares: prod, stage and four previews stay within it together.
+# which every environment shares: prod and stage stay within it together.
 _LOGO_DEV_RATE_LIMITS = {"prod": 50, "stage": 20}
-_LOGO_DEV_RATE_LIMIT_PREVIEW = 5
 _LOGO_DEV_RATE_LIMIT_DEFAULT = 20
 
 
 def default_logo_dev_rate_limit(app_env: str) -> int:
-    if app_env.startswith("pr-"):
-        return _LOGO_DEV_RATE_LIMIT_PREVIEW
     return _LOGO_DEV_RATE_LIMITS.get(app_env, _LOGO_DEV_RATE_LIMIT_DEFAULT)
 
 
@@ -56,7 +50,7 @@ def default_traces_sample_rate(app_env: str) -> float:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_ignore_empty=True, extra="ignore", frozen=True)
 
-    app_env: str = Field(default="local", pattern=r"^(local|test|stage|prod|pr-\d+)$")
+    app_env: str = Field(default="local", pattern=r"^(local|test|stage|prod)$")
     app_version: str = "dev"
     app_commit: str = "unknown"
     log_level: LogLevel = "INFO"

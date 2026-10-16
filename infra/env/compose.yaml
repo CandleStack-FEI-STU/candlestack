@@ -1,13 +1,13 @@
-# One environment (prod, stage or pr-<N>) as its own compose project, started by
+# One environment (prod or stage) as its own compose project, started by
 # infra/vm/candlestack-deploy on the VM, which also exports the backend's Alpaca keys
-# (ALPACA_KEY_ID, ALPACA_SECRET_KEY), the logo.dev key (LOGO_DEV_KEY) and SENTRY_DSN (prod and
-# stage only) for this command only:
+# (ALPACA_KEY_ID, ALPACA_SECRET_KEY), the logo.dev key (LOGO_DEV_KEY) and SENTRY_DSN for this
+# command only:
 #   ENV_NAME=stage APP_VERSION=<version> BACKEND_IMAGE=<image@digest> FRONTEND_IMAGE=<image@digest> \
 #   REDIS_MAXMEMORY=256mb REDIS_MEM_LIMIT=288m EDGE_NETWORK=edge \
 #   docker compose -p stage -f infra/env/compose.yaml up -d
-# On the edge network (EDGE_NETWORK: "edge" for prod and stage; "edge-preview" for previews,
-# which share it with the edge Caddy only) the edge Caddy reaches <ENV_NAME>-backend:8000 (/api/*) and
-# <ENV_NAME>-frontend:8080 (everything else). Redis is on the environment's own network only.
+# On the edge network (EDGE_NETWORK: "edge" for prod and stage) the edge Caddy reaches
+# <ENV_NAME>-backend:8000 (/api/*) and <ENV_NAME>-frontend:8080 (everything else). Redis is on
+# the environment's own network only.
 services:
   backend:
     image: ${BACKEND_IMAGE:?}
@@ -92,8 +92,8 @@ services:
       - default
 
 networks:
-  # Without EDGE_NETWORK, the previews' one: prod or stage would fail to be reached, rather
-  # than a preview reach them.
+  # Without EDGE_NETWORK compose fails, rather than start the environment on a network the
+  # deploy script did not choose.
   edge:
-    name: ${EDGE_NETWORK:-edge-preview}
+    name: ${EDGE_NETWORK:?}
     external: true

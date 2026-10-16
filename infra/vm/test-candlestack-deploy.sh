@@ -14,8 +14,7 @@ trap 'rm -rf "$work"' EXIT
 # Fake docker and git: every call is a line "<tool> <args>". docker also records the token
 # of the login (its stdin) and where the login is kept, and for compose the first line of a
 # compose file outside the checkout and the variables the deploy script gives it.
-# FAKE_DOCKER=fail-up: "compose up" fails. FAKE_PREVIEWS: the compose projects whose backend
-# runs, as "<project>:<created, epoch seconds>" words; "ps" and "inspect" answer from it.
+# FAKE_DOCKER=fail-up: "compose up" fails.
 mkdir "$work/bin"
 cat >"$work/bin/docker" <<'EOF'
 #!/usr/bin/env bash
@@ -33,19 +32,6 @@ case $1 in
     env | grep -E '^(ENV_NAME|APP_VERSION|BACKEND_IMAGE|FRONTEND_IMAGE|IMAGE|EDGE_NETWORK|REDIS_[A-Z_]+|ALPACA_[A-Z_]+|LOGO_DEV_KEY|SENTRY_DSN)=' |
       sort | sed 's/^/  env /' >>"$CALLS"
     [[ $FAKE_DOCKER != fail-up || $* != *" up "* ]]
-    ;;
-  ps)
-    for running in ${FAKE_PREVIEWS-}; do
-      echo "${running%%:*} id-${running%%:*}"
-    done
-    ;;
-  inspect)
-    id=${*: -1}
-    for running in ${FAKE_PREVIEWS-}; do
-      if [[ id-${running%%:*} == "$id" ]]; then
-        date -u -d "@${running#*:}" +%Y-%m-%dT%H:%M:%S.123456789Z
-      fi
-    done
     ;;
 esac
 EOF
@@ -106,7 +92,7 @@ run() {
   status=0
   output=$(if [[ -n ${3-} ]]; then printf '%s\n' "$3"; fi |
     env -i HOME="$work" PATH="$work/bin:$PATH" CALLS="$CALLS" FAKE_GIT="${FAKE_GIT-}" \
-      FAKE_DOCKER="${FAKE_DOCKER-}" FAKE_PREVIEWS="${FAKE_PREVIEWS-}" SSH_ORIGINAL_COMMAND="$2" "$here/candlestack-deploy" "$1" 2>&1) ||
+      FAKE_DOCKER="${FAKE_DOCKER-}" SSH_ORIGINAL_COMMAND="$2" "$here/candlestack-deploy" "$1" 2>&1) ||
     status=$?
   temporary=$(sed -n -e 's/^  config //p' -e 's|^docker compose .* -f \(/[^ ]*\)/compose\.yaml .*|\1|p' \
     "$CALLS" | grep -v '^/opt/candlestack' || true)
@@ -190,19 +176,8 @@ release_git() {
     "git -C /opt/candlestack show $COMMIT:infra/env/compose.yaml" | head -n "$2"
 }
 
-# slot_calls: how "up pr-<N>" and "previews" look for the running previews ($FAKE_PREVIEWS).
-slot_calls() {
-  echo 'docker ps --filter label=com.docker.compose.service=backend --format {{.Label "com.docker.compose.project"}} {{.ID}}'
-  for running in ${FAKE_PREVIEWS-}; do
-    if [[ ${running%%:*} == pr-* ]]; then
-      echo "docker inspect --format {{.Created}} id-${running%%:*}"
-    fi
-  done
-}
-
 # up_calls <env> <version> <maxmemory> <container limit> [with-secrets [with-dsn]]: what "up"
-# asks of Docker; prod with the compose file of its release tag, a preview on the network
-# edge-preview instead of edge.
+# asks of Docker; prod with the compose file of its release tag.
 up_calls() {
   echo "docker login ghcr.io --username deploy --password-stdin"
   echo "  stdin $TOKEN"
@@ -221,11 +196,7 @@ up_calls() {
   fi
   echo "  env APP_VERSION=$2"
   echo "  env BACKEND_IMAGE=$BACKEND"
-  if [[ $1 == pr-* ]]; then
-    echo "  env EDGE_NETWORK=edge-preview"
-  else
-    echo "  env EDGE_NETWORK=edge"
-  fi
+  echo "  env EDGE_NETWORK=edge"
   echo "  env ENV_NAME=$1"
   echo "  env FRONTEND_IMAGE=$FRONTEND"
   if [[ -n ${7:-} ]]; then
@@ -244,10 +215,10 @@ tests=$((tests + 1))
 forced='^restrict,command="/opt/candlestack/infra/vm/candlestack-deploy \([a-z]*\)" ssh-ed25519 .*'
 scopes=$(sed -n "s|$forced|\1|p" "$here/deploy_authorized_keys" | sort | tr '\n' ' ')
 keys=$(grep -c '^[^#]' "$here/deploy_authorized_keys")
-if [[ $scopes == "preview prod stage " && $keys == 3 ]]; then
-  echo "ok    deploy_authorized_keys: prod, stage and preview, each forced"
+if [[ $scopes == "prod stage " && $keys == 2 ]]; then
+  echo "ok    deploy_authorized_keys: prod and stage, each forced"
 else
-  failed "deploy_authorized_keys" "expected 3 forced keys prod, stage, preview; got $keys: $scopes"
+  failed "deploy_authorized_keys" "expected 2 forced keys prod, stage; got $keys: $scopes"
 fi
 
 echo "# What each key may run"
@@ -271,19 +242,6 @@ LOGO_DEV_KEY=$LOGO_KEY
 SENTRY_DSN=$DSN" "$(up_calls stage main-0123abc 256mb 288m with-secrets with-dsn with-logo)"
 allowed "stage: up stage without secrets" stage "up stage main-0123abc $IMAGES" "$TOKEN" \
   "$(up_calls stage main-0123abc 256mb 288m)"
-allowed "preview: up pr-42" preview "up pr-42 pr-42-0123abc $IMAGES" "$TOKEN
-$SECRETS" "$(slot_calls)
-$(up_calls pr-42 pr-42-0123abc 64mb 96m with-secrets)"
-allowed "preview: down pr-42" preview "down pr-42" "" \
-  "docker compose -p pr-42 -f /opt/candlestack/infra/env/compose.yaml down --remove-orphans
-  env APP_VERSION=none
-  env BACKEND_IMAGE=none
-  env EDGE_NETWORK=edge-preview
-  env ENV_NAME=pr-42
-  env FRONTEND_IMAGE=none
-  env REDIS_MAXMEMORY=64mb
-  env REDIS_MEM_LIMIT=96m
-docker image prune --all --force"
 allowed "stage: edge" stage "edge" "" \
   "git -C /opt/candlestack fetch --quiet --depth 1 origin main
 git -C /opt/candlestack reset --quiet --hard FETCH_HEAD
@@ -298,27 +256,16 @@ docker compose -p agent -f /opt/candlestack/infra/agent/compose.yaml up --detach
   env IMAGE=$AGENT"
 
 echo "# What each key may not run"
-refused "preview: up prod" preview "up prod v0.2.0" "$TOKEN" \
-  "the preview key may not deploy 'prod'"
-refused "preview: up stage" preview "up stage main-0123abc $IMAGES" "$TOKEN" \
-  "the preview key may not deploy 'stage'"
-refused "preview: edge" preview "edge" "" "only the stage key updates the edge"
-refused "preview: agent" preview "agent $AGENT" "$TOKEN" \
-  "only the stage key deploys the server agent"
-refused "preview: down stage" preview "down stage" "" "the preview key may not remove 'stage'"
-refused "preview: down prod" preview "down prod" "" "the preview key may not remove 'prod'"
 refused "stage: up prod" stage "up prod v0.2.0" "$TOKEN" \
   "the stage key may not deploy 'prod'"
-refused "stage: up pr-42" stage "up pr-42 pr-42-0123abc $IMAGES" "$TOKEN" \
-  "the stage key may not deploy 'pr-42'"
-refused "stage: down stage" stage "down stage" "" "only the preview key removes environments"
+refused "stage: up another environment" stage "up test main-0123abc $IMAGES" "$TOKEN" \
+  "the stage key may not deploy 'test'"
 refused "prod: up stage" prod "up stage main-0123abc $IMAGES" "$TOKEN" \
   "the prod key may not deploy 'stage'"
-refused "prod: up pr-42" prod "up pr-42 pr-42-0123abc $IMAGES" "$TOKEN" \
-  "the prod key may not deploy 'pr-42'"
+refused "prod: up another environment" prod "up test main-0123abc $IMAGES" "$TOKEN" \
+  "the prod key may not deploy 'test'"
 refused "prod: edge" prod "edge" "" "only the stage key updates the edge"
 refused "prod: agent" prod "agent $AGENT" "$TOKEN" "only the stage key deploys the server agent"
-refused "prod: down prod" prod "down prod" "" "only the preview key removes environments"
 refused "unknown scope" admin "up prod v0.2.0" "$TOKEN" \
   "the admin key may not deploy 'prod'"
 refused "unknown command" stage "sh -c id" "" "unknown command: 'sh -c id'"
@@ -364,8 +311,6 @@ main-$COMMIT $IMAGES" stage "up stage main-$COMMIT $IMAGES" "$TOKEN"
 record=$(<"$RECORD")
 FAKE_DOCKER=fail-up recorded "stage: a failed up stage adds nothing" "$record" \
   stage "up stage main-$COMMIT $OLD_IMAGES" "$TOKEN"
-recorded "preview: up pr-42 adds nothing" "$record" \
-  preview "up pr-42 pr-42-0123abc $IMAGES" "$TOKEN"
 # A version that only starts with the commit is another stage deploy, never the release's.
 echo "main-$COMMIT-x $OLD_IMAGES" >>"$RECORD"
 record=$(<"$RECORD")
@@ -394,30 +339,7 @@ echo "main-$COMMIT ${BACKEND%@*}:latest $FRONTEND" >"$RECORD"
 after_git=$(release_git v0.2.0 6) refused "prod: a bad line in the record" prod "up prod v0.2.0" \
   "$TOKEN" "image must be a GHCR digest reference: '${BACKEND%@*}:latest'"
 
-echo "# Previews: one at a time, listed with the time each was deployed"
-FAKE_PREVIEWS="stage:1790000000 pr-9:1790003600 pr-57:1790001800 prod:1790000000"
-allowed "preview: previews" preview "previews" "" "$(slot_calls)"
-tests=$((tests + 1))
-if [[ $output == $'pr-57 1790001800
-pr-9 1790003600' ]]; then
-  echo "ok    previews: pr-<N> and when it was deployed, oldest first, nothing else"
-else
-  failed "previews output" "expected pr-57 then pr-9 with their times, got: $output"
-fi
-FAKE_PREVIEWS="stage:1790000000 pr-57:1790001800"
-after_git=$(slot_calls) refused "preview: up pr-42 while pr-57 runs" preview "up pr-42 pr-42-0123abc $IMAGES" "$TOKEN" "no free preview slot: pr-57 running, at most 1 at a time"
-FAKE_PREVIEWS="stage:1790000000 pr-42:1790001800"
-allowed "preview: up pr-42 again while it runs" preview "up pr-42 pr-42-0123abc $IMAGES" "$TOKEN" "$(slot_calls)
-$(up_calls pr-42 pr-42-0123abc 64mb 96m)"
-FAKE_PREVIEWS=
-refused "stage: previews" stage "previews" "" "only the preview key lists previews"
-refused "prod: previews" prod "previews" "" "only the preview key lists previews"
-
 echo "# Malformed arguments"
-for env in pr- pr-1234567 pr-4x2 PR-42 pr-42/ ../prod; do
-  refused "preview: up $env" preview "up $env v1 $IMAGES" "$TOKEN" \
-    "the preview key may not deploy '$env'"
-done
 long=$(printf 'v%.0s' {1..65})
 # shellcheck disable=SC2016 # a command substitution the script must not run
 for version in "$long" 'v1;id' 'v1$(id)' "v1'" 'main/0123' 'v1*'; do

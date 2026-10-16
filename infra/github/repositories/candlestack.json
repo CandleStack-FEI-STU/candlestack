@@ -17,21 +17,6 @@
   "environments": [
     {
       "can_admins_bypass": true,
-      "deployment_branch_policy": null,
-      "deployment_policies": [],
-      "name": "preview",
-      "protection_rules": [],
-      "secret_names": [
-        "ALPACA_KEY_ID",
-        "ALPACA_SECRET_KEY",
-        "CF_ACCESS_CLIENT_ID",
-        "CF_ACCESS_CLIENT_SECRET",
-        "DEPLOY_SSH_KEY",
-        "LOGO_DEV_KEY"
-      ]
-    },
-    {
-      "can_admins_bypass": true,
       "deployment_branch_policy": {
         "custom_branch_policies": true,
         "protected_branches": false
@@ -149,11 +134,6 @@
       "color": "e4e669",
       "description": "This doesn't seem right",
       "name": "invalid"
-    },
-    {
-      "color": "0f766e",
-      "description": "Deploy this pull request to pr-<N>-preview.candlestack.tech",
-      "name": "preview"
     },
     {
       "color": "2b67c6",

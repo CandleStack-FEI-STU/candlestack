@@ -11,17 +11,16 @@ not in the service.
 
 ## Runtime
 
-prod, stage and the `pr-<N>` previews run the same three containers on one VM. Deployment,
-hosts and secrets are described in [infra/README.md](../infra/README.md).
+prod and stage run the same three containers on one VM. Deployment, hosts and secrets are described in [infra/README.md](../infra/README.md).
 
 ```mermaid
 flowchart LR
-    browser["Browser or API client"] -->|HTTPS| cf["Cloudflare<br/>TLS, Access (stage, previews)"]
+    browser["Browser or API client"] -->|HTTPS| cf["Cloudflare<br/>TLS, Access (stage)"]
     cf --> tunnel["Cloudflare Tunnel"]
     subgraph vm["VM (no inbound ports)"]
         tunnel --> cloudflared["cloudflared"]
         cloudflared --> caddy["edge Caddy<br/>routes by hostname"]
-        subgraph envbox["one environment: prod, stage or pr-N"]
+        subgraph envbox["one environment: prod or stage"]
             caddy -->|"/api/*"| backend["backend<br/>FastAPI on granian :8000"]
             caddy -->|"everything else"| frontend["frontend<br/>static page, Caddy :8080"]
             backend --> redis[("redis<br/>cache only")]
@@ -37,10 +36,6 @@ flowchart LR
 | `backend` | `ghcr.io/candlestack-fei-stu/candlestack/backend` | calls Binance and Alpaca; gets the environment's Alpaca keys at deploy time |
 | `frontend` | `ghcr.io/candlestack-fei-stu/candlestack/frontend` | the web app, static files served by Caddy |
 | `redis` | `redis:8-alpine` | private network of the environment, no persistence, `allkeys-lru` |
-
-The edge Caddy reaches prod and stage on one Docker network and the previews, which run the
-code of pull requests, on another, so a preview reaches neither prod, stage nor the server agent
-([infra/README.md](../infra/README.md#environments)).
 
 ## HTTP surface
 
@@ -142,8 +137,8 @@ Environment variables, read by pydantic-settings without a prefix. All are docum
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `APP_ENV` | `local` | `local`, `test`, `stage`, `prod`, `pr-<N>` |
-| `APP_VERSION` | `dev` | deployed version (`main-<sha>`, `v0.2.0`, `pr-<N>-<sha>`) |
+| `APP_ENV` | `local` | `local`, `test`, `stage`, `prod` |
+| `APP_VERSION` | `dev` | deployed version (`main-<sha>`, `v0.2.0`) |
 | `APP_COMMIT` | `unknown` | commit sha, baked into the image at build time |
 | `LOG_LEVEL` | `INFO` | |
 | `REDIS_URL` | `redis://127.0.0.1:6379/0` | |
@@ -227,8 +222,8 @@ to check that an error reaches Sentry. The Sentry settings are recorded in
 | Gaps are reported, never filled | filled candles would be invented prices |
 | Explicit limits instead of silent truncation (50000 candles, per-IP and per-source rate limits) | the client always gets exactly what it asked for or an error saying what to change |
 | A fingerprint over every candle set | later experiments can detect that a source changed its data |
-| Prod API and docs public (per-IP rate limit); stage and previews behind Cloudflare Access | anyone can try the released API without an account; unreleased builds stay team-only |
+| Prod API and docs public (per-IP rate limit); stage behind Cloudflare Access | anyone can try the released API without an account; unreleased builds stay team-only |
 | granian instead of uvicorn, ty instead of mypy, Polars instead of pandas | faster tools with the same role |
 | Coverage and TDD are team conventions, not CI gates | CI stays fast; test quality is checked in review |
 | Security headers at the edge, the Content-Security-Policy in report-only mode first; Trivy on every image in CI and weekly on what runs | the headers protect every page without app code; the policy's reports show what it would break before it blocks anything; the scans catch known vulnerabilities before a merge and after a release |
-| Sentry for errors, traces, profiles and logs of prod and stage; ops for uptime and the server | ops keeps working when the VM is down; Sentry shows failures with their code, commit and request, and previews and local runs stay out of its quota |
+| Sentry for errors, traces, profiles and logs of prod and stage; ops for uptime and the server | ops keeps working when the VM is down; Sentry shows failures with their code, commit and request, and local runs stay out of its quota |

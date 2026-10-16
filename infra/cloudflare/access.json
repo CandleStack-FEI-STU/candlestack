@@ -38,23 +38,6 @@
           "require": [],
           "reusable": true,
           "uid": "ed8692ff-666a-4fcb-ba5c-1104210e9baa"
-        },
-        {
-          "decision": "non_identity",
-          "exclude": [],
-          "id": "3b0fa099-ba7b-4e74-b642-88f0ab869d84",
-          "include": [
-            {
-              "service_token": {
-                "token_id": "2bbec550-96c2-479e-824e-4b421ab5ead3"
-              }
-            }
-          ],
-          "name": "github-actions-preview",
-          "precedence": 2,
-          "require": [],
-          "reusable": true,
-          "uid": "3b0fa099-ba7b-4e74-b642-88f0ab869d84"
         }
       ],
       "self_hosted_domains": [
@@ -64,76 +47,6 @@
       "tags": [],
       "type": "self_hosted",
       "uid": "e5e07338-5336-42bb-a98e-40028194d88c"
-    },
-    {
-      "allowed_idps": [
-        "5990031a-0852-447e-a07f-f9bd774d24eb"
-      ],
-      "app_launcher_visible": true,
-      "aud": "954237765c67a4f7a5246850e6df26a7629d57f6e46b597efe38dde1919efce0",
-      "auto_redirect_to_identity": true,
-      "destinations": [
-        {
-          "type": "public",
-          "uri": "*-preview.candlestack.tech"
-        }
-      ],
-      "domain": "*-preview.candlestack.tech",
-      "eager_redirect_cookie_setting": true,
-      "enable_binding_cookie": false,
-      "http_only_cookie_attribute": false,
-      "id": "7d3053ab-d3c7-4322-a0c9-2e229defadca",
-      "name": "previews",
-      "options_preflight_bypass": false,
-      "policies": [
-        {
-          "connection_rules": {
-            "rdp": {}
-          },
-          "decision": "allow",
-          "exclude": [],
-          "id": "f490c6c7-616d-4ac3-9695-0747836b34dd",
-          "include": [
-            {
-              "github-organization": {
-                "id": "332916408",
-                "identity_provider_id": "5990031a-0852-447e-a07f-f9bd774d24eb",
-                "name": "CandleStack-FEI-STU"
-              }
-            }
-          ],
-          "name": "team-github-org",
-          "precedence": 1,
-          "require": [],
-          "reusable": true,
-          "session_duration": "168h",
-          "uid": "f490c6c7-616d-4ac3-9695-0747836b34dd"
-        },
-        {
-          "decision": "non_identity",
-          "exclude": [],
-          "id": "3b0fa099-ba7b-4e74-b642-88f0ab869d84",
-          "include": [
-            {
-              "service_token": {
-                "token_id": "2bbec550-96c2-479e-824e-4b421ab5ead3"
-              }
-            }
-          ],
-          "name": "github-actions-preview",
-          "precedence": 2,
-          "require": [],
-          "reusable": true,
-          "uid": "3b0fa099-ba7b-4e74-b642-88f0ab869d84"
-        }
-      ],
-      "self_hosted_domains": [
-        "*-preview.candlestack.tech"
-      ],
-      "session_duration": "24h",
-      "tags": [],
-      "type": "self_hosted",
-      "uid": "7d3053ab-d3c7-4322-a0c9-2e229defadca"
     },
     {
       "allowed_idps": [
@@ -315,23 +228,6 @@
   },
   "policies": [
     {
-      "app_count": 2,
-      "decision": "non_identity",
-      "exclude": [],
-      "id": "3b0fa099-ba7b-4e74-b642-88f0ab869d84",
-      "include": [
-        {
-          "service_token": {
-            "token_id": "2bbec550-96c2-479e-824e-4b421ab5ead3"
-          }
-        }
-      ],
-      "name": "github-actions-preview",
-      "require": [],
-      "reusable": true,
-      "uid": "3b0fa099-ba7b-4e74-b642-88f0ab869d84"
-    },
-    {
       "app_count": 1,
       "connection_rules": {
         "rdp": {}
@@ -370,7 +266,7 @@
       "uid": "7c6b21ee-e685-4713-8fe3-88a5f2f69906"
     },
     {
-      "app_count": 2,
+      "app_count": 1,
       "connection_rules": {
         "rdp": {}
       },
@@ -425,12 +321,6 @@
       "expires_at": "2027-09-24T16:24:35Z",
       "id": "964e5db6-53fd-4727-9c67-9de29418ba56",
       "name": "ops-monitor"
-    },
-    {
-      "duration": "8760h",
-      "expires_at": "2027-09-28T09:47:22Z",
-      "id": "2bbec550-96c2-479e-824e-4b421ab5ead3",
-      "name": "github-actions-preview"
     }
   ]
 }
