@@ -29,7 +29,7 @@ case $1 in
     if [[ $file != /opt/candlestack/* ]]; then
       echo "  file $(head -n 1 "$file")" >>"$CALLS"
     fi
-    env | grep -E '^(ENV_NAME|APP_VERSION|BACKEND_IMAGE|FRONTEND_IMAGE|IMAGE|EDGE_NETWORK|REDIS_[A-Z_]+|ALPACA_[A-Z_]+|LOGO_DEV_KEY|SENTRY_DSN)=' |
+    env | grep -E '^(ENV_NAME|APP_VERSION|BACKEND_IMAGE|FRONTEND_IMAGE|IMAGE|EDGE_NETWORK|REDIS_[A-Z_]+|POSTGRES_PASSWORD|ALPACA_[A-Z_]+|LOGO_DEV_KEY|SENTRY_DSN|OAUTH_[A-Z_]+|BETA_ALLOWLIST)=' |
       sort | sed 's/^/  env /' >>"$CALLS"
     [[ $FAKE_DOCKER != fail-up || $* != *" up "* ]]
     ;;
@@ -78,6 +78,12 @@ SECRETS="ALPACA_KEY_ID=$KEY_ID
 ALPACA_SECRET_KEY=$SECRET"
 DSN=https://0123abcd@o1.ingest.de.sentry.io/2
 LOGO_KEY=pk_test_logo
+DB_PASSWORD=pg_test_password
+OAUTH="OAUTH_GITHUB_CLIENT_ID=Iv1.test
+OAUTH_GITHUB_CLIENT_SECRET=gh_test_secret
+OAUTH_GOOGLE_CLIENT_ID=g.test.apps
+OAUTH_GOOGLE_CLIENT_SECRET=g_test_secret
+BETA_ALLOWLIST=ada@example.com,bob@example.com"
 
 tests=0
 failures=0
@@ -112,7 +118,8 @@ failed() {
 # The script's output never shows the token or a secret value, whatever happened.
 quiet() {
   local value
-  for value in "$TOKEN" "$KEY_ID" "$SECRET" "$DSN" "${@:2}"; do
+  for value in "$TOKEN" "$KEY_ID" "$SECRET" "$DSN" "$DB_PASSWORD" gh_test_secret g_test_secret \
+    "${@:2}"; do
     if [[ $output == *"$value"* ]]; then
       failed "$1" "the output shows '$value': $output"
       return 1
@@ -176,7 +183,8 @@ release_git() {
     "git -C /opt/candlestack show $COMMIT:infra/env/compose.yaml" | head -n "$2"
 }
 
-# up_calls <env> <version> <maxmemory> <container limit> [with-secrets [with-dsn]]: what "up"
+# up_calls <env> <version> <maxmemory> <container limit> [with-secrets [with-dsn [with-logo
+# [with-db [with-oauth]]]]]: what "up"
 # asks of Docker; prod with the compose file of its release tag.
 up_calls() {
   echo "docker login ghcr.io --username deploy --password-stdin"
@@ -196,11 +204,23 @@ up_calls() {
   fi
   echo "  env APP_VERSION=$2"
   echo "  env BACKEND_IMAGE=$BACKEND"
+  if [[ -n ${9:-} ]]; then
+    echo "  env BETA_ALLOWLIST=ada@example.com,bob@example.com"
+  fi
   echo "  env EDGE_NETWORK=edge"
   echo "  env ENV_NAME=$1"
   echo "  env FRONTEND_IMAGE=$FRONTEND"
   if [[ -n ${7:-} ]]; then
     echo "  env LOGO_DEV_KEY=$LOGO_KEY"
+  fi
+  if [[ -n ${9:-} ]]; then
+    echo "  env OAUTH_GITHUB_CLIENT_ID=Iv1.test"
+    echo "  env OAUTH_GITHUB_CLIENT_SECRET=gh_test_secret"
+    echo "  env OAUTH_GOOGLE_CLIENT_ID=g.test.apps"
+    echo "  env OAUTH_GOOGLE_CLIENT_SECRET=g_test_secret"
+  fi
+  if [[ -n ${8:-} ]]; then
+    echo "  env POSTGRES_PASSWORD=$DB_PASSWORD"
   fi
   echo "  env REDIS_MAXMEMORY=$3"
   echo "  env REDIS_MEM_LIMIT=$4"
@@ -240,6 +260,13 @@ allowed "stage: up stage with the logo.dev key" stage "up stage main-0123abc $IM
 $SECRETS
 LOGO_DEV_KEY=$LOGO_KEY
 SENTRY_DSN=$DSN" "$(up_calls stage main-0123abc 256mb 288m with-secrets with-dsn with-logo)"
+allowed "stage: up stage with the database, the OAuth apps and the beta list" stage \
+  "up stage main-0123abc $IMAGES" "$TOKEN
+$SECRETS
+LOGO_DEV_KEY=$LOGO_KEY
+SENTRY_DSN=$DSN
+POSTGRES_PASSWORD=$DB_PASSWORD
+$OAUTH" "$(up_calls stage main-0123abc 256mb 288m with-secrets with-dsn with-logo with-db with-oauth)"
 allowed "stage: up stage without secrets" stage "up stage main-0123abc $IMAGES" "$TOKEN" \
   "$(up_calls stage main-0123abc 256mb 288m)"
 allowed "stage: edge" stage "edge" "" \
@@ -365,8 +392,8 @@ done
 refused "agent image" stage "agent ${AGENT%@*}:latest" "$TOKEN" \
   "image must be a GHCR digest reference: '${AGENT%@*}:latest'"
 
-echo "# stdin: the token, then only the Alpaca and logo.dev keys and the Sentry DSN, with safe values"
-only_secrets="only ALPACA_KEY_ID, ALPACA_SECRET_KEY, LOGO_DEV_KEY and SENTRY_DSN may follow the token on stdin"
+echo "# stdin: the token, then only the environment's secrets, with safe values"
+only_secrets="only ALPACA_KEY_ID, ALPACA_SECRET_KEY, LOGO_DEV_KEY, SENTRY_DSN, POSTGRES_PASSWORD, the OAUTH_ keys and BETA_ALLOWLIST may follow the token on stdin"
 refused "up without a token" stage "up stage v1 $IMAGES" "" "expected a GHCR token on stdin"
 refused "agent without a token" stage "agent $AGENT" "" "expected a GHCR token on stdin"
 refused "another variable" stage "up stage v1 $IMAGES" "$TOKEN
@@ -391,6 +418,12 @@ ALPACA_KEY_ID=$KEY_ID
 ALPACA_SECRET_KEY=$SECRET
 " "$(up_calls stage v1 256mb 288m with-secrets)"
 SECRET=$secret
+long_list=$(printf 'person%04d@example.com,' {1..175})
+allowed "a beta list longer than 256 characters" stage "up stage v1 $IMAGES" "$TOKEN
+BETA_ALLOWLIST=${long_list%,}" "$(up_calls stage v1 256mb 288m | sed "s|^  env BACKEND_IMAGE=.*|&\n  env BETA_ALLOWLIST=${long_list%,}|")"
+refused "a beta list over 4096 characters" stage "up stage v1 $IMAGES" "$TOKEN
+BETA_ALLOWLIST=${long_list}${long_list:0:100}" \
+  "BETA_ALLOWLIST must be at most 4096 printable characters without spaces or quotes"
 
 echo
 if ((failures)); then

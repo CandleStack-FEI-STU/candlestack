@@ -46,10 +46,16 @@
       "secret_names": [
         "ALPACA_KEY_ID",
         "ALPACA_SECRET_KEY",
+        "BETA_ALLOWLIST",
         "CF_ACCESS_CLIENT_ID",
         "CF_ACCESS_CLIENT_SECRET",
         "DEPLOY_SSH_KEY",
         "LOGO_DEV_KEY",
+        "OAUTH_GITHUB_CLIENT_ID",
+        "OAUTH_GITHUB_CLIENT_SECRET",
+        "OAUTH_GOOGLE_CLIENT_ID",
+        "OAUTH_GOOGLE_CLIENT_SECRET",
+        "POSTGRES_PASSWORD",
         "SENTRY_AUTH_TOKEN",
         "SENTRY_DSN"
       ]
@@ -75,10 +81,16 @@
       "secret_names": [
         "ALPACA_KEY_ID",
         "ALPACA_SECRET_KEY",
+        "BETA_ALLOWLIST",
         "CF_ACCESS_CLIENT_ID",
         "CF_ACCESS_CLIENT_SECRET",
         "DEPLOY_SSH_KEY",
         "LOGO_DEV_KEY",
+        "OAUTH_GITHUB_CLIENT_ID",
+        "OAUTH_GITHUB_CLIENT_SECRET",
+        "OAUTH_GOOGLE_CLIENT_ID",
+        "OAUTH_GOOGLE_CLIENT_SECRET",
+        "POSTGRES_PASSWORD",
         "SENTRY_AUTH_TOKEN",
         "SENTRY_DSN"
       ]
