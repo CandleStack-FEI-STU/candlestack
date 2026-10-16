@@ -6,7 +6,10 @@ version = "0.1.0"
 description = "CandleStack backend: API for experiments on financial time series"
 requires-python = ">=3.13,<3.14"
 dependencies = [
+    "alembic>=1.20.0",
     "anyio>=4.15.1",
+    "asyncpg>=0.32.0",
+    "authlib>=1.9.1",
     "fastapi>=0.141.1",
     "granian>=2.8.3",
     "httpx>=0.28.1",
@@ -17,6 +20,7 @@ dependencies = [
     "redis[hiredis]>=8.1.0",
     "scalar-fastapi>=1.9.1",
     "sentry-sdk>=2.70.0",
+    "sqlalchemy[asyncio]>=2.1.5",
     "tzdata>=2026.4",
 ]
 
@@ -45,6 +49,28 @@ dev = [
 # The uv release line of the whole toolchain: local, CI (setup-uv reads this) and the image.
 [tool.uv]
 required-version = ">=0.12.19,<0.13"
+
+# Migrations of the Postgres schema (backend/migrations), run by `alembic upgrade head`: by the
+# migrate service of compose before the backend starts, and here against DATABASE_URL. A new one:
+# `uv run alembic revision --autogenerate -m "<what changes>"`, then read and fix what it wrote.
+[tool.alembic]
+script_location = "%(here)s/migrations"
+file_template = "%%(year)d_%%(month).2d_%%(day).2d-%%(rev)s_%%(slug)s"
+# The app is installed (uv) or on PYTHONPATH (the image): nothing to add to sys.path.
+prepend_sys_path = []
+
+# A new migration comes out linted and formatted.
+[[tool.alembic.post_write_hooks]]
+name = "ruff_check"
+type = "module"
+module = "ruff"
+options = "check --fix --quiet REVISION_SCRIPT_FILENAME"
+
+[[tool.alembic.post_write_hooks]]
+name = "ruff_format"
+type = "module"
+module = "ruff"
+options = "format --quiet REVISION_SCRIPT_FILENAME"
 
 [tool.ruff]
 line-length = 100
@@ -113,7 +139,7 @@ addopts = [
     "--allow-unix-socket",
 ]
 markers = [
-    "integration: needs a real Redis at REDIS_URL",
+    "integration: needs a real Redis at REDIS_URL and a real Postgres at DATABASE_URL",
     "e2e: runs the built image with docker compose (tests/e2e/compose.yaml)",
     "slow: speed and memory checks, run by hand with -m slow",
 ]
@@ -121,10 +147,13 @@ filterwarnings = ["error"]
 xfail_strict = true
 
 # The gate is for the unit and integration tests together (CI's integration job):
-# `pytest --cov -m "not e2e and not slow"` with Redis running.
+# `pytest --cov -m "not e2e and not slow"` with Redis and Postgres running.
 [tool.coverage.run]
 source = ["candlestack"]
 branch = true
+# SQLAlchemy's asyncio runs the database calls in greenlets: without this, the lines after them
+# would count as not run.
+concurrency = ["thread", "greenlet"]
 
 [tool.coverage.report]
 fail_under = 95
@@ -199,7 +228,7 @@ forbidden_modules = [
     "candlestack.accounts", "candlestack.core", "candlestack.data", "candlestack.cli",
     "candlestack.main",
     "candlestack.openapi", "fastapi", "starlette", "scalar_fastapi", "granian", "redis",
-    "httpx", "sentry_sdk", "pydantic_settings",
+    "httpx", "sentry_sdk", "pydantic_settings", "sqlalchemy", "asyncpg", "alembic", "authlib",
 ]
 
 [[tool.importlinter.contracts]]
@@ -233,6 +262,20 @@ layers = [
     "cache | candles | catalog | schemas",
     "sessions",
     "models : errors",
+]
+
+# Inside accounts, the same: routes, then what other modules' routes depend on (the signed-in
+# user), the service and the cookies, the stores and the providers, the tables and bodies.
+[[tool.importlinter.contracts]]
+name = "Inside accounts: HTTP -> dependencies -> service -> stores and providers -> models"
+type = "layers"
+containers = ["candlestack.accounts"]
+layers = [
+    "api",
+    "dependencies",
+    "service | cookies",
+    "store | pending | oauth",
+    "models | errors | schemas",
 ]
 
 # What the sources share lives in sources.base.

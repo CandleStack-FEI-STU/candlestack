@@ -1,7 +1,8 @@
 """Fixtures shared by the unit and integration tests.
 
-``app`` is ``create_app(settings)`` with Redis replaced by ``fake_redis``; ``client`` runs it
-(lifespan included) in a TestClient. Tests override ``settings`` or ``fake_redis`` to vary them.
+``app`` is ``create_app(settings)`` with Redis replaced by ``fake_redis`` and Postgres by
+``fake_database``; ``client`` runs it (lifespan included) in a TestClient. Tests override
+``settings``, ``fake_redis`` or ``fake_database`` to vary them.
 """
 
 import sys
@@ -11,8 +12,11 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from redis.exceptions import ConnectionError as RedisConnectionError
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from candlestack.core import Settings
+from candlestack.core.db import get_database
 from candlestack.core.redis import get_redis
 from candlestack.main import create_app
 
@@ -27,6 +31,19 @@ class FakeRedis:
         if not self.up:
             raise RedisConnectionError("Connection refused")
         return True
+
+
+class FakeDatabase:
+    """Stands in for the database where a test only needs it up or down. Its sessions are
+    bound to no database: a route may open one, but a query in it fails."""
+
+    def __init__(self, *, up: bool = True) -> None:
+        self.up = up
+        self.sessions = async_sessionmaker()
+
+    async def ping(self) -> None:
+        if not self.up:
+            raise OperationalError("SELECT 1", None, ConnectionRefusedError("Connection refused"))
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -57,9 +74,15 @@ def fake_redis() -> FakeRedis:
 
 
 @pytest.fixture
-def app(settings: Settings, fake_redis: FakeRedis) -> FastAPI:
+def fake_database() -> FakeDatabase:
+    return FakeDatabase()
+
+
+@pytest.fixture
+def app(settings: Settings, fake_redis: FakeRedis, fake_database: FakeDatabase) -> FastAPI:
     app = create_app(settings)
     app.dependency_overrides[get_redis] = lambda: fake_redis
+    app.dependency_overrides[get_database] = lambda: fake_database
     return app
 
 

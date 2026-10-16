@@ -4,7 +4,6 @@ The routes validate parameters, ask the ``DataService`` and turn its errors into
 details (docs/data.md, "Errors"). The service lives on ``app.state.data_service``.
 """
 
-import ipaddress
 import logging
 import math
 import re
@@ -19,7 +18,7 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import AfterValidator, BeforeValidator, WithJsonSchema
 from pydantic_core import PydanticCustomError
 
-from candlestack.core import Problem, ProblemError, RateLimiter, SettingsDep
+from candlestack.core import Problem, ProblemError, RateLimiterDep, SettingsDep, client_address
 from candlestack.data.errors import (
     DataError,
     DataIntegrityError,
@@ -59,12 +58,7 @@ def get_data_service(request: Request) -> DataService:
     return request.app.state.data_service
 
 
-def get_rate_limiter(request: Request) -> RateLimiter:
-    return request.app.state.rate_limiter
-
-
 DataServiceDep = Annotated[DataService, Depends(get_data_service)]
-RateLimiterDep = Annotated[RateLimiter, Depends(get_rate_limiter)]
 
 
 def _instrument_id(value: str) -> str:
@@ -187,24 +181,6 @@ def _problem(error: DataError) -> ProblemError | None:  # noqa: PLR0911 (a case 
     return None
 
 
-def _client_address(request: Request) -> str:
-    """The client as the rate limit counts it: Cloudflare's ``CF-Connecting-IP``, else the peer
-    (local runs). An IPv6 client counts as its /64 network: a subscriber usually gets a whole
-    /64, so single addresses would give one client any number of counters."""
-    address = request.headers.get("cf-connecting-ip")
-    if not address and request.client:
-        address = request.client.host
-    try:
-        ip = ipaddress.ip_address(address or "")
-    except ValueError:
-        return address or "unknown"
-    if isinstance(ip, ipaddress.IPv6Address):
-        if ip.ipv4_mapped is not None:
-            return str(ip.ipv4_mapped)
-        return str(ipaddress.IPv6Network((ip, 64), strict=False))
-    return str(ip)
-
-
 async def client_rate_limit(
     request: Request, settings: SettingsDep, limiter: RateLimiterDep
 ) -> None:
@@ -215,7 +191,7 @@ async def client_rate_limit(
     requests through.
     """
     limit = settings.client_rate_limit
-    wait = await limiter.hit(f"data:rl:client:{_client_address(request)}", limit)
+    wait = await limiter.hit(f"data:rl:client:{client_address(request)}", limit)
     if wait > 0:
         retry = max(1, math.ceil(wait))
         raise ProblemError(

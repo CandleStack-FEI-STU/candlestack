@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from candlestack.core import Settings
+from candlestack.core.ratelimit import get_rate_limiter
 from candlestack.data import (
     CANDLE_SCHEMA,
     CandleSet,
@@ -32,7 +33,7 @@ from candlestack.data import (
     Timeframe,
     TooManyCandles,
 )
-from candlestack.data.api import get_data_service, get_rate_limiter
+from candlestack.data.api import get_data_service
 from candlestack.data.icons import FALLBACK, Icon
 from candlestack.data.schemas import CandlesOut, candles_json
 

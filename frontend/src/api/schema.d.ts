@@ -13,7 +13,8 @@ export interface paths {
         };
         /**
          * Health of the app
-         * @description 200 when the app and its Redis work, 503 with the same body when Redis does not.
+         * @description 200 when the app, its Redis and its Postgres work, 503 with the same body when one of
+         *     them does not.
          *
          *     The body is compact JSON: deploy checks look for `"version":"<version>"` and the commit.
          */
@@ -56,7 +57,8 @@ export interface paths {
         };
         /**
          * Denied Sign In
-         * @description The account the beta list just turned away, for the sign-in page.
+         * @description The account the beta list just turned away, for the sign-in page; 404 when this browser
+         *     was not turned away in the last 10 minutes.
          */
         get: operations["denied_sign_in_api_v1_auth_denied_get"];
         put?: never;
@@ -78,7 +80,7 @@ export interface paths {
         put?: never;
         /**
          * Sign Out
-         * @description Ends this browser's session.
+         * @description Ends this browser's session; 204 also when it had none.
          */
         post: operations["sign_out_api_v1_auth_sign_out_post"];
         delete?: never;
@@ -96,7 +98,8 @@ export interface paths {
         };
         /**
          * Start Sign In
-         * @description Redirects to the provider's sign-in page.
+         * @description Redirects to the provider's sign-in page, or to `/signin?error=failed` when sign-in
+         *     with it is not available.
          */
         get: operations["start_sign_in_api_v1_auth__provider__start_get"];
         put?: never;
@@ -400,6 +403,11 @@ export interface components {
             commit: string;
             /** Env */
             env: string;
+            /**
+             * Postgres
+             * @enum {string}
+             */
+            postgres: "ok" | "error";
             /**
              * Redis
              * @enum {string}
@@ -783,7 +791,7 @@ export interface operations {
                     "application/json": components["schemas"]["Health"];
                 };
             };
-            /** @description Redis is unreachable */
+            /** @description Redis or Postgres is unreachable */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -841,6 +849,15 @@ export interface operations {
                     "application/json": components["schemas"]["DeniedSignInOut"];
                 };
             };
+            /** @description This browser was not turned away lately (`not-found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     sign_out_api_v1_auth_sign_out_post: {
@@ -858,6 +875,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description The request does not come from the app's own pages (`cross-origin-request`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
             };
         };
     };
@@ -884,6 +910,15 @@ export interface operations {
             };
             /** @description Invalid request */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description More sign-in requests from this address than the per-minute limit (`rate-limited`); see `Retry-After`. */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1157,6 +1192,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeOut"];
+                };
+            };
+            /** @description No session came with the request, or it ended (`not-signed-in`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };

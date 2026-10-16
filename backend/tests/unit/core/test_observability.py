@@ -149,6 +149,29 @@ def test_secrets_and_personal_data_are_not_sent(
         assert value not in sent
 
 
+def test_sign_in_secrets_and_emails_are_not_sent(
+    sentry: CapturingTransport, app: FastAPI, client: TestClient
+) -> None:
+    @app.get("/api/test/sign-in-crash")
+    async def sign_in_crash() -> None:
+        sign_in = {
+            "client_secret": "gh-secret-value",
+            "code": "oauth-code-value",
+            "code_verifier": "verifier-value",
+            "state": "state-value",
+            "access_token": "access-token-value",
+            "email": "ada@example.com",
+            "database_url": "postgresql+asyncpg://app:pg-pass-value@db/app",
+        }
+        raise RuntimeError(f"sign-in failed with {len(sign_in)} values")
+
+    client.get("/api/test/sign-in-crash")
+
+    [event] = sentry.items("event")
+    frame = event["exception"]["values"][-1]["stacktrace"]["frames"][-1]
+    assert set(frame["vars"]["sign_in"].values()) == {"[Filtered]"}
+
+
 def test_a_token_in_an_outgoing_query_is_not_sent(
     sentry: CapturingTransport, client: TestClient
 ) -> None:

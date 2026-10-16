@@ -1,8 +1,11 @@
-# Local development: the backend with auto-reload on http://localhost:8000 and its Redis.
+# Local development: the backend with auto-reload on http://localhost:8000, its Redis and its
+# Postgres (migrated by the one-shot migrate service before the backend starts).
 #   cp .env.example .env    # optional; add Alpaca paper keys there
 #   docker compose up --build
 # API reference: http://localhost:8000/api/v1/docs
 name: candlestack-dev
+
+x-database-url: &database-url postgresql+asyncpg://candlestack:candlestack@postgres:5432/candlestack
 
 services:
   backend:
@@ -14,6 +17,7 @@ services:
         required: false
     environment:
       REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: *database-url
       # Bind mounts from Windows or macOS do not deliver file events; poll for changes.
       WATCHFILES_FORCE_POLLING: "true"
     ports:
@@ -21,7 +25,25 @@ services:
     volumes:
       - ./backend/src:/app/src
     depends_on:
-      - redis
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+
+  # Brings the database to the latest migration (backend/migrations), then exits.
+  migrate:
+    build:
+      context: backend
+      target: dev
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: *database-url
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/migrations:/app/migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   redis:
     image: redis:8-alpine
@@ -29,3 +51,23 @@ services:
     # Published for the integration tests, which use redis://127.0.0.1:6379/15 by default.
     ports:
       - 127.0.0.1:6379:6379
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: candlestack
+      POSTGRES_PASSWORD: candlestack
+      POSTGRES_DB: candlestack
+    # Published for the integration tests, which create and use the database candlestack_test.
+    ports:
+      - 127.0.0.1:5432:5432
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "--username", "candlestack", "--dbname", "candlestack"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+volumes:
+  postgres: {}

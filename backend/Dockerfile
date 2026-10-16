@@ -28,6 +28,7 @@ COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked
 COPY granian-logging.json ./
+COPY migrations ./migrations
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
@@ -37,7 +38,9 @@ CMD ["granian", "--interface", "asgi", "--host", "0.0.0.0", "--port", "8000", \
      "--reload-paths", "src", "candlestack.main:app"]
 
 # Keep last: build.yml, the CI e2e build and tests/e2e/compose.yaml build the last stage.
-# The app runs from /app/src on PYTHONPATH, next to the dependencies' venv. MALLOC_ARENA_MAX:
+# The app runs from /app/src on PYTHONPATH, next to the dependencies' venv; the same image runs
+# `alembic upgrade head` (the migrate service), which reads [tool.alembic] in pyproject.toml and
+# the migrations next to it. MALLOC_ARENA_MAX:
 # glibc gives each thread that allocates (the workers that parse and resample candles) arenas of
 # its own that keep freed memory; two arenas keep the process within its memory limit.
 FROM python:3.13-slim AS api
@@ -51,7 +54,8 @@ RUN apt-get update \
 RUN python -m pip uninstall --yes --quiet --root-user-action=ignore pip
 WORKDIR /app
 COPY --from=deps /app/.venv /app/.venv
-COPY granian-logging.json ./
+COPY granian-logging.json pyproject.toml ./
+COPY migrations ./migrations
 COPY src ./src
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH=/app/src \

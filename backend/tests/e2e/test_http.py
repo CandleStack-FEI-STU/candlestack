@@ -19,6 +19,7 @@ def test_health(http: httpx.Client) -> None:
         "version": "e2e",
         "commit": response.json()["commit"],
         "redis": "ok",
+        "postgres": "ok",
     }
     assert response.json()["commit"] not in ("", "unknown")
 

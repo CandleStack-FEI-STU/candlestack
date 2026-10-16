@@ -31,6 +31,66 @@ def test_defaults() -> None:
     assert settings.alpaca_rate_limit == 60
     assert settings.binance_weight_limit == 1000
     assert settings.logo_dev_rate_limit == 20
+    assert settings.public_url == "http://localhost:5173"
+    assert settings.database_url.get_secret_value() == (
+        "postgresql+asyncpg://candlestack:candlestack@127.0.0.1:5432/candlestack"
+    )
+    assert settings.oauth_github_client_id == ""
+    assert settings.oauth_github_client_secret.get_secret_value() == ""
+    assert settings.oauth_google_client_id == ""
+    assert settings.oauth_google_client_secret.get_secret_value() == ""
+    assert settings.beta_allowlist == frozenset()
+
+
+@pytest.mark.parametrize(
+    ("app_env", "url"),
+    [
+        ("prod", "https://app.candlestack.tech"),
+        ("stage", "https://stage.candlestack.tech"),
+        ("local", "http://localhost:5173"),
+        ("test", "http://testserver"),
+    ],
+)
+def test_public_url_default_depends_on_env(
+    monkeypatch: pytest.MonkeyPatch, app_env: str, url: str
+) -> None:
+    monkeypatch.setenv("APP_ENV", app_env)
+
+    assert Settings().public_url == url
+
+
+def test_public_url_can_be_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PUBLIC_URL", " http://127.0.0.1:8000/ ")
+
+    assert Settings().public_url == "http://127.0.0.1:8000"
+
+
+def test_beta_allowlist_is_comma_separated_and_any_case(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BETA_ALLOWLIST", " Ada@Example.com,bob@example.com ,, ")
+
+    assert Settings().beta_allowlist == frozenset({"ada@example.com", "bob@example.com"})
+
+
+def test_oauth_secrets_and_database_url_are_stripped_and_hidden(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OAUTH_GITHUB_CLIENT_ID", " Iv1.gh \n")
+    monkeypatch.setenv("OAUTH_GITHUB_CLIENT_SECRET", " gh-secret-1\n")
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_ID", "g.apps.googleusercontent.com ")
+    monkeypatch.setenv("OAUTH_GOOGLE_CLIENT_SECRET", "\tg-secret-2")
+    monkeypatch.setenv("DATABASE_URL", " postgresql+asyncpg://app:db-secret-3@db:5432/app ")
+
+    settings = Settings()
+
+    assert settings.oauth_github_client_id == "Iv1.gh"
+    assert settings.oauth_github_client_secret.get_secret_value() == "gh-secret-1"
+    assert settings.oauth_google_client_id == "g.apps.googleusercontent.com"
+    assert settings.oauth_google_client_secret.get_secret_value() == "g-secret-2"
+    assert settings.database_url.get_secret_value() == (
+        "postgresql+asyncpg://app:db-secret-3@db:5432/app"
+    )
+    for secret in ("gh-secret-1", "g-secret-2", "db-secret-3"):
+        assert secret not in repr(settings)
 
 
 @pytest.mark.parametrize(
@@ -142,6 +202,8 @@ def test_logo_dev_key_is_stripped_and_hidden(monkeypatch: pytest.MonkeyPatch) ->
         ("LOG_LEVEL", "LOUD"),
         ("CANDLES_MAX", "0"),
         ("CLIENT_RATE_LIMIT", "-1"),
+        ("PUBLIC_URL", "app.candlestack.tech"),
+        ("PUBLIC_URL", "https://app.candlestack.tech/app"),
     ],
 )
 def test_rejects_invalid_values(monkeypatch: pytest.MonkeyPatch, name: str, value: str) -> None:

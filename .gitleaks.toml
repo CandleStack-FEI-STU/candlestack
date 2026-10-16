@@ -1,6 +1,10 @@
-# gitleaks (pre-commit, `gitleaks dir`): the default rules, minus two known false positives.
+# gitleaks (pre-commit, `gitleaks dir`): the default rules, minus known false positives.
 [extend]
 useDefault = true
+
+[[allowlists]]
+description = "Installed third-party packages, which git ignores: Authlib's docstrings show example tokens"
+paths = ['''(^|/)\.venv/''']
 
 [[allowlists]]
 description = "Recorded source responses (their page tokens) and the Access snapshot's public token ids"

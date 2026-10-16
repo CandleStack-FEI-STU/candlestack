@@ -29,7 +29,9 @@ from candlestack.core.logging import request_id_var
 ERRORS_PER_HOUR = 100
 
 # Values never sent, on top of Sentry's defaults (passwords, tokens, cookies, authorization):
-# the Alpaca and logo.dev keys as settings, variables and request headers, and the DSN.
+# the Alpaca and logo.dev keys as settings, variables and request headers, the DSN, the database
+# URL (it holds the password), and the OAuth client secrets, codes, verifiers, states and
+# tokens of a sign-in.
 _DENYLIST = [
     *DEFAULT_DENYLIST,
     "alpaca_key_id",
@@ -41,15 +43,30 @@ _DENYLIST = [
     "logo_dev_key",
     "dsn",
     "sentry_dsn",
+    "database_url",
+    "postgres_password",
+    "client_secret",
+    "oauth_github_client_secret",
+    "oauth_google_client_secret",
+    "code",
+    "code_verifier",
+    "verifier",
+    "state",
+    "access_token",
+    "refresh_token",
+    "id_token",
 ]
 # The httpx integration records the query of every outgoing request in breadcrumbs and spans as
 # one string, which the scrubber cannot see into; logo.dev takes its key as ``token`` there.
 _QUERY = "http.query"
 _QUERY_DENYLIST = frozenset(name.lower() for name in _DENYLIST)
 _FILTERED = "[Filtered]"
-# Personal data never sent: the client's IP and the Cloudflare Access login of stage.
+# Personal data never sent: the client's IP, the Cloudflare Access login of stage, and the
+# users' emails and the beta list.
 _PII_DENYLIST = [
     *DEFAULT_PII_DENYLIST,
+    "email",
+    "beta_allowlist",
     "cf-connecting-ip",
     "true-client-ip",
     "x-forwarded-for",

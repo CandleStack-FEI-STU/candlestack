@@ -11,8 +11,12 @@ from candlestack.main import create_app
 pytestmark = pytest.mark.integration
 
 
-def test_health_with_redis_up(redis_url: str) -> None:
-    app = create_app(Settings(app_env="test", app_version="1.2.3", redis_url=redis_url))
+def test_health_with_redis_up(redis_url: str, database_url: str) -> None:
+    app = create_app(
+        Settings(
+            app_env="test", app_version="1.2.3", redis_url=redis_url, database_url=database_url
+        )
+    )
 
     with TestClient(app) as client:
         response = client.get("/api/health")
@@ -21,8 +25,10 @@ def test_health_with_redis_up(redis_url: str) -> None:
     assert response.json()["redis"] == "ok"
 
 
-def test_health_with_redis_unreachable() -> None:
-    app = create_app(Settings(app_env="test", redis_url="redis://127.0.0.1:1/0"))
+def test_health_with_redis_unreachable(database_url: str) -> None:
+    app = create_app(
+        Settings(app_env="test", redis_url="redis://127.0.0.1:1/0", database_url=database_url)
+    )
 
     with TestClient(app) as client:
         response = client.get("/api/health")
@@ -34,6 +40,7 @@ def test_health_with_redis_unreachable() -> None:
         "version": "dev",
         "commit": "unknown",
         "redis": "error",
+        "postgres": "ok",
     }
 
 
