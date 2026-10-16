@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from scalar_fastapi import AgentScalarConfig, get_scalar_api_reference
 
+from candlestack.accounts import accounts_router
 from candlestack.core import (
     RateLimiter,
     RequestContextMiddleware,
@@ -128,6 +129,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     install_error_handlers(app)
     app.include_router(health_router)
     app.include_router(data_router)
+    app.include_router(accounts_router)
     if settings.app_env == SENTRY_CHECK_ENV:
         app.include_router(sentry_check_router)
 

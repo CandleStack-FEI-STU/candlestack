@@ -47,6 +47,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/denied": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Denied Sign In
+         * @description The account the beta list just turned away, for the sign-in page.
+         */
+        get: operations["denied_sign_in_api_v1_auth_denied_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sign-out": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign Out
+         * @description Ends this browser's session.
+         */
+        post: operations["sign_out_api_v1_auth_sign_out_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/{provider}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Start Sign In
+         * @description Redirects to the provider's sign-in page.
+         */
+        get: operations["start_sign_in_api_v1_auth__provider__start_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/data/instruments": {
         parameters: {
             query?: never;
@@ -147,6 +207,26 @@ export interface paths {
          *     requests: a page of the list asks for one icon per row.
          */
         get: operations["instrument_icon_api_v1_data_instruments__instrument_id__icon_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Me
+         * @description The signed-in user.
+         */
+        get: operations["me_api_v1_me_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -292,6 +372,19 @@ export interface components {
              *     ]
              */
             v: number[];
+        };
+        /**
+         * DeniedSignInOut
+         * @description The last sign-in of this browser that the beta list turned away.
+         */
+        DeniedSignInOut: {
+            /**
+             * Email
+             * @description The account's email
+             * @example arsen@example.com
+             */
+            email: string;
+            provider: components["schemas"]["Provider"];
         };
         /**
          * Exchange
@@ -550,6 +643,44 @@ export interface components {
          */
         Market: "crypto" | "stock";
         /**
+         * MeOut
+         * @description The signed-in user.
+         */
+        MeOut: {
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the account was created (UTC)
+             */
+            created_at: string;
+            /**
+             * Display Name
+             * @description Name shown in the app
+             * @example Arsen Labovich
+             */
+            display_name: string;
+            /**
+             * Email
+             * @description From the identity provider, read-only
+             * @example arsen@example.com
+             */
+            email: string;
+            /**
+             * Id
+             * @description Public user ID, shown in Settings and given to support
+             * @example usr_7f3k2m9qx4
+             */
+            id: string;
+            /**
+             * Providers
+             * @description Connected sign-in methods
+             * @example [
+             *       "github"
+             *     ]
+             */
+            providers: components["schemas"]["Provider"][];
+        };
+        /**
          * Problem
          * @description Error response (RFC 9457). Some problems add members, such as `errors` on 422.
          */
@@ -577,6 +708,12 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /**
+         * Provider
+         * @description An identity provider a user signs in with.
+         * @enum {string}
+         */
+        Provider: "github" | "google";
         /** SourceHealthOut */
         SourceHealthOut: {
             /**
@@ -682,6 +819,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourcesHealthOut"];
+                };
+            };
+        };
+    };
+    denied_sign_in_api_v1_auth_denied_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeniedSignInOut"];
+                };
+            };
+        };
+    };
+    sign_out_api_v1_auth_sign_out_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    start_sign_in_api_v1_auth__provider__start_get: {
+        parameters: {
+            query?: {
+                /** @description Path of the app to open after signing in (default `/dashboard`) */
+                next?: string | null;
+            };
+            header?: never;
+            path: {
+                provider: components["schemas"]["Provider"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -930,6 +1137,26 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    me_api_v1_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeOut"];
                 };
             };
         };

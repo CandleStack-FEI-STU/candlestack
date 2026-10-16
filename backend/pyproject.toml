@@ -137,15 +137,21 @@ root_package = "candlestack"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Modules depend downwards only: data -> core"
+name = "Modules depend downwards only: accounts and data -> core"
 type = "layers"
-layers = ["candlestack.data", "candlestack.core"]
+layers = ["candlestack.accounts | candlestack.data", "candlestack.core"]
 
 [[tool.importlinter.contracts]]
 name = "Other modules import core only through its package root"
 type = "protected"
 protected_modules = ["candlestack.core.*"]
 allowed_importers = ["candlestack.core"]
+
+[[tool.importlinter.contracts]]
+name = "Other modules import accounts only through its package root"
+type = "protected"
+protected_modules = ["candlestack.accounts.*"]
+allowed_importers = ["candlestack.accounts"]
 
 [[tool.importlinter.contracts]]
 name = "Other modules import data only through its package root"
@@ -174,7 +180,10 @@ allowed_importers = ["candlestack.metrics"]
 [[tool.importlinter.contracts]]
 name = "Only core uses the Sentry SDK"
 type = "forbidden"
-source_modules = ["candlestack.cli", "candlestack.data", "candlestack.main", "candlestack.openapi"]
+source_modules = [
+    "candlestack.accounts", "candlestack.cli", "candlestack.data", "candlestack.main",
+    "candlestack.openapi",
+]
 forbidden_modules = ["sentry_sdk"]
 # They reach Sentry through core (logging, setup_sentry), never by importing it themselves.
 allow_indirect_imports = true
@@ -187,7 +196,8 @@ name = "Engine, signals and metrics stand alone"
 type = "forbidden"
 source_modules = ["candlestack.engine", "candlestack.signals", "candlestack.metrics"]
 forbidden_modules = [
-    "candlestack.core", "candlestack.data", "candlestack.cli", "candlestack.main",
+    "candlestack.accounts", "candlestack.core", "candlestack.data", "candlestack.cli",
+    "candlestack.main",
     "candlestack.openapi", "fastapi", "starlette", "scalar_fastapi", "granian", "redis",
     "httpx", "sentry_sdk", "pydantic_settings",
 ]
@@ -202,7 +212,10 @@ modules = ["candlestack.engine", "candlestack.signals", "candlestack.metrics"]
 [[tool.importlinter.contracts]]
 name = "Nothing imports the CLI"
 type = "forbidden"
-source_modules = ["candlestack.core", "candlestack.data", "candlestack.main", "candlestack.openapi"]
+source_modules = [
+    "candlestack.accounts", "candlestack.core", "candlestack.data", "candlestack.main",
+    "candlestack.openapi",
+]
 forbidden_modules = ["candlestack.cli"]
 
 # Inside data, each layer imports only the ones below it. Modules of one layer joined by "|"
