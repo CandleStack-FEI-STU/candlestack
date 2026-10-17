@@ -7,9 +7,18 @@ import { formatSize } from './format';
 import { useModels, useUploadModel } from './useModels';
 
 // Why the API did not keep a file: one of its checks failed (`opens`, `weights`), it is too
-// large, the storage is full, or something else went wrong on the way.
-export type UploadFailure =
-  { kind: 'opens' | 'weights' | 'large' | 'other'; detail: string } | { kind: 'storage'; used: number; quota: number };
+// large, the storage is full, another upload of the user's is still running (`busy`), the user
+// has as many models as allowed (`count`), the upload took too long (`timeout`), or something
+// else went wrong on the way.
+type DetailKind = 'opens' | 'weights' | 'large' | 'busy' | 'count' | 'timeout' | 'other';
+export type UploadFailure = { kind: DetailKind; detail: string } | { kind: 'storage'; used: number; quota: number };
+
+// The limits of the API that a failure shows with its own title and the API's words.
+const LIMITS: Record<string, DetailKind> = {
+  'upload-in-progress': 'busy',
+  'too-many-models': 'count',
+  'upload-timeout': 'timeout',
+};
 
 // The upload dialog's steps: choose a file; a file of a format not taken yet; the checks
 // running; the model kept; or the reason it was not.
@@ -48,7 +57,7 @@ export function failureOf(error: unknown, usage?: StorageUsage): UploadFailure {
   if (error.problem === 'storage-full') {
     return storageFailure(error.body, usage);
   }
-  return { kind: 'other', detail };
+  return { kind: LIMITS[error.problem ?? ''] ?? 'other', detail };
 }
 
 const isUnsupported = (error: unknown) => error instanceof ApiError && error.problem === 'unsupported-model-format';

@@ -109,6 +109,12 @@ function failedRow(failure: UploadFailure): RowProps {
         title: 'Not enough storage',
         hint: `${formatUsage(failure.used, failure.quota)} used. Delete a model to free space.`,
       };
+    case 'busy':
+      return { tone: 'bad', title: 'Another upload is in progress', hint: failure.detail };
+    case 'count':
+      return { tone: 'bad', title: 'Too many models', hint: failure.detail };
+    case 'timeout':
+      return { tone: 'bad', title: 'Upload timed out', hint: failure.detail };
     case 'other':
       return { tone: 'bad', title: 'Upload failed', hint: failure.detail };
   }

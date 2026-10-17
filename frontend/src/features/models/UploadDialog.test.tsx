@@ -309,6 +309,30 @@ describe('a failed upload', () => {
     );
   });
 
+  it('while another upload is in progress: why, in the words of the API', async () => {
+    const { dialog } = await failWith(
+      problem(409, 'upload-in-progress', 'Another upload of yours is still in progress. Wait for it to finish.'),
+    );
+    expect(checks(dialog)).toEqual([
+      'Failed: Another upload is in progressAnother upload of yours is still in progress. Wait for it to finish.',
+    ]);
+    expect(dialog.getByRole('button', { name: 'Cancel' })).toBeDefined();
+  });
+
+  it('with as many models as allowed: why, in the words of the API', async () => {
+    const { dialog } = await failWith(
+      problem(409, 'too-many-models', 'You have 100 models, the most you can keep. Delete one first.', { limit: 100 }),
+    );
+    expect(checks(dialog)).toEqual([
+      'Failed: Too many modelsYou have 100 models, the most you can keep. Delete one first.',
+    ]);
+  });
+
+  it('that took too long: why, in the words of the API', async () => {
+    const { dialog } = await failWith(problem(408, 'upload-timeout', 'The file did not arrive in time. Try again.'));
+    expect(checks(dialog)).toEqual(['Failed: Upload timed outThe file did not arrive in time. Try again.']);
+  });
+
   it('for any other reason: the message', async () => {
     const { dialog } = await failWith({ status: 500, body: { detail: 'Something broke on our side.' } });
     expect(checks(dialog)).toEqual(['Failed: Upload failedSomething broke on our side.']);
