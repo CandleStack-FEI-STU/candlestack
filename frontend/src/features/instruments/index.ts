@@ -8,4 +8,3 @@ export { InstrumentList } from './InstrumentList';
 export { describeListError, emptyMessage } from './messages';
 export { MiniCandles } from './MiniCandles';
 export { rememberListSearch } from './lastSearch';
-export { SearchBox } from './SearchBox';
