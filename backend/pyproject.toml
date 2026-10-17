@@ -166,9 +166,9 @@ root_package = "candlestack"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Modules depend downwards only: accounts and data -> core"
+name = "Modules depend downwards only: ml -> accounts and data -> core"
 type = "layers"
-layers = ["candlestack.accounts | candlestack.data", "candlestack.core"]
+layers = ["candlestack.ml", "candlestack.accounts | candlestack.data", "candlestack.core"]
 
 [[tool.importlinter.contracts]]
 name = "Other modules import core only through its package root"
@@ -181,6 +181,12 @@ name = "Other modules import accounts only through its package root"
 type = "protected"
 protected_modules = ["candlestack.accounts.*"]
 allowed_importers = ["candlestack.accounts"]
+
+[[tool.importlinter.contracts]]
+name = "Other modules import ml only through its package root"
+type = "protected"
+protected_modules = ["candlestack.ml.*"]
+allowed_importers = ["candlestack.ml"]
 
 [[tool.importlinter.contracts]]
 name = "Other modules import data only through its package root"
@@ -211,7 +217,7 @@ name = "Only core uses the Sentry SDK"
 type = "forbidden"
 source_modules = [
     "candlestack.accounts", "candlestack.cli", "candlestack.data", "candlestack.main",
-    "candlestack.openapi",
+    "candlestack.ml", "candlestack.openapi",
 ]
 forbidden_modules = ["sentry_sdk"]
 # They reach Sentry through core (logging, setup_sentry), never by importing it themselves.
@@ -226,7 +232,7 @@ type = "forbidden"
 source_modules = ["candlestack.engine", "candlestack.signals", "candlestack.metrics"]
 forbidden_modules = [
     "candlestack.accounts", "candlestack.core", "candlestack.data", "candlestack.cli",
-    "candlestack.main",
+    "candlestack.main", "candlestack.ml",
     "candlestack.openapi", "fastapi", "starlette", "scalar_fastapi", "granian", "redis",
     "httpx", "sentry_sdk", "pydantic_settings", "sqlalchemy", "asyncpg", "alembic", "authlib",
 ]
@@ -243,7 +249,7 @@ name = "Nothing imports the CLI"
 type = "forbidden"
 source_modules = [
     "candlestack.accounts", "candlestack.core", "candlestack.data", "candlestack.main",
-    "candlestack.openapi",
+    "candlestack.ml", "candlestack.openapi",
 ]
 forbidden_modules = ["candlestack.cli"]
 

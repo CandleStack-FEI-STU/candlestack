@@ -33,6 +33,7 @@ from candlestack.core import (
     setup_sentry,
 )
 from candlestack.data import DataService, build_data_service, data_router
+from candlestack.ml import models_router
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +143,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health_router)
     app.include_router(data_router)
     app.include_router(accounts_router)
+    app.include_router(models_router)
     if dev_sign_in_allowed(settings.app_env):
         app.include_router(dev_sign_in_router)
     if settings.app_env == SENTRY_CHECK_ENV:

@@ -355,6 +355,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Models
+         * @description The user's uploaded models, oldest first, and the storage they take.
+         */
+        get: operations["list_models_api_v1_models_get"];
+        put?: never;
+        /**
+         * Upload Model
+         * @description Uploads a model file: the body is the file, `name` its file name. The file is checked
+         *     before it is kept: `opens` (a real Keras model with no custom code inside, nothing from
+         *     the file is executed) and `weights` (it holds trained weights). A file with a name the user
+         *     already has gets a number, as `lstm (2).keras`.
+         */
+        post: operations["upload_model_api_v1_models_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/models/{model_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Model
+         * @description Deletes the model and its file, which frees its storage.
+         */
+        delete: operations["delete_model_api_v1_models__model_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Model
+         * @description Renames the model (the extension stays) or stars and unstars it.
+         */
+        patch: operations["update_model_api_v1_models__model_id__patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -662,6 +713,12 @@ export interface components {
          * @enum {string}
          */
         Exchange: "AMEX" | "ARCA" | "BATS" | "BINANCE" | "NASDAQ" | "NYSE";
+        /**
+         * Framework
+         * @description The framework a model file belongs to; only Keras is accepted for now.
+         * @enum {string}
+         */
+        Framework: "keras";
         /** Health */
         Health: {
             /** Commit */
@@ -970,6 +1027,100 @@ export interface components {
              */
             display_name: string;
         };
+        /** ModelOut */
+        ModelOut: {
+            /**
+             * Backtest Count
+             * @description Backtests that used the model, failed ones included; 0 until backtests exist
+             * @example 0
+             */
+            backtest_count: number;
+            /**
+             * Best Sharpe
+             * @description Best Sharpe ratio of its finished backtests; null without one
+             * @example null
+             */
+            best_sharpe: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the model was uploaded (UTC)
+             */
+            created_at: string;
+            framework: components["schemas"]["Framework"];
+            /**
+             * Id
+             * @description Public ID of the model
+             * @example mdl_7f3k2m9qx4
+             */
+            id: string;
+            /**
+             * Input Shape
+             * @description Shape of one input sample without the batch dimension, e.g. 25 candles by 23 features; null when the file does not say
+             * @example [
+             *       25,
+             *       23
+             *     ]
+             */
+            input_shape: number[] | null;
+            /**
+             * Name
+             * @description File name, extension included; Rename changes only the part before it
+             * @example my-tsmixer.keras
+             */
+            name: string;
+            /**
+             * Output Shape
+             * @description Shape of one output without the batch dimension; null when unknown
+             * @example [
+             *       1
+             *     ]
+             */
+            output_shape: number[] | null;
+            /**
+             * Parameters
+             * @description Number of weights in the file
+             * @example 1240000
+             */
+            parameters: number;
+            /**
+             * Size Bytes
+             * @description Size of the file
+             * @example 14889779
+             */
+            size_bytes: number;
+            /**
+             * Starred
+             * @description The user starred the model
+             */
+            starred: boolean;
+        };
+        /**
+         * ModelUpdate
+         * @description What Rename and the star change; a field left out stays as it is.
+         */
+        ModelUpdate: {
+            /**
+             * Name
+             * @description New name without the extension, which stays; no slashes or control characters
+             * @example tsmixer-v2
+             */
+            name?: string | null;
+            /**
+             * Starred
+             * @description Star or unstar the model
+             */
+            starred?: boolean | null;
+        };
+        /** ModelsOut */
+        ModelsOut: {
+            /**
+             * Models
+             * @description The user's models, oldest first
+             */
+            models: components["schemas"]["ModelOut"][];
+            usage: components["schemas"]["StorageUsage"];
+        };
         /**
          * PreferencesOut
          * @description The user's settings; a user who never saved any gets the defaults.
@@ -1071,6 +1222,27 @@ export interface components {
              * @enum {string}
              */
             status: "ok" | "error";
+        };
+        /** StorageUsage */
+        StorageUsage: {
+            /**
+             * File Max Bytes
+             * @description Largest file an upload takes
+             * @example 52428800
+             */
+            file_max_bytes: number;
+            /**
+             * Quota Bytes
+             * @description Bytes the user's uploaded models may take
+             * @example 104857600
+             */
+            quota_bytes: number;
+            /**
+             * Used Bytes
+             * @description Bytes taken by the user's uploaded models
+             * @example 0
+             */
+            used_bytes: number;
         };
         /**
          * Theme
@@ -1829,6 +2001,246 @@ export interface operations {
                 };
             };
             /** @description It is the account's last sign-in method (`last-sign-in-method`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_models_api_v1_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelsOut"];
+                };
+            };
+            /** @description Not signed in (`not-signed-in`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    upload_model_api_v1_models_post: {
+        parameters: {
+            query: {
+                /** @description Name of the uploaded file, extension included */
+                name: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The model file */
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelOut"];
+                };
+            };
+            /** @description Not signed in (`not-signed-in`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not come from the app's own pages (`cross-origin-request`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The file does not fit into the user's storage (`storage-full`); `used_bytes` and `quota_bytes` say how much is taken. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The file is larger than 50 MB (`model-too-large`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not a format the app takes yet, only Keras (`.keras`) for now (`unsupported-model-format`). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description A check failed (`model-check-failed`): `check` names it (`opens` or `weights`) and `detail` says why; or the request is invalid (`validation`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    delete_model_api_v1_models__model_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Public ID of the model */
+                model_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in (`not-signed-in`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not come from the app's own pages (`cross-origin-request`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The user has no model with this ID (`not-found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_model_api_v1_models__model_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Public ID of the model */
+                model_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelOut"];
+                };
+            };
+            /** @description Not signed in (`not-signed-in`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not come from the app's own pages (`cross-origin-request`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The user has no model with this ID (`not-found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The user has another model with this name (`model-name-taken`). */
             409: {
                 headers: {
                     [name: string]: unknown;
