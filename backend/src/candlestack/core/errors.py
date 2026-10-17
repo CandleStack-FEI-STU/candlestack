@@ -19,6 +19,9 @@ from starlette.exceptions import HTTPException
 PROBLEM_TYPE_BASE = "https://candlestack.tech/problems/"
 PROBLEM_MEDIA_TYPE = "application/problem+json"
 _MEMBERS = frozenset({"type", "title", "status", "detail"})
+# What a response about a signed-in user's data carries, a success or a problem that tells
+# about it: no browser cache or proxy may keep it.
+NO_STORE = {"Cache-Control": "no-store"}
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +99,12 @@ def internal_error_response() -> ProblemResponse:
         "The server failed to handle this request. Try again later; if it keeps failing, "
         "report the X-Request-ID header of this response.",
     )
+
+
+def problem_doc(status: int, description: str) -> dict[int | str, dict[str, Any]]:
+    """Documents one error status of a route in OpenAPI with its own description, e.g. the
+    problem's slug: ``responses={**problem_doc(404, "No such model (`not-found`).")}``."""
+    return {status: {"model": Problem, "description": description}}
 
 
 def problem_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:

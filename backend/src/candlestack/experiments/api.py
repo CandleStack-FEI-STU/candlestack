@@ -4,12 +4,12 @@
 Backtests are not made over the API yet: the backtest builder comes later.
 """
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, Response
 
 from candlestack.accounts import CurrentUserDep
-from candlestack.core import Problem, ProblemError, require_same_origin
+from candlestack.core import NO_STORE, ProblemError, problem_doc, require_same_origin
 from candlestack.experiments.dependencies import BacktestsServiceDep
 from candlestack.experiments.errors import BacktestNotFound
 from candlestack.experiments.schemas import (
@@ -28,9 +28,6 @@ from candlestack.experiments.service import ListQuery
 
 router = APIRouter(tags=["backtests"])
 
-# What the responses about the user's backtests carry must not be kept by a browser cache or a
-# proxy.
-NO_STORE = {"Cache-Control": "no-store"}
 # A page number far past any user's backtests; the limit keeps the offset a small integer.
 PAGE_MAX = 100_000
 
@@ -39,12 +36,7 @@ BacktestId = Annotated[
 ]
 
 
-def _problem(status: int, description: str) -> dict[int | str, dict[str, Any]]:
-    """An OpenAPI error response of a route: a problem with the given description."""
-    return {status: {"model": Problem, "description": description}}
-
-
-_NOT_SIGNED_IN = _problem(401, "Not signed in (`not-signed-in`).")
+_NOT_SIGNED_IN = problem_doc(401, "Not signed in (`not-signed-in`).")
 
 
 def list_query(
@@ -98,10 +90,10 @@ async def list_backtests(
     "/api/v1/backtests/{backtest_id}",
     responses={
         **_NOT_SIGNED_IN,
-        **_problem(
+        **problem_doc(
             403, "The request does not come from the app's own pages (`cross-origin-request`)."
         ),
-        **_problem(404, "The user has no backtest with this ID (`not-found`)."),
+        **problem_doc(404, "The user has no backtest with this ID (`not-found`)."),
     },
     dependencies=[Depends(require_same_origin)],
 )

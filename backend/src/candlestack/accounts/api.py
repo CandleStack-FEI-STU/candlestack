@@ -12,7 +12,7 @@ method to the signed-in user and returns to Settings (``/settings/sign-in``, wit
 """
 
 import logging
-from typing import Annotated, Any
+from typing import Annotated
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -55,11 +55,12 @@ from candlestack.accounts.service import (
 )
 from candlestack.core import (
     DATABASE_ERRORS,
-    Problem,
+    NO_STORE,
     ProblemError,
     Settings,
     SettingsDep,
     is_same_origin,
+    problem_doc,
     require_same_origin,
 )
 
@@ -70,8 +71,6 @@ router = APIRouter(tags=["accounts"])
 SIGN_IN_PAGE = "/signin"
 FAILED_URL = f"{SIGN_IN_PAGE}?error=failed"
 DENIED_URL = f"{SIGN_IN_PAGE}?error=denied"
-# What the responses about the user carry must not be kept by a browser cache or a proxy.
-NO_STORE = {"Cache-Control": "no-store"}
 # Environments with the dev sign-in: never stage or prod, whatever their settings say.
 _DEV_SIGN_IN_ENVS = frozenset({"local", "test"})
 _PROVIDER_NAMES = {Provider.github: "GitHub", Provider.google: "Google"}
@@ -90,13 +89,8 @@ NextPath = Annotated[
 ]
 
 
-def _problem(status: int, description: str) -> dict[int | str, dict[str, Any]]:
-    """An OpenAPI error response of a route: a problem with the given description."""
-    return {status: {"model": Problem, "description": description}}
-
-
-_NOT_SIGNED_IN = _problem(401, "Not signed in (`not-signed-in`).")
-_CROSS_ORIGIN = _problem(
+_NOT_SIGNED_IN = problem_doc(401, "Not signed in (`not-signed-in`).")
+_CROSS_ORIGIN = problem_doc(
     403, "The request does not come from the app's own pages (`cross-origin-request`)."
 )
 
@@ -260,7 +254,7 @@ async def sign_out(request: Request, service: AccountsServiceDep, cookies: Cooki
 
 @router.get(
     "/api/v1/auth/denied",
-    responses=_problem(404, "This browser was not turned away lately (`not-found`)."),
+    responses=problem_doc(404, "This browser was not turned away lately (`not-found`)."),
 )
 async def denied_sign_in(
     request: Request, response: Response, service: AccountsServiceDep, cookies: CookiesDep
@@ -282,7 +276,7 @@ async def denied_sign_in(
 
 @router.get(
     "/api/v1/me",
-    responses=_problem(401, "No session came with the request, or it ended (`not-signed-in`)."),
+    responses=problem_doc(401, "No session came with the request, or it ended (`not-signed-in`)."),
 )
 async def me(user: CurrentUserDep, service: AccountsServiceDep, response: Response) -> MeOut:
     """The signed-in user."""
@@ -325,8 +319,8 @@ async def delete_me(
     responses={
         **_NOT_SIGNED_IN,
         **_CROSS_ORIGIN,
-        **_problem(404, "The account does not sign in with this provider (`not-found`)."),
-        **_problem(409, "It is the account's last sign-in method (`last-sign-in-method`)."),
+        **problem_doc(404, "The account does not sign in with this provider (`not-found`)."),
+        **problem_doc(409, "It is the account's last sign-in method (`last-sign-in-method`)."),
     },
     dependencies=[Depends(require_same_origin)],
 )

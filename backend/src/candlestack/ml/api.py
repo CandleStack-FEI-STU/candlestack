@@ -8,12 +8,12 @@ anything from it; a failed check answers 422 ``model-check-failed`` naming the c
 
 import logging
 from collections.abc import Callable
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, Request, Response
 
 from candlestack.accounts import CurrentUserDep
-from candlestack.core import Problem, ProblemError, require_same_origin
+from candlestack.core import NO_STORE, ProblemError, problem_doc, require_same_origin
 from candlestack.ml.dependencies import ModelsServiceDep
 from candlestack.ml.errors import (
     AccountGone,
@@ -41,8 +41,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["models"])
 
-# What the responses about the user's models carry must not be kept by a browser cache or a proxy.
-NO_STORE = {"Cache-Control": "no-store"}
 
 ModelId = Annotated[str, Path(description="Public ID of the model", examples=["mdl_7f3k2m9qx4"])]
 FileName = Annotated[
@@ -56,16 +54,11 @@ FileName = Annotated[
 ]
 
 
-def _problem(status: int, description: str) -> dict[int | str, dict[str, Any]]:
-    """An OpenAPI error response of a route: a problem with the given description."""
-    return {status: {"model": Problem, "description": description}}
-
-
-_NOT_SIGNED_IN = _problem(401, "Not signed in (`not-signed-in`).")
-_CROSS_ORIGIN = _problem(
+_NOT_SIGNED_IN = problem_doc(401, "Not signed in (`not-signed-in`).")
+_CROSS_ORIGIN = problem_doc(
     403, "The request does not come from the app's own pages (`cross-origin-request`)."
 )
-_NOT_FOUND = _problem(404, "The user has no model with this ID (`not-found`).")
+_NOT_FOUND = problem_doc(404, "The user has no model with this ID (`not-found`).")
 _UPLOAD_BODY = {
     "requestBody": {
         "required": True,
@@ -222,14 +215,14 @@ async def list_models(
     "/api/v1/models",
     status_code=201,
     responses={
-        **_problem(
+        **problem_doc(
             401,
             "Not signed in, or the account was deleted while the file was uploading "
             "(`not-signed-in`).",
         ),
         **_CROSS_ORIGIN,
-        **_problem(408, "The file did not arrive within 2 minutes (`upload-timeout`)."),
-        **_problem(
+        **problem_doc(408, "The file did not arrive within 2 minutes (`upload-timeout`)."),
+        **problem_doc(
             409,
             "The file does not fit into the user's storage (`storage-full`; `used_bytes` and "
             "`quota_bytes` say how much is taken), the user has 100 models already "
@@ -237,13 +230,13 @@ async def list_models(
             "(`upload-in-progress`), or, rarely, the numbered name the file got is one the user "
             "has in another case (`model-name-taken`).",
         ),
-        **_problem(413, "The file is larger than 50 MB (`model-too-large`)."),
-        **_problem(
+        **problem_doc(413, "The file is larger than 50 MB (`model-too-large`)."),
+        **problem_doc(
             415,
             "Not a format the app takes yet, only Keras (`.keras`) for now "
             "(`unsupported-model-format`).",
         ),
-        **_problem(
+        **problem_doc(
             422,
             "A check failed (`model-check-failed`): `check` names it (`opens` or `weights`) and "
             "`detail` says why; or the request is invalid (`validation`).",
@@ -276,7 +269,7 @@ async def upload_model(
         **_NOT_SIGNED_IN,
         **_CROSS_ORIGIN,
         **_NOT_FOUND,
-        **_problem(409, "The user has another model with this name (`model-name-taken`)."),
+        **problem_doc(409, "The user has another model with this name (`model-name-taken`)."),
     },
     dependencies=[Depends(require_same_origin)],
 )
