@@ -13,6 +13,7 @@ import { BacktestNumber } from './parts';
 export const TABLE = 'w-full border-collapse text-[13px]';
 export const HEAD = 'border-b px-2.5 py-2 text-left font-medium whitespace-nowrap text-muted-foreground';
 export const CELL = 'border-b px-2.5 py-2 whitespace-nowrap tabular-nums [tr:last-child>&]:border-b-0';
+// The numbers and their headers (.num): mono, at the right.
 export const NUMBER = 'text-right font-mono';
 export const ROW =
   'relative cursor-pointer [&>td]:transition-colors [&>td]:duration-150 hover:[&>td]:bg-muted motion-reduce:[&>td]:transition-none';

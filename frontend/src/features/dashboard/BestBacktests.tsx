@@ -87,7 +87,7 @@ export function BestBacktests({ best, onOpen }: Props) {
                 Backtest
               </th>
               {METRICS.map(({ metric, label }) => (
-                <th key={metric} scope="col" className={cn(HEAD, 'text-right')}>
+                <th key={metric} scope="col" className={cn(HEAD, NUMBER)}>
                   <SortButton
                     on={metric === by}
                     pressed={metric === by}

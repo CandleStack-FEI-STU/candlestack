@@ -34,13 +34,13 @@ function Row({ backtest, onOpen, onStar }: RowProps) {
         <InstrumentChips backtest={backtest} max={2} tight />
       </span>
       {done && backtest.equity ? <Sparkline equity={backtest.equity} /> : <span />}
-      <span className="text-right font-mono text-sm font-semibold whitespace-nowrap">
+      <span className="text-right font-mono text-sm/[1.5] font-semibold whitespace-nowrap">
         <BacktestReturn backtest={backtest} />
       </span>
-      <span className="col-span-2 truncate text-xs text-muted-foreground">
+      <span className="col-span-2 truncate text-xs/[1.5] text-muted-foreground">
         {representationName(backtest.representation)} · {backtest.model.name}
       </span>
-      <span className="text-right font-mono text-[11px] whitespace-nowrap text-muted-foreground">
+      <span className="text-right font-mono text-[11px]/[1.5] whitespace-nowrap text-muted-foreground">
         {done && `Sharpe ${formatSharpe(backtest.sharpe)}`}
       </span>
     </div>

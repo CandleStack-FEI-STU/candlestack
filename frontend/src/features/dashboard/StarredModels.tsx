@@ -28,13 +28,13 @@ function Row({ model, onStar }: { model: Model; onStar: (model: Model) => void }
         <Link to="/models" className={cn(ROW_OPENER, 'truncate text-[13px] font-medium')}>
           {model.name}
         </Link>
-        <span className="truncate font-mono text-[11.5px] text-muted-foreground">
+        <span className="truncate font-mono text-[11.5px]/[normal] text-muted-foreground">
           {shape === null ? name : `in ${shape} · ${name}`}
         </span>
       </span>
-      <span className="flex flex-col items-end font-mono text-xs whitespace-nowrap">
-        <b className="text-sm font-semibold">{formatSharpe(model.best_sharpe)}</b>
-        <span className="text-[11px] text-muted-foreground">{plural(model.backtest_count, 'backtest')}</span>
+      <span className="flex flex-col items-end font-mono text-xs/[normal] whitespace-nowrap">
+        <b className="text-sm/[normal] font-semibold">{formatSharpe(model.best_sharpe)}</b>
+        <span className="text-[11px]/[normal] text-muted-foreground">{plural(model.backtest_count, 'backtest')}</span>
       </span>
     </div>
   );

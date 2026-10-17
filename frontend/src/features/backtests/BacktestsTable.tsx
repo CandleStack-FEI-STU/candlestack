@@ -37,7 +37,7 @@ function Header({ search, onSort }: HeaderProps) {
               key={label}
               scope="col"
               aria-sort={on ? (search.order === 'asc' ? 'ascending' : 'descending') : undefined}
-              className={cn(HEAD, hide, number && 'text-right')}
+              className={cn(HEAD, hide, number && NUMBER)}
             >
               {sort ? (
                 <SortButton on={on} onClick={() => onSort(sort)}>

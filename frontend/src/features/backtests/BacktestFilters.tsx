@@ -2,7 +2,7 @@ import { useNavigate } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 
 import type { BacktestsPage } from '@/api';
-import { FilterSection, FiltersPopover } from '@/components/FiltersPopover';
+import { FilterSection, FiltersPopover, HOVER_HIGHLIGHT } from '@/components/FiltersPopover';
 import type { BacktestsSearch } from '@/routes/backtestsSearch';
 
 import { applyOption, filterOptions, filtersSummary, nextActive, sectionStart, type FilterOption } from './filterRules';
@@ -14,7 +14,7 @@ type Props = { search: BacktestsSearch; page: Pick<BacktestsPage, 'counts' | 'mo
 // (fx-pop, 0.14 s) instead of the popover's own motion and is simply gone on closing; the
 // important flag wins over the popover's classes, and Less motion still turns it off.
 const PANEL =
-  'w-[min(412px,calc(100vw-2rem))] origin-top-left p-3 shadow-[0_10px_28px_var(--shadow)] data-[state=closed]:animate-none! data-[state=open]:animate-fx-pop! motion-reduce:animate-none!';
+  'w-[min(412px,calc(100vw-2rem))] origin-top-left p-3 text-sm/[1.5] shadow-[0_10px_28px_var(--shadow)] data-[state=closed]:animate-none! data-[state=open]:animate-fx-pop! motion-reduce:animate-none!';
 // The headings of its sections (.fp-h) keep 8 px under them on a phone too.
 const HEADING = 'mb-2';
 
@@ -44,6 +44,7 @@ export function BacktestFilters({ search, page }: Props) {
       align="start"
       sideOffset={6}
       openBorder="data-[state=open]:border-[color-mix(in_srgb,var(--accent)_55%,var(--rule))]"
+      highlight={HOVER_HIGHLIGHT}
       className={PANEL}
     >
       {(render) => (

@@ -15,6 +15,24 @@ import { cn } from '@/lib/utils';
 
 type Entry = { selected: boolean };
 
+// How an entry is lit: whenever it has the focus, also right after the panel opened by a click on
+// its button (the instrument list's design); or only under the pointer and, once the keyboard is in
+// use (data-keys on the panel), where the focus is (mockups/app .fp-o, the backtests).
+export const FOCUS_HIGHLIGHT = 'focus:bg-accent';
+export const HOVER_HIGHLIGHT = 'hover:bg-accent in-data-keys:focus:bg-accent';
+
+// Whether the panel is used with the keyboard: a key on the button or in the panel says so, a press
+// of the pointer on the button says not. The browser's own :focus-visible cannot tell, as the focus
+// moves into the panel by script.
+function useKeyboardUse() {
+  const [keys, setKeys] = useState(false);
+  const fromKeys = () => setKeys(true);
+  return {
+    trigger: { onPointerDown: () => setKeys(false), onKeyDownCapture: fromKeys },
+    panel: { 'data-keys': keys || undefined, onKeyDownCapture: fromKeys },
+  };
+}
+
 type OptionProps = {
   index: number;
   active: number;
@@ -22,6 +40,7 @@ type OptionProps = {
   usable: boolean;
   label: ReactNode;
   note: ReactNode;
+  highlight: string;
   onPick: () => void;
   onFocus: () => void;
   onKeyDown: (event: KeyboardEvent) => void;
@@ -30,7 +49,7 @@ type OptionProps = {
 // One entry: its name, a note at the right (a count, why it cannot be picked), and a check when
 // it is chosen. The focus moves through the entries (one tab stop); the pointer moves it too, so
 // mouse and keyboard highlight the same entry.
-function Option({ index, active, selected, usable, label, note, onPick, onFocus, onKeyDown }: OptionProps) {
+function Option({ index, active, selected, usable, label, note, highlight, onPick, onFocus, onKeyDown }: OptionProps) {
   return (
     <div
       role="option"
@@ -52,13 +71,14 @@ function Option({ index, active, selected, usable, label, note, onPick, onFocus,
       onMouseDown={(event) => !usable && event.preventDefault()}
       onPointerMove={() => usable && index !== active && onFocus()}
       className={cn(
-        'flex h-8 cursor-default items-center gap-2 rounded-sm px-2 whitespace-nowrap outline-none select-none focus:bg-accent',
+        'flex h-8 cursor-default items-center gap-2 rounded-sm px-2 whitespace-nowrap outline-none select-none',
+        highlight,
         !usable && 'cursor-not-allowed text-muted-foreground',
       )}
     >
       <span className="min-w-0 truncate">{label}</span>
-      <span className="ml-auto text-xs text-muted-foreground">{note}</span>
-      <Check aria-hidden className={cn('shrink-0 text-primary', !selected && 'invisible')} />
+      <span className="ml-auto text-xs/[1.5] text-muted-foreground">{note}</span>
+      <Check aria-hidden className={cn('size-4 shrink-0 text-primary', !selected && 'invisible')} />
     </div>
   );
 }
@@ -89,20 +109,22 @@ export function FilterSection({ title, area, headingClassName = 'mb-1 sm:mb-2', 
 type TriggerProps = {
   summary: string;
   openBorder: string;
-  onOpen: () => void;
+  input: ReturnType<typeof useKeyboardUse>['trigger'];
+  onOpen: (open: true) => void;
   ref: RefObject<HTMLButtonElement | null>;
 };
 
 // The button: the summary between the filter icon and the chevron. ArrowDown opens it too.
-function Trigger({ summary, openBorder, onOpen, ref }: TriggerProps) {
+function Trigger({ summary, openBorder, input, onOpen, ref }: TriggerProps) {
   return (
     <PopoverTrigger
       ref={ref}
+      {...input}
       aria-label={`Filters: ${summary}`}
       onKeyDown={(event) => {
         if (event.key !== 'ArrowDown') return;
         event.preventDefault();
-        onOpen();
+        onOpen(true);
       }}
       className={cn(DROPDOWN_TRIGGER, 'w-[200px] shrink-0', openBorder)}
     >
@@ -189,9 +211,10 @@ function useContentProps<T extends Entry>({ panel, trigger, focus, active }: Pan
 }
 
 // What each entry needs from the panel.
-function useEntryProps<T extends Entry>({ active, canPick, onKeyDown, pick, focus }: Panel<T>) {
+function useEntryProps<T extends Entry>({ active, canPick, onKeyDown, pick, focus }: Panel<T>, highlight: string) {
   return (option: T, index: number) => ({
     index,
+    highlight,
     active,
     selected: option.selected,
     usable: canPick(option),
@@ -213,6 +236,8 @@ type Props<T extends Entry> = Rules<T> & {
   sideOffset: number;
   // The button's border while the panel is open, as its design colours it.
   openBorder: string;
+  // Which entry is lit: the one with the focus (FOCUS_HIGHLIGHT), or the one under the pointer and the one the keyboard moved to (HOVER_HIGHLIGHT), as the panel's design shows it.
+  highlight: string;
   // The panel's size and padding.
   className: string;
   // The sections, each given the entries it shows through `render`.
@@ -236,13 +261,15 @@ export function FiltersPopover<T extends Entry>({
 }: Props<T>) {
   const state = usePanel(rules);
   const content = useContentProps(state, start);
-  const entry = useEntryProps(state);
+  const entry = useEntryProps(state, rules.highlight);
   const { open, setOpen, trigger } = state;
+  const input = useKeyboardUse();
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <Trigger ref={trigger} summary={summary} openBorder={openBorder} onOpen={() => setOpen(true)} />
+      <Trigger ref={trigger} summary={summary} openBorder={openBorder} input={input.trigger} onOpen={setOpen} />
       <PopoverContent
         {...content}
+        {...input.panel}
         aria-label="Filters"
         align={align}
         sideOffset={sideOffset}

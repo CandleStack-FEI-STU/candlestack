@@ -4,7 +4,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { useId, type ReactNode } from 'react';
 
 import type { Exchange, Market } from '@/api';
-import { FilterSection, FiltersPopover } from '@/components/FiltersPopover';
+import { FOCUS_HIGHLIGHT, FilterSection, FiltersPopover } from '@/components/FiltersPopover';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import type { ListSort } from '@/routes/instrumentsSearch';
 
@@ -89,6 +89,7 @@ export function Filters({ market, exchange, sort }: Props) {
       align="end"
       sideOffset={4}
       openBorder="data-[state=open]:border-ring"
+      highlight={FOCUS_HIGHLIGHT}
       className="max-h-[480px] w-[calc(100vw-2rem)] overflow-y-auto p-2 sm:w-[412px] sm:p-3"
     >
       {(render) => <Sections options={options} render={render} />}

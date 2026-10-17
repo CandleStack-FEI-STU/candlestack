@@ -206,6 +206,40 @@ describe('the Backtests page', () => {
     expect(document.activeElement).toBe(button);
   });
 
+  it('lights an entry of the Filters panel under the pointer, and where the focus is only once keys are used', async () => {
+    stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer(PAGE) });
+    await renderApp('/backtests');
+    await screen.findByText('#12');
+    await userEvent.click(screen.getByRole('button', { name: 'Filters: All backtests' }));
+    const panel = screen.getByRole('dialog', { name: 'Filters' });
+    const first = within(panel).getAllByRole('option')[0]!;
+    expect(document.activeElement).toBe(first);
+    expect(panel.hasAttribute('data-keys')).toBe(false);
+    expect(first.className.split(' ')).toEqual(
+      expect.arrayContaining(['hover:bg-accent', 'in-data-keys:focus:bg-accent']),
+    );
+    expect(first.className).not.toMatch(/(^| )focus:bg-accent/);
+    expect(first.querySelector('svg')?.getAttribute('class')).toMatch(/(^| )size-4( |$)/);
+    await userEvent.keyboard('{ArrowDown}');
+    expect(panel.getAttribute('data-keys')).toBe('true');
+    expect(document.activeElement).toBe(within(panel).getAllByRole('option')[1]);
+    await userEvent.keyboard('{Escape}');
+    // Opened from the keyboard, the panel says so at once.
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByRole('dialog', { name: 'Filters' }).getAttribute('data-keys')).toBe('true');
+  });
+
+  it('writes the headers of the number columns in mono at the right', async () => {
+    stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer(PAGE) });
+    await renderApp('/backtests');
+    await screen.findByText('#12');
+    const mono = screen
+      .getAllByRole('columnheader')
+      .filter((head) => head.className.split(' ').includes('font-mono'))
+      .map((head) => head.textContent);
+    expect(mono).toEqual(['Return', 'Sharpe', 'Max drawdown', 'Trades']);
+  });
+
   it('opens a row from the keyboard, ringing the row while its opener has the focus', async () => {
     stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer(PAGE) });
     await renderApp('/backtests');

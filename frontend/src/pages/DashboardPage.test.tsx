@@ -257,6 +257,18 @@ describe('the dashboard of an account with backtests', () => {
     await vi.waitFor(() => expect(widgets()).toEqual(['Last backtests', 'Best backtests', 'Starred backtests']));
   });
 
+  it('writes the headers of the number columns in mono', async () => {
+    await open({ ...dashboardAnswer(FULL), ...modelsAnswer([]) });
+    await screen.findByRole('region', { name: 'Best backtests' });
+    const mono = (name: string) =>
+      widget(name)
+        .getAllByRole('columnheader')
+        .filter((head) => head.className.split(' ').includes('font-mono'))
+        .map((head) => head.textContent);
+    expect(mono('Last backtests')).toEqual(['Return', 'Sharpe']);
+    expect(mono('Best backtests')).toEqual(['Sharpe ↓', 'Return', 'Drawdown', 'Win rate']);
+  });
+
   it('writes the widgets’ hints in the design’s hint style', async () => {
     await open({ ...dashboardAnswer(FULL), ...modelsAnswer([]) });
     const hint = within(await screen.findByRole('region', { name: 'Best backtests' })).getByText('by Sharpe');

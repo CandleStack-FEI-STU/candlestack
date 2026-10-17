@@ -61,7 +61,7 @@ export function LastBacktests({ backtests, onOpen, onStar }: Props) {
           <thead>
             <tr>
               {COLUMNS.map(({ label, number }) => (
-                <th key={label} scope="col" className={cn(HEAD, number && 'text-right')}>
+                <th key={label} scope="col" className={cn(HEAD, number && NUMBER)}>
                   {label}
                 </th>
               ))}
