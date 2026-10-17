@@ -3,7 +3,7 @@ against)."""
 
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Self
+from typing import Annotated, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -23,6 +23,19 @@ class SignInIntent(StrEnum):
     connect = "connect"
 
 
+class SignInMethodOut(BaseModel):
+    """A sign-in method: the provider's account the user signs in with."""
+
+    provider: Provider
+    email: str = Field(
+        description="The account's email at the provider, as of its last sign-in or connect",
+        examples=["arsen@example.com"],
+    )
+    login: str | None = Field(
+        description="The account's GitHub username; null for Google", examples=["arsen"]
+    )
+
+
 class MeOut(BaseModel):
     """The signed-in user."""
 
@@ -36,7 +49,11 @@ class MeOut(BaseModel):
         description="From the identity provider, read-only", examples=["arsen@example.com"]
     )
     providers: list[Provider] = Field(
-        description="Connected sign-in methods", examples=[["github"]]
+        description="Connected sign-in methods (the providers of `sign_in_methods`)",
+        examples=[["github"]],
+    )
+    sign_in_methods: list[SignInMethodOut] = Field(
+        description="The account of each sign-in method, by provider"
     )
     created_at: datetime = Field(description="When the account was created (UTC)")
 
@@ -52,7 +69,7 @@ class MeUpdate(BaseModel):
     """What the user may change about themselves."""
 
     # The length limits apply to the stripped name, so a blank one is refused.
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
     display_name: str = Field(
         min_length=1,
@@ -85,21 +102,31 @@ class Benchmark(StrEnum):
     dia = "DIA"
 
 
+# The backtest defaults' fields, shared by the read model (with defaults) and the body that
+# saves them (without).
+_PeriodStart = Annotated[date, Field(description="First day of the test")]
+_PeriodEnd = Annotated[date, Field(description="Last day of the test")]
+_Threshold = Annotated[
+    float, Field(ge=0, le=0.5, multiple_of=0.01, description="Signal strength to trade")
+]
+_StopLossPct = Annotated[
+    int, Field(ge=1, le=20, description="Exit when a trade loses this many percent")
+]
+_FeesPct = Annotated[float, Field(ge=0, le=5, description="Fees in percent per side")]
+_SlippagePct = Annotated[float, Field(ge=0, le=5, description="Slippage in percent")]
+
+
 class BacktestDefaults(BaseModel):
     """How new backtests start (Settings, Backtest defaults)."""
 
     timeframe: BacktestTimeframe = BacktestTimeframe.m30
-    period_start: date = Field(default=date(2021, 1, 4), description="First day of the test")
-    period_end: date = Field(default=date(2024, 12, 31), description="Last day of the test")
+    period_start: _PeriodStart = date(2021, 1, 4)
+    period_end: _PeriodEnd = date(2024, 12, 31)
     direction: Direction = Direction.long
-    threshold: float = Field(
-        default=0.05, ge=0, le=0.5, multiple_of=0.01, description="Signal strength to trade"
-    )
-    stop_loss_pct: int = Field(
-        default=7, ge=1, le=20, description="Exit when a trade loses this many percent"
-    )
-    fees_pct: float = Field(default=0.1, ge=0, le=5, description="Fees in percent per side")
-    slippage_pct: float = Field(default=0.02, ge=0, le=5, description="Slippage in percent")
+    threshold: _Threshold = 0.05
+    stop_loss_pct: _StopLossPct = 7
+    fees_pct: _FeesPct = 0.1
+    slippage_pct: _SlippagePct = 0.02
     benchmark: Benchmark = Benchmark.buy_and_hold
 
     @model_validator(mode="after")
@@ -107,6 +134,24 @@ class BacktestDefaults(BaseModel):
         if self.period_start >= self.period_end:
             raise ValueError("period_start must be before period_end")
         return self
+
+
+class BacktestDefaultsIn(BacktestDefaults):
+    """The backtest defaults to save (Save defaults): every field, and no other. The same
+    checks as `BacktestDefaults`, but no defaults, so a body that leaves a field out is
+    refused instead of filled in."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    timeframe: BacktestTimeframe
+    period_start: _PeriodStart
+    period_end: _PeriodEnd
+    direction: Direction
+    threshold: _Threshold
+    stop_loss_pct: _StopLossPct
+    fees_pct: _FeesPct
+    slippage_pct: _SlippagePct
+    benchmark: Benchmark
 
 
 class Theme(StrEnum):
@@ -148,6 +193,8 @@ class Appearance(BaseModel):
 
 class AppearanceUpdate(BaseModel):
     """A change of some of the appearance settings; the fields left out stay."""
+
+    model_config = ConfigDict(extra="forbid")
 
     theme: Theme | None = None
     time_zone: TimeZone | None = None

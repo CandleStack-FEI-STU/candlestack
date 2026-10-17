@@ -31,6 +31,7 @@
         "type": "object"
       },
       "AppearanceUpdate": {
+        "additionalProperties": false,
         "description": "A change of some of the appearance settings; the fields left out stay.",
         "properties": {
           "date_format": {
@@ -152,6 +153,75 @@
           }
         },
         "title": "BacktestDefaults",
+        "type": "object"
+      },
+      "BacktestDefaultsIn": {
+        "additionalProperties": false,
+        "description": "The backtest defaults to save (Save defaults): every field, and no other. The same\nchecks as `BacktestDefaults`, but no defaults, so a body that leaves a field out is\nrefused instead of filled in.",
+        "properties": {
+          "benchmark": {
+            "$ref": "#/components/schemas/Benchmark"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/Direction"
+          },
+          "fees_pct": {
+            "description": "Fees in percent per side",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Fees Pct",
+            "type": "number"
+          },
+          "period_end": {
+            "description": "Last day of the test",
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "description": "First day of the test",
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "slippage_pct": {
+            "description": "Slippage in percent",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Slippage Pct",
+            "type": "number"
+          },
+          "stop_loss_pct": {
+            "description": "Exit when a trade loses this many percent",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Stop Loss Pct",
+            "type": "integer"
+          },
+          "threshold": {
+            "description": "Signal strength to trade",
+            "maximum": 0.5,
+            "minimum": 0.0,
+            "multipleOf": 0.01,
+            "title": "Threshold",
+            "type": "number"
+          },
+          "timeframe": {
+            "$ref": "#/components/schemas/BacktestTimeframe"
+          }
+        },
+        "required": [
+          "timeframe",
+          "period_start",
+          "period_end",
+          "direction",
+          "threshold",
+          "stop_loss_pct",
+          "fees_pct",
+          "slippage_pct",
+          "benchmark"
+        ],
+        "title": "BacktestDefaultsIn",
         "type": "object"
       },
       "BacktestTimeframe": {
@@ -1005,7 +1075,7 @@
             "type": "string"
           },
           "providers": {
-            "description": "Connected sign-in methods",
+            "description": "Connected sign-in methods (the providers of `sign_in_methods`)",
             "examples": [
               [
                 "github"
@@ -1016,6 +1086,14 @@
             },
             "title": "Providers",
             "type": "array"
+          },
+          "sign_in_methods": {
+            "description": "The account of each sign-in method, by provider",
+            "items": {
+              "$ref": "#/components/schemas/SignInMethodOut"
+            },
+            "title": "Sign In Methods",
+            "type": "array"
           }
         },
         "required": [
@@ -1023,12 +1101,14 @@
           "display_name",
           "email",
           "providers",
+          "sign_in_methods",
           "created_at"
         ],
         "title": "MeOut",
         "type": "object"
       },
       "MeUpdate": {
+        "additionalProperties": false,
         "description": "What the user may change about themselves.",
         "properties": {
           "display_name": {
@@ -1123,6 +1203,44 @@
         ],
         "title": "SignInIntent",
         "type": "string"
+      },
+      "SignInMethodOut": {
+        "description": "A sign-in method: the provider's account the user signs in with.",
+        "properties": {
+          "email": {
+            "description": "The account's email at the provider, as of its last sign-in or connect",
+            "examples": [
+              "arsen@example.com"
+            ],
+            "title": "Email",
+            "type": "string"
+          },
+          "login": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The account's GitHub username; null for Google",
+            "examples": [
+              "arsen"
+            ],
+            "title": "Login"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/Provider"
+          }
+        },
+        "required": [
+          "provider",
+          "email",
+          "login"
+        ],
+        "title": "SignInMethodOut",
+        "type": "object"
       },
       "SourceHealthOut": {
         "properties": {
@@ -1413,7 +1531,7 @@
     },
     "/api/v1/auth/{provider}/start": {
       "get": {
-        "description": "Redirects to the provider's sign-in page, or to `/signin?error=failed` when sign-in\nwith it is not available or this address made too many sign-in requests in a minute. A\nsign-in returns to `/signin?error=connect-first` when the provider's account never signed\nin but its email is that of a CandleStack user: that user signs in with their other method\nand connects it in Settings.\n\nWith `intent=connect` (signed in, a link of Settings) the provider's account is added to\nthe signed-in user's sign-in methods instead: the callback returns to `next` (default\n`/settings/sign-in`), or to `/settings/sign-in?error=taken` when that account already\nsigns in to another CandleStack user, or `/settings/sign-in?error=failed`, also right away\nwhen the request does not come from the app's own pages.",
+        "description": "Redirects to the provider's sign-in page, or to `/signin?error=failed` when sign-in\nwith it is not available or this address made too many sign-in requests in a minute. A\nprovider's account that never signed in joins the CandleStack user with its email, so the\nemail links a user's GitHub and Google; it signs in to a new user when no user has it.\n\nWith `intent=connect` (signed in, a link of Settings) the provider's account is added to\nthe signed-in user's sign-in methods instead: the callback returns to `next` (default\n`/settings/sign-in`), or to `/settings/sign-in?error=taken` when that account already\nsigns in to another CandleStack user, or `/settings/sign-in?error=failed`, also right away\nwhen the request does not come from the app's own pages.",
         "operationId": "start_sign_in_api_v1_auth__provider__start_get",
         "parameters": [
           {
@@ -2201,13 +2319,13 @@
     },
     "/api/v1/me/preferences/backtest-defaults": {
       "put": {
-        "description": "Saves how new backtests start (Save defaults).",
+        "description": "Saves how new backtests start (Save defaults): every setting, as a whole.",
         "operationId": "save_backtest_defaults_api_v1_me_preferences_backtest_defaults_put",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/BacktestDefaults"
+                "$ref": "#/components/schemas/BacktestDefaultsIn"
               }
             }
           },
@@ -2263,7 +2381,7 @@
     },
     "/api/v1/me/sign-in-methods/{provider}": {
       "delete": {
-        "description": "Removes a sign-in method; the last one cannot be removed.",
+        "description": "Removes a sign-in method; the last one cannot be removed. Signing in later with an\naccount of that provider whose email is the user's adds it again.",
         "operationId": "disconnect_api_v1_me_sign_in_methods__provider__delete",
         "parameters": [
           {

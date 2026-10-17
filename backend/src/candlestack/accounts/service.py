@@ -5,9 +5,10 @@ A sign-in starts with a random ``state`` kept in Redis (with the PKCE verifier a
 next) and in a cookie of the browser; the callback must bring back both, so nobody can finish a
 sign-in that another browser started (login CSRF). The account the provider vouches for signs
 in only when its email is on the beta list. A provider account signs in to the user it was
-first added to; a new one whose email is a user's already does not sign in (the user connects
-it in Settings), so a sign-in method the user removed does not come back by its email. A
-session is a random token in the browser's cookie; Postgres keeps only its SHA-256.
+added to; one that never signed in joins the user with its email, so the email links a user's
+GitHub and Google (and a sign-in method the user removed comes back when they sign in with it
+again), else it makes a new user. A session is a random token in the browser's cookie; Postgres
+keeps only its SHA-256.
 
 Connecting a sign-in method in Settings is the same round trip, started by a signed-in user:
 the pending state remembers the session (its hash), and the callback adds the provider's
@@ -18,9 +19,10 @@ when the round trip failed before its pending state was found.
 """
 
 import hashlib
+import logging
 import re
 import secrets
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
@@ -28,7 +30,6 @@ from typing import Protocol
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from candlestack.accounts.errors import (
-    AccountNotConnected,
     LastSignInMethod,
     NoSuchSignInMethod,
     SignInDenied,
@@ -48,13 +49,17 @@ from candlestack.accounts.schemas import (
     Appearance,
     AppearanceUpdate,
     BacktestDefaults,
+    BacktestDefaultsIn,
     DeniedSignInOut,
     MeOut,
     PreferencesOut,
     Provider,
+    SignInMethodOut,
 )
 from candlestack.accounts.store import AccountStore
 from candlestack.core import Settings
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_NEXT = "/dashboard"
 # Where connecting a sign-in method returns to by default: its section of Settings.
@@ -130,16 +135,25 @@ class SignedIn:
     extended: bool
 
 
+# What an account deletion hook does once the deletion is committed.
+AfterDeletion = Callable[[], Awaitable[None]]
+
+
 class AccountDeletionHook(Protocol):
     """Deletes what another module keeps for a user whose account is being deleted, e.g. their
-    models or backtests. It runs in the deletion's transaction (`db`), before the user's row
-    goes; when it raises, the transaction rolls back. Only Postgres rolls back: a hook that
-    touches other storage (files on disk) must leave the user's data usable when a later hook
-    or the commit fails, e.g. mark files for deletion and remove them later, instead of
-    removing them here. Hooks are wired in ``candlestack.main``, so this module never imports the
-    modules that own the data."""
+    models or backtests, in two phases.
 
-    async def __call__(self, user_id: str, db: AsyncSession) -> None: ...
+    The call runs in the deletion's transaction (`db`), before the user's row goes: it deletes
+    the module's rows, and when it raises, the whole deletion rolls back. It must not touch
+    storage outside Postgres (files on disk) yet, as a later hook or the commit may still fail;
+    it returns what deletes that instead (None when there is nothing to delete), which runs
+    only once the deletion is committed. Then the account is gone, so an error there is
+    logged (by its type only) and the rest still run: it leaves an orphaned file at worst.
+
+    Hooks are wired in ``candlestack.main``, so this module never imports the modules that own
+    the data."""
+
+    async def __call__(self, user_id: str, db: AsyncSession, /) -> AfterDeletion | None: ...
 
 
 class AccountsService:
@@ -226,8 +240,6 @@ class AccountsService:
             SignInFailed: The sign-in or connect was cancelled or failed, or the session that
                 started the connect ended or is not this browser's any more.
             SignInMethodTaken: The account to connect signs in to another user.
-            AccountNotConnected: The account to sign in with is new, but its email is that of a
-                user (who must connect it in Settings first).
             SignInDenied: The account's email is not on the beta list (sign-in only).
         """
         if not state or not browser_state or len(state) > _MAX_STATE:
@@ -262,10 +274,11 @@ class AccountsService:
         self, account: ProviderAccount, identity: Identity | None, known: User | None
     ) -> User:
         """The user `account` signs in as: `known`, the one its `identity` signed in as before,
-        else a new one.
+        else the one with its email, else a new one.
 
         Raises:
-            AccountNotConnected: The account is new, but a user has its email.
+            SignInFailed: The user with its email signs in with another account of the
+                provider (connected in Settings).
         """
         now = _now()
         if identity is not None:
@@ -274,9 +287,13 @@ class AccountsService:
             user = known
             assert user is not None  # the foreign key
         else:
-            if await self._store.user_by_email(account.email) is not None:
-                raise AccountNotConnected
-            user = self._new_user(account.email, provider_display_name(account), now)
+            user = await self._store.user_by_email(account.email)
+            if user is None:
+                user = self._new_user(account.email, provider_display_name(account), now)
+            else:
+                await self._store.lock_user(user.id)
+                if account.provider in await self._store.providers(user.id):
+                    raise SignInFailed(f"the user signs in with another {account.provider} account")
             self._add_identity(user, account, now)
         user.last_sign_in_at = now
         return user
@@ -394,12 +411,18 @@ class AccountsService:
         await self._store.commit()
 
     async def me(self, user: User) -> MeOut:
-        providers = await self._store.providers(user.id)
+        methods = [
+            SignInMethodOut(
+                provider=Provider(identity.provider), email=identity.email, login=identity.login
+            )
+            for identity in await self._store.identities(user.id)
+        ]
         return MeOut(
             id=user.id,
             display_name=user.display_name,
             email=user.email,
-            providers=[Provider(provider) for provider in providers],
+            providers=[method.provider for method in methods],
+            sign_in_methods=methods,
             created_at=user.created_at,
         )
 
@@ -416,7 +439,8 @@ class AccountsService:
         return await self.me(user)
 
     async def disconnect(self, user: User, provider: Provider) -> None:
-        """Removes the user's sign-in method of `provider`.
+        """Removes the user's sign-in method of `provider`. Signing in later with an account of
+        `provider` whose email is the user's adds it again.
 
         Raises:
             NoSuchSignInMethod: The user does not sign in with `provider`.
@@ -433,11 +457,24 @@ class AccountsService:
 
     async def delete_account(self, user: User) -> None:
         """Deletes the user with their sign-in methods, sessions and preferences, and through
-        the deletion hooks what other modules keep for them, all in one transaction."""
-        for hook in self._deletion_hooks:
-            await hook(user.id, self._store.db)
+        the deletion hooks what other modules keep for them: their rows in one transaction,
+        then, once it is committed, what lies outside Postgres."""
+        after_commit = [
+            after
+            for hook in self._deletion_hooks
+            if (after := await hook(user.id, self._store.db)) is not None
+        ]
         await self._store.delete_user(user.id)
         await self._store.commit()
+        for after in after_commit:
+            try:
+                await after()
+            except Exception as error:  # noqa: BLE001 (the account is gone; the others still run)
+                # By its type only: its message may hold the user's data (a file's path).
+                logger.error(
+                    "Deleting an account's data after the commit failed (%s)",
+                    type(error).__name__,
+                )
 
     async def preferences(self, user: User) -> PreferencesOut:
         """The user's settings; what they never saved has its default."""
@@ -450,7 +487,7 @@ class AccountsService:
         )
 
     async def save_backtest_defaults(
-        self, user: User, defaults: BacktestDefaults
+        self, user: User, defaults: BacktestDefaultsIn
     ) -> BacktestDefaults:
         await self._store.save_backtest_defaults(user.id, defaults.model_dump(mode="json"), _now())
         await self._store.commit()

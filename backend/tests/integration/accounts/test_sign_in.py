@@ -83,6 +83,9 @@ def test_me(browser) -> None:
     assert body["display_name"] == "Ada Lovelace"
     assert body["email"] == "ada@example.com"
     assert body["providers"] == ["github"]
+    assert body["sign_in_methods"] == [
+        {"provider": "github", "email": "ada@example.com", "login": "ada"}
+    ]
 
 
 def test_sign_out(browser, sql) -> None:
@@ -213,23 +216,41 @@ def test_an_account_without_a_verified_email(browser, providers) -> None:
     assert browser.sign_in("github").headers["location"] == "/signin?error=failed"
 
 
-def test_a_new_account_with_the_email_of_a_user_is_connected_first(
-    browser, other_browser, sql, caplog
-) -> None:
-    """The email does not link a new account to its user: it would bring back a sign-in method
-    the user removed. The user connects it in Settings."""
+def test_the_same_email_links_the_accounts(browser, sql) -> None:
     browser.sign_in("github")
+    first = browser.me().json()
+    browser.sign_out()
+
+    browser.sign_in("google")
+    second = browser.me().json()
+
+    assert second["id"] == first["id"]
+    assert second["display_name"] == "Ada Lovelace"
+    assert second["providers"] == ["github", "google"]
+    assert len(sql("SELECT id FROM users")) == 1
+
+
+def test_the_email_does_not_link_a_second_account_of_a_provider(
+    browser, other_browser, providers, sql, caplog
+) -> None:
+    """A user signs in with one account per provider: a GitHub account with the user's email
+    does not join a user who connected another GitHub account."""
+    providers.google_account(email="ada@example.com")
+    browser.sign_in("google")
+    providers.github_account(subject=7, email="ada@work.example")
+    browser.connect("github")
+    providers.github_account(subject=42, email="ada@example.com")
 
     with caplog.at_level(logging.WARNING):
-        callback = other_browser.sign_in("google")
+        callback = other_browser.sign_in("github")
 
-    assert callback.status_code == 302
-    assert callback.headers["location"] == "/signin?error=connect-first"
+    assert callback.headers["location"] == "/signin?error=failed"
     assert "session" not in cookies_set(callback)
-    assert "a user it is not connected to" in caplog.text
-    assert "ada@example.com" not in caplog.text
-    assert sql("SELECT provider FROM identities") == [("github",)]
-    assert len(sql("SELECT id FROM users")) == 1
+    assert "the user signs in with another github account" in caplog.text
+    assert sql("SELECT provider, subject FROM identities ORDER BY provider") == [
+        ("github", "7"),
+        ("google", "1077"),
+    ]
 
 
 def test_a_known_identity_signs_in_as_its_user(browser, providers, sql) -> None:

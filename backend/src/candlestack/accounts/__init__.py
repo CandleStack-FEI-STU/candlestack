@@ -7,7 +7,9 @@ its data, not a ``Response`` of its own: FastAPI drops the renewed session cooki
 ``CurrentUserDep`` sets from a response the route builds itself.
 
 A module that keeps data of a user deletes it with the account through an
-``AccountDeletionHook``, which ``candlestack.main`` puts on ``app.state.account_deletion_hooks``.
+``AccountDeletionHook``, which ``candlestack.main`` puts on ``app.state.account_deletion_hooks``:
+its rows in the deletion's transaction, and what lies outside Postgres in the ``AfterDeletion``
+it returns, once the deletion is committed.
 """
 
 from candlestack.accounts.api import dev_router as dev_sign_in_router
@@ -16,10 +18,11 @@ from candlestack.accounts.api import router as accounts_router
 from candlestack.accounts.dependencies import CurrentUserDep
 from candlestack.accounts.models import User
 from candlestack.accounts.schemas import DeniedSignInOut, MeOut, Provider
-from candlestack.accounts.service import AccountDeletionHook
+from candlestack.accounts.service import AccountDeletionHook, AfterDeletion
 
 __all__ = [
     "AccountDeletionHook",
+    "AfterDeletion",
     "CurrentUserDep",
     "DeniedSignInOut",
     "MeOut",

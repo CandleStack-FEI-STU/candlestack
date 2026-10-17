@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from candlestack.accounts import service, store
+from candlestack.accounts import AfterDeletion, service, store
 
 pytestmark = pytest.mark.integration
 
@@ -68,6 +68,27 @@ def test_rename(browser, sql) -> None:
     assert sql("SELECT display_name FROM users") == [("Ada King",)]
 
 
+@pytest.mark.parametrize(
+    ("method", "path", "body"),
+    [
+        ("PATCH", "/api/v1/me", {"display_name": "Ada King", "email": "eve@example.com"}),
+        ("PUT", "/api/v1/me/preferences/backtest-defaults", {**BACKTEST, "stop_loss": 5}),
+        ("PATCH", "/api/v1/me/preferences/appearance", {"theme": "light", "colour": "red"}),
+    ],
+)
+def test_an_unknown_field_is_refused(browser, sql, method, path, body) -> None:
+    """A field the API does not know is a client's mistake (a typo, an old name): saving the
+    rest would look like success."""
+    browser.sign_in("github")
+
+    response = browser.request(method, path, json=body, headers=ORIGIN)
+
+    assert response.status_code == 422
+    assert response.json()["type"] == PROBLEMS + "validation"
+    assert browser.me().json()["display_name"] == "Ada Lovelace"
+    assert sql("SELECT user_id FROM user_preferences") == []
+
+
 def test_a_blank_name_is_refused(browser) -> None:
     browser.sign_in("github")
 
@@ -117,11 +138,27 @@ def test_backtest_defaults_are_replaced_as_a_whole(browser) -> None:
     browser.put("/api/v1/me/preferences/backtest-defaults", json=BACKTEST, headers=ORIGIN)
 
     saved = browser.put(
-        "/api/v1/me/preferences/backtest-defaults", json={"timeframe": "5m"}, headers=ORIGIN
+        "/api/v1/me/preferences/backtest-defaults",
+        json={**DEFAULT_BACKTEST, "timeframe": "5m"},
+        headers=ORIGIN,
     )
 
     assert saved.json() == {**DEFAULT_BACKTEST, "timeframe": "5m"}
     assert browser.get("/api/v1/me/preferences").json()["backtest_defaults"] == saved.json()
+
+
+def test_backtest_defaults_without_every_field_are_refused(browser) -> None:
+    """A field left out is not reset to its default: the client sends all of them."""
+    browser.sign_in("github")
+    browser.put("/api/v1/me/preferences/backtest-defaults", json=BACKTEST, headers=ORIGIN)
+
+    response = browser.put(
+        "/api/v1/me/preferences/backtest-defaults", json={"timeframe": "5m"}, headers=ORIGIN
+    )
+
+    assert response.status_code == 422
+    assert response.json()["type"] == PROBLEMS + "validation"
+    assert browser.get("/api/v1/me/preferences").json()["backtest_defaults"] == BACKTEST
 
 
 def test_a_period_that_ends_before_it_starts_is_refused(browser, sql) -> None:
@@ -226,6 +263,22 @@ def test_connect_adds_a_sign_in_method(browser, providers, sql) -> None:
     browser.sign_out()
     browser.sign_in("google")
     assert browser.me().json()["id"] == me["id"]
+
+
+def test_me_names_the_account_of_each_sign_in_method(browser, providers) -> None:
+    """A connected account may have another email than the user's: Settings shows each."""
+    browser.sign_in("github")
+    providers.google_account(subject="2001", email="ada.work@example.org")
+    browser.connect("google")
+
+    me = browser.me().json()
+
+    assert me["email"] == "ada@example.com"
+    assert me["providers"] == ["github", "google"]
+    assert me["sign_in_methods"] == [
+        {"provider": "github", "email": "ada@example.com", "login": "ada"},
+        {"provider": "google", "email": "ada.work@example.org", "login": None},
+    ]
 
 
 def test_a_connected_account_leaves_with_its_user(app, settings, browser, providers) -> None:
@@ -485,28 +538,41 @@ def test_disconnect(browser) -> None:
     assert browser.me().json()["providers"] == ["google"]
 
 
-def test_a_removed_sign_in_method_does_not_come_back(browser, sql) -> None:
-    """Signing in with a removed method fails, though its email is the user's: the user
-    removed it because they do not trust that account any more."""
+def test_a_removed_sign_in_method_comes_back_with_the_users_email(browser, sql) -> None:
+    """Removing a method deletes its identity only: the email links a user's providers, so
+    signing in with it again adds it again (the decided behaviour, as in sign-in)."""
     browser.sign_in("github")
     me = browser.me().json()
     browser.connect("google")
     browser.delete("/api/v1/me/sign-in-methods/github", headers=ORIGIN)
+    assert sql("SELECT provider FROM identities") == [("google",)]
     browser.sign_out()
 
     callback = browser.sign_in("github")
 
-    assert callback.headers["location"] == "/signin?error=connect-first"
-    assert "session" not in cookies_set(callback)
-    assert sql("SELECT provider FROM identities") == [("google",)]
-    browser.sign_in("google")
+    assert callback.headers["location"] == "/dashboard"
     assert browser.me().json()["id"] == me["id"]
-    assert browser.me().json()["providers"] == ["google"]
-    # Connected again in Settings, it signs in again.
-    browser.connect("github")
-    browser.sign_out()
-    browser.sign_in("github")
     assert browser.me().json()["providers"] == ["github", "google"]
+    assert len(sql("SELECT id FROM users")) == 1
+
+
+def test_a_removed_sign_in_method_with_another_email_signs_in_as_a_new_user(
+    browser, providers, sql
+) -> None:
+    """A connected account whose email is not the user's has nothing to link it once removed."""
+    browser.sign_in("github")
+    me = browser.me().json()
+    providers.google_account(subject="2001", email="ada.work@example.org")
+    browser.connect("google")
+    browser.delete("/api/v1/me/sign-in-methods/google", headers=ORIGIN)
+    browser.sign_out()
+
+    callback = browser.sign_in("google")
+
+    # A new user, whom the beta list turns away like any other new account.
+    assert callback.headers["location"] == "/signin?error=denied"
+    assert sql(f"SELECT provider FROM identities WHERE user_id = '{me['id']}'") == [("github",)]
+    assert len(sql("SELECT id FROM users")) == 1
 
 
 def test_the_last_sign_in_method_stays(browser) -> None:
@@ -565,12 +631,19 @@ def test_sign_out_everywhere(browser, other_browser, third_browser, sql) -> None
 
 
 def test_delete_account(app, browser, other_browser, third_browser, sql) -> None:
-    deleted: list[tuple[str, int]] = []
+    deleted: list[tuple[str, str, int]] = []
 
-    async def hook(user_id: str, db: AsyncSession) -> None:
+    async def users(db: AsyncSession, user_id: str) -> int:
+        return await db.scalar(text("SELECT count(*) FROM users WHERE id = :id"), {"id": user_id})
+
+    async def hook(user_id: str, db: AsyncSession) -> AfterDeletion:
         # In the deletion's transaction, before the user's row goes.
-        users = await db.scalar(text("SELECT count(*) FROM users WHERE id = :id"), {"id": user_id})
-        deleted.append((user_id, users))
+        deleted.append(("rows", user_id, await users(db, user_id)))
+
+        async def after() -> None:  # once the deletion is committed
+            deleted.append(("files", user_id, await users(db, user_id)))
+
+        return after
 
     app.state.account_deletion_hooks = (hook,)
     browser.sign_in("github")
@@ -584,7 +657,7 @@ def test_delete_account(app, browser, other_browser, third_browser, sql) -> None
 
     assert response.status_code == 204
     assert cookies_set(response)["session"].startswith('session=""')
-    assert deleted == [(user_id, 1)]
+    assert deleted == [("rows", user_id, 1), ("files", user_id, 0)]
     assert sql(f"SELECT id FROM users WHERE id = '{user_id}'") == []
     assert sql("SELECT provider FROM identities") == []
     assert sql("SELECT user_id FROM user_preferences") == []
@@ -607,6 +680,25 @@ def test_a_failing_deletion_hook_deletes_nothing(app, browser, sql) -> None:
     assert response.json()["type"] == PROBLEMS + "internal-error"
     assert browser.me().status_code == 200
     assert len(sql("SELECT id FROM users")) == 1
+
+
+def test_a_failure_after_the_deletion_still_deletes_the_account(app, browser, sql, caplog) -> None:
+    async def hook(_user_id: str, _db: AsyncSession) -> AfterDeletion:
+        async def after() -> None:
+            raise OSError("the model files could not be removed")
+
+        return after
+
+    app.state.account_deletion_hooks = (hook,)
+    browser.sign_in("github")
+
+    with caplog.at_level(logging.ERROR):
+        response = browser.delete("/api/v1/me", headers=ORIGIN)
+
+    assert response.status_code == 204
+    assert "Deleting an account's data after the commit failed (OSError)" in caplog.text
+    assert browser.me().status_code == 401
+    assert sql("SELECT id FROM users") == []
 
 
 def test_a_deleted_account_signs_in_as_a_new_user(browser) -> None:

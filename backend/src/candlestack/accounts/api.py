@@ -3,9 +3,9 @@
 Sign-in starts at ``GET /api/v1/auth/{provider}/start?next=<path>``, which redirects to GitHub
 or Google; the provider returns to ``/api/v1/auth/{provider}/callback``, which sets the session
 cookie and redirects to ``next`` (default ``/dashboard``), or to ``/signin?error=denied`` (not on
-the beta list: ``GET /api/v1/auth/denied`` names the account), ``/signin?error=connect-first``
-(a new account with the email of a user, who connects it in Settings first) or
-``/signin?error=failed``.
+the beta list: ``GET /api/v1/auth/denied`` names the account) or ``/signin?error=failed``. A
+provider's account that never signed in joins the user with its email, so the email links a
+user's GitHub and Google.
 With ``intent=connect`` the same round trip, started from a link of Settings, adds a sign-in
 method to the signed-in user and returns to Settings (``/settings/sign-in``, with
 ``?error=taken`` or ``?error=failed``).
@@ -37,6 +37,7 @@ from candlestack.accounts.schemas import (
     Appearance,
     AppearanceUpdate,
     BacktestDefaults,
+    BacktestDefaultsIn,
     DeniedSignInOut,
     MeOut,
     MeUpdate,
@@ -147,9 +148,8 @@ async def start_sign_in(  # noqa: PLR0913 (the query parameters and the dependen
 ) -> RedirectResponse:
     """Redirects to the provider's sign-in page, or to `/signin?error=failed` when sign-in
     with it is not available or this address made too many sign-in requests in a minute. A
-    sign-in returns to `/signin?error=connect-first` when the provider's account never signed
-    in but its email is that of a CandleStack user: that user signs in with their other method
-    and connects it in Settings.
+    provider's account that never signed in joins the CandleStack user with its email, so the
+    email links a user's GitHub and Google; it signs in to a new user when no user has it.
 
     With `intent=connect` (signed in, a link of Settings) the provider's account is added to
     the signed-in user's sign-in methods instead: the callback returns to `next` (default
@@ -331,7 +331,8 @@ async def delete_me(
     dependencies=[Depends(require_same_origin)],
 )
 async def disconnect(provider: Provider, user: CurrentUserDep, service: AccountsServiceDep) -> None:
-    """Removes a sign-in method; the last one cannot be removed."""
+    """Removes a sign-in method; the last one cannot be removed. Signing in later with an
+    account of that provider whose email is the user's adds it again."""
     name = _PROVIDER_NAMES[provider]
     try:
         await service.disconnect(user, provider)
@@ -380,9 +381,9 @@ async def preferences(
     dependencies=[Depends(require_same_origin)],
 )
 async def save_backtest_defaults(
-    body: BacktestDefaults, user: CurrentUserDep, service: AccountsServiceDep, response: Response
+    body: BacktestDefaultsIn, user: CurrentUserDep, service: AccountsServiceDep, response: Response
 ) -> BacktestDefaults:
-    """Saves how new backtests start (Save defaults)."""
+    """Saves how new backtests start (Save defaults): every setting, as a whole."""
     response.headers.update(NO_STORE)
     return await service.save_backtest_defaults(user, body)
 

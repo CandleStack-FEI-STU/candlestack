@@ -24,17 +24,6 @@ class SignInMethodTaken(SignInFailed):
         super().__init__("the account signs in to another user")
 
 
-class AccountNotConnected(SignInFailed):
-    """The account never signed in, but its email is that of a user who signs in with another
-    method: it signs in only once that user connects it in Settings. Linking it by the email
-    would bring back a method the user removed."""
-
-    code = "connect-first"
-
-    def __init__(self) -> None:
-        super().__init__("the account's email is that of a user it is not connected to")
-
-
 class SignInDenied(Exception):
     """The provider vouched for the account, but its email is not on the beta list. The
     account waits in Redis under ``denial_id`` for the sign-in page to name it."""

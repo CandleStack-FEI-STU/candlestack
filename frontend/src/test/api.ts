@@ -8,6 +8,7 @@ export const ARSEN: Me = {
   display_name: 'Arsen Labovich',
   email: 'arsen@example.com',
   providers: ['github'],
+  sign_in_methods: [{ provider: 'github', email: 'arsen@example.com', login: 'arsen' }],
   created_at: '2026-10-17T08:00:00Z',
 };
 

@@ -52,6 +52,15 @@ class AccountStore:
         )
         return list(rows)
 
+    async def identities(self, user_id: str) -> list[Identity]:
+        """The user's sign-in methods, by provider."""
+        rows = await self._db.scalars(
+            select(Identity)
+            .where(Identity.user_id == user_id)
+            .order_by(Identity.provider, Identity.created_at)
+        )
+        return list(rows)
+
     async def delete_identities(self, user_id: str, provider: str) -> None:
         await self._db.execute(
             delete(Identity).where(Identity.user_id == user_id, Identity.provider == provider)

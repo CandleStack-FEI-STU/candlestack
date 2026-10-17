@@ -133,8 +133,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
     )
     app.state.settings = settings
-    # What other modules delete with an account (their hooks run before the user's row goes);
-    # no module keeps data of a user yet.
+    # What other modules delete with an account (their hooks run before the user's row goes,
+    # and what they return after the commit); no module keeps data of a user yet.
     deletion_hooks: tuple[AccountDeletionHook, ...] = ()
     app.state.account_deletion_hooks = deletion_hooks
     app.add_middleware(RequestContextMiddleware)

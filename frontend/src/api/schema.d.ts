@@ -120,9 +120,8 @@ export interface paths {
          * Start Sign In
          * @description Redirects to the provider's sign-in page, or to `/signin?error=failed` when sign-in
          *     with it is not available or this address made too many sign-in requests in a minute. A
-         *     sign-in returns to `/signin?error=connect-first` when the provider's account never signed
-         *     in but its email is that of a CandleStack user: that user signs in with their other method
-         *     and connects it in Settings.
+         *     provider's account that never signed in joins the CandleStack user with its email, so the
+         *     email links a user's GitHub and Google; it signs in to a new user when no user has it.
          *
          *     With `intent=connect` (signed in, a link of Settings) the provider's account is added to
          *     the signed-in user's sign-in methods instead: the callback returns to `next` (default
@@ -325,7 +324,7 @@ export interface paths {
         get?: never;
         /**
          * Save Backtest Defaults
-         * @description Saves how new backtests start (Save defaults).
+         * @description Saves how new backtests start (Save defaults): every setting, as a whole.
          */
         put: operations["save_backtest_defaults_api_v1_me_preferences_backtest_defaults_put"];
         post?: never;
@@ -347,7 +346,8 @@ export interface paths {
         post?: never;
         /**
          * Disconnect
-         * @description Removes a sign-in method; the last one cannot be removed.
+         * @description Removes a sign-in method; the last one cannot be removed. Signing in later with an
+         *     account of that provider whose email is the user's adds it again.
          */
         delete: operations["disconnect_api_v1_me_sign_in_methods__provider__delete"];
         options?: never;
@@ -439,6 +439,49 @@ export interface components {
              */
             threshold: number;
             /** @default 30m */
+            timeframe: components["schemas"]["BacktestTimeframe"];
+        };
+        /**
+         * BacktestDefaultsIn
+         * @description The backtest defaults to save (Save defaults): every field, and no other. The same
+         *     checks as `BacktestDefaults`, but no defaults, so a body that leaves a field out is
+         *     refused instead of filled in.
+         */
+        BacktestDefaultsIn: {
+            benchmark: components["schemas"]["Benchmark"];
+            direction: components["schemas"]["Direction"];
+            /**
+             * Fees Pct
+             * @description Fees in percent per side
+             */
+            fees_pct: number;
+            /**
+             * Period End
+             * Format: date
+             * @description Last day of the test
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date
+             * @description First day of the test
+             */
+            period_start: string;
+            /**
+             * Slippage Pct
+             * @description Slippage in percent
+             */
+            slippage_pct: number;
+            /**
+             * Stop Loss Pct
+             * @description Exit when a trade loses this many percent
+             */
+            stop_loss_pct: number;
+            /**
+             * Threshold
+             * @description Signal strength to trade
+             */
+            threshold: number;
             timeframe: components["schemas"]["BacktestTimeframe"];
         };
         /**
@@ -903,12 +946,17 @@ export interface components {
             id: string;
             /**
              * Providers
-             * @description Connected sign-in methods
+             * @description Connected sign-in methods (the providers of `sign_in_methods`)
              * @example [
              *       "github"
              *     ]
              */
             providers: components["schemas"]["Provider"][];
+            /**
+             * Sign In Methods
+             * @description The account of each sign-in method, by provider
+             */
+            sign_in_methods: components["schemas"]["SignInMethodOut"][];
         };
         /**
          * MeUpdate
@@ -969,6 +1017,25 @@ export interface components {
          * @enum {string}
          */
         SignInIntent: "sign-in" | "connect";
+        /**
+         * SignInMethodOut
+         * @description A sign-in method: the provider's account the user signs in with.
+         */
+        SignInMethodOut: {
+            /**
+             * Email
+             * @description The account's email at the provider, as of its last sign-in or connect
+             * @example arsen@example.com
+             */
+            email: string;
+            /**
+             * Login
+             * @description The account's GitHub username; null for Google
+             * @example arsen
+             */
+            login: string | null;
+            provider: components["schemas"]["Provider"];
+        };
         /** SourceHealthOut */
         SourceHealthOut: {
             /**
@@ -1674,7 +1741,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["BacktestDefaults"];
+                "application/json": components["schemas"]["BacktestDefaultsIn"];
             };
         };
         responses: {

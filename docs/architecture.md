@@ -51,18 +51,18 @@ flowchart LR
 | `GET /api/health/sources` | reachability of Binance and Alpaca (cached 60 s) |
 | `GET /api/v1/data/...` | instruments and candles, see [data.md](data.md) |
 | `GET /api/v1/auth/{provider}/start?next=<path>` | sign-in with `github` or `google`: redirects to the provider, or to `/signin?error=failed` (provider not configured, too many sign-ins from the address); with `intent=connect` it adds a sign-in method to the signed-in user instead ([Accounts](#accounts)) |
-| `GET /api/v1/auth/{provider}/callback` | where the provider returns; sets the session cookie and redirects to `next` (default `/dashboard`), or to `/signin?error=denied` (not on the beta list), `/signin?error=connect-first` (a new account with the email of a user) or `/signin?error=failed`; a connect returns to Settings instead; not in the API reference |
+| `GET /api/v1/auth/{provider}/callback` | where the provider returns; sets the session cookie and redirects to `next` (default `/dashboard`), or to `/signin?error=denied` (not on the beta list) or `/signin?error=failed`; a connect returns to Settings instead; not in the API reference |
 | `GET /api/v1/auth/denied` | the account this browser was just turned away with (email, provider), for the sign-in page |
 | `POST /api/v1/auth/sign-out` | ends this browser's session |
 | `POST /api/v1/auth/dev` | signs in as a fixed dev user; only `APP_ENV` `local` and `test`, not in the API reference |
-| `GET /api/v1/me` | the signed-in user |
-| `PATCH /api/v1/me` | changes the display name (1 to 80 characters, surrounding whitespace dropped) |
+| `GET /api/v1/me` | the signed-in user, with the provider's account (email, GitHub login) of each sign-in method |
+| `PATCH /api/v1/me` | changes the display name (1 to 80 characters, surrounding whitespace dropped); an unknown field is a 422 |
 | `DELETE /api/v1/me` | deletes the account with everything it owns and ends its sessions |
-| `DELETE /api/v1/me/sign-in-methods/{provider}` | removes a sign-in method; `409 last-sign-in-method` for the last one |
+| `DELETE /api/v1/me/sign-in-methods/{provider}` | removes a sign-in method; `409 last-sign-in-method` for the last one; a later sign-in with that provider and the user's email adds it again |
 | `POST /api/v1/auth/sign-out-everywhere` | ends every session of the user, this browser's included |
 | `GET /api/v1/me/preferences` | the user's settings (backtest defaults, appearance), defaults included |
-| `PUT /api/v1/me/preferences/backtest-defaults` | replaces the backtest defaults (`period_start` before `period_end`) |
-| `PATCH /api/v1/me/preferences/appearance` | changes the appearance settings it is given |
+| `PUT /api/v1/me/preferences/backtest-defaults` | replaces the backtest defaults: every field, no other (`period_start` before `period_end`), else 422 |
+| `PATCH /api/v1/me/preferences/appearance` | changes the appearance settings it is given; an unknown field is a 422 |
 | `GET /api/v1/docs` | API reference (Scalar); public on prod |
 | `GET /api/v1/openapi.json` | OpenAPI schema; snapshot committed as [openapi.json](openapi.json) |
 
@@ -91,10 +91,10 @@ flowchart LR
   beta list admits users: a new account by its email, an account that signed in before by the
   email of its user (that of the user's first sign-in), so a method connected in Settings signs
   in too, and a user whose email leaves the list cannot sign in with any method. A provider's
-  account signs in to the user it was added to; a new one whose email is a user's already does
-  not sign in (`/signin?error=connect-first`): the user signs in with their other method and
-  connects it in Settings. Linking it by the email would bring back a method the user removed
-  because they do not trust that account any more.
+  account signs in to the user it was added to; one that never signed in joins the user with
+  its email, so the email links a user's GitHub and Google into one account, else it makes a
+  new user. A user who already signs in with another account of that provider (connected in
+  Settings with another email) gets `/signin?error=failed` instead of a second one.
 - **Sign-in methods**: `GET /api/v1/auth/{provider}/start?intent=connect&next=<path>`, the
   Connect link of Settings, starts the same round trip for the signed-in user (without a
   session it redirects to `/signin?next=/settings/sign-in`). Being a navigation, it carries no
@@ -111,25 +111,32 @@ flowchart LR
   `/settings/sign-in?error=failed`. A connect's state starts with `connect.`, so the
   callback knows where to return even when it failed before its pending state was found. The
   last sign-in method cannot be removed; changes of a user's methods lock the user's row, so
-  two removals at once cannot leave none.
+  two removals at once cannot leave none. Removing a method deletes its identity only: signing
+  in later with that provider's account adds it again when its email is the user's.
+  `GET /api/v1/me` lists each method's account (`sign_in_methods`: provider, email, GitHub
+  login), as a connected one may have another email than the user's.
 - **Preferences**: table `user_preferences`, one row per user who saved anything (the user ID
   as primary key, deleted with the user), one JSONB document per section of Settings
   (`backtest_defaults`, `appearance`) and `updated_at`. A document holds only what was saved
   and is read through its Pydantic model (`BacktestDefaults`, `Appearance`): no row or a
   missing key reads as the default, a key the model does not know is ignored, so a new setting
-  needs no data migration. The backtest defaults are replaced as a whole; an appearance change
+  needs no data migration. The backtest defaults are replaced as a whole (the body
+  `BacktestDefaultsIn` has every field and no default, so a client cannot reset a setting by
+  leaving it out); an appearance change
   is merged into the stored document in one statement (`||`), so changes sent at the same time
   all stay.
 - **Deleting an account**: `DELETE /api/v1/me` deletes the user's row in one transaction; the
   foreign keys cascade to identities, sessions and preferences. A module that keeps more data
   of a user (models, backtests) deletes it through an `AccountDeletionHook`
-  (`async (user_id, db) -> None`), which `candlestack.main` puts on
-  `app.state.account_deletion_hooks`: the hooks run in the deletion's transaction before the
-  user's row goes, and one that raises rolls the deletion back (500). That holds for rows in
-  Postgres only: a hook that touches storage outside the transaction (files on disk) must
-  leave it as it was when a later hook or the commit fails, e.g. mark the files for deletion
-  and remove them later, or tolerate the account staying. `accounts` never imports the modules
-  that own the data. No module registers a hook yet.
+  (`async (user_id, db) -> AfterDeletion | None`), which `candlestack.main` puts on
+  `app.state.account_deletion_hooks`, in two phases. The hooks run in the deletion's
+  transaction before the user's row goes and delete the module's rows; one that raises rolls
+  the whole deletion back (500). They do not touch storage outside Postgres (files on disk)
+  then, as the commit may still fail: each returns what deletes that (`async () -> None`, or
+  None), and those run only after the commit. The account is gone by then, so one that raises
+  is logged (by the error's type only, never its message) and the others still run: an
+  orphaned file at worst, never a user without their files. `accounts` never imports the
+  modules that own the data. No module registers a hook yet.
 - Every route of the signed-in user that returns user data sends `Cache-Control: no-store`, and
   every change requires the app's own origin.
 
@@ -295,7 +302,7 @@ to check that an error reaches Sentry. The Sentry settings are recorded in
 | Modular monolith, one package, boundaries checked by import-linter | one image and one deploy for a small team; the boundaries still hold |
 | Market data is not stored; Redis as a disposable cache (no persistence, `allkeys-lru`) | market data comes from the sources on demand; losing Redis costs only refetch time |
 | Postgres for what users create, one database per environment, nightly dumps on prod and stage | accounts and later models and backtests must survive restarts and deploys; one small instance per environment keeps stage away from prod's data |
-| Sign-in with GitHub or Google only, no passwords | no password storage, reset or verification flows to build and secure; both providers vouch for a verified email; a user adds the other provider in Settings, never by the email alone |
+| Sign-in with GitHub or Google only, no passwords | no password storage, reset or verification flows to build and secure; both providers vouch for a verified email, which also links a user's two providers into one account |
 | A beta list (`BETA_ALLOWLIST`) decides who signs in, closed when empty | the app is for the team and invited testers while it is built; a turned-away account is named on the sign-in page (from Redis, for 10 minutes, never in a URL) and gets no account |
 | Server-side sessions: a random token in an HttpOnly, SameSite=Lax cookie (`__Host-` over https), only its SHA-256 in Postgres, 30 days sliding | a session can be ended at once (sign-out, later admin), a database leak does not leak sessions, and no script can read the cookie |
 | Changes on behalf of the user require the app's own origin (`core.require_same_origin`), the OAuth round trip a state bound to the browser (Redis and a cookie) and PKCE | every host under candlestack.tech is the same site to the browser, so SameSite cookies alone do not stop a page on another of them; the state stops login CSRF; PKCE stops a stolen code |
