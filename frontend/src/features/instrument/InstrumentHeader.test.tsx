@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import type { InstrumentDetail } from '@/api';
+import { NEW_YORK } from '@/lib/dates';
 import { classes } from '@/test/markup';
 
 import { InstrumentHeader } from './InstrumentHeader';
@@ -22,9 +23,11 @@ const AAPL: InstrumentDetail = {
   timeframes: ['1d'],
 };
 
+const STYLE = { timeZone: NEW_YORK, dateFormat: 'dmy', timeFormat: '24' } as const;
+
 describe('InstrumentHeader', () => {
   it('shows the 64 px icon before the name', () => {
-    const html = renderToStaticMarkup(<InstrumentHeader instrument={AAPL} dateFormat="dmy" />);
+    const html = renderToStaticMarkup(<InstrumentHeader instrument={AAPL} dateStyle={STYLE} />);
     const icon = html.indexOf('<img ');
     expect(icon).toBeGreaterThan(-1);
     expect(html.slice(icon)).toMatch(/^<img [^>]*src="\/api\/v1\/data\/instruments\/stock%3AAAPL\/icon"/);
@@ -33,7 +36,7 @@ describe('InstrumentHeader', () => {
   });
 
   it('keeps the symbol for screen readers on a phone and wraps a long id or name', () => {
-    const html = renderToStaticMarkup(<InstrumentHeader instrument={AAPL} dateFormat="dmy" />);
+    const html = renderToStaticMarkup(<InstrumentHeader instrument={AAPL} dateStyle={STYLE} />);
     // On a phone the symbol ends the id above the name: its fact is only hidden from the screen.
     const symbol = classes(html, /<div [^>]*><dt[^>]*>Symbol</);
     expect(symbol).toContain('sr-only');
@@ -44,10 +47,13 @@ describe('InstrumentHeader', () => {
     expect(classes(html, /<h1 [^>]*>Apple Inc\.</)).toContain('break-words');
   });
 
-  it("writes the first day in the user's date format, as the day it was in the market's zone", () => {
-    // 2020-07-28 02:00 UTC is still 27 July in New York.
+  it("writes the first day in the user's date format, as the day it was in the chart's zone", () => {
+    // 2020-07-28 02:00 UTC is still 27 July in New York, already 28 July in Bratislava.
     const listed = { ...AAPL, available_from: Date.UTC(2020, 6, 28, 2) / 1000 };
-    expect(renderToStaticMarkup(<InstrumentHeader instrument={listed} dateFormat="dmy" />)).toContain('27 Jul 2020');
-    expect(renderToStaticMarkup(<InstrumentHeader instrument={listed} dateFormat="iso" />)).toContain('2020-07-27');
+    const since = (dateStyle: typeof STYLE | { timeZone: string; dateFormat: 'iso'; timeFormat: '24' }) =>
+      renderToStaticMarkup(<InstrumentHeader instrument={listed} dateStyle={dateStyle} />);
+    expect(since(STYLE)).toContain('27 Jul 2020');
+    expect(since({ ...STYLE, dateFormat: 'iso' })).toContain('2020-07-27');
+    expect(since({ timeZone: 'Europe/Bratislava', dateFormat: 'iso', timeFormat: '24' })).toContain('2020-07-28');
   });
 });

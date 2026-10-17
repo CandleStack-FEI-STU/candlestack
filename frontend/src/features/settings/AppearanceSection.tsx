@@ -8,12 +8,14 @@ import {
   type TimeFormat,
   type TimeZone,
 } from '@/api';
+import { DashboardCard } from '@/components/DashboardCard';
 import { AppearanceIcon } from '@/components/icons';
 import { Switch } from '@/components/ui/switch';
 import { useAppearanceError, useThemeSetting, useUpdateAppearance } from '@/features/preferences';
 import { cityOf, formatDate, formatTime, viewerTimeZone } from '@/lib/dates';
 
-import { Choice, ErrorNote, SettingsCard, SettingsRow } from './Card';
+import { Choice } from './controls';
+import { ErrorNote, SettingsRow } from './rows';
 
 // The formats show themselves on one moment: 12 October 2024, 16:05.
 const EXAMPLE = new Date(Date.UTC(2024, 9, 12, 16, 5));
@@ -82,7 +84,7 @@ export function AppearanceSection() {
   const { mutate } = useUpdateAppearance();
   const error = useAppearanceError();
   return (
-    <SettingsCard icon={AppearanceIcon} title="Appearance">
+    <DashboardCard icon={AppearanceIcon} title="Appearance">
       <ThemeRow />
       <TimeRows appearance={appearance} update={mutate} />
       <SettingsRow label="Reduce motion" hint="Turns off the small animations">
@@ -93,6 +95,6 @@ export function AppearanceSection() {
         />
       </SettingsRow>
       {error && <ErrorNote className="mt-2">{error.message}</ErrorNote>}
-    </SettingsCard>
+    </DashboardCard>
   );
 }

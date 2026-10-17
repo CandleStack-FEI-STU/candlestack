@@ -29,7 +29,7 @@ const BTC: InstrumentDetail = {
   timeframes: ['1h'],
 };
 
-const FORMATS = { dateFormat: 'dmy', timeFormat: '24' } as const;
+const STYLE = { timeZone: 'UTC', dateFormat: 'dmy', timeFormat: '24' } as const;
 
 const withQueries = (node: React.ReactNode) => (
   <QueryClientProvider client={new QueryClient()}>{node}</QueryClientProvider>
@@ -57,7 +57,7 @@ describe('the chart height chain', () => {
 
   it('lets the candles section grow, also while it loads, up to 64rem', () => {
     const html = renderToStaticMarkup(
-      withQueries(<InstrumentCandles instrument={BTC} timeframe="1h" formats={FORMATS} />),
+      withQueries(<InstrumentCandles instrument={BTC} timeframe="1h" dateStyle={STYLE} />),
     );
     expect(html).toContain('Loading candles…');
     expect(classes(html, /<section [^>]*>/)).toEqual(
@@ -68,7 +68,7 @@ describe('the chart height chain', () => {
   it('lets the chart fill its section, never under 16rem, 20rem from sm up', () => {
     const bars = [{ time: 3600, open: 1, high: 2, low: 0.5, close: 1.5, volume: 10 }];
     const html = renderToStaticMarkup(
-      <CandleChart bars={bars} market="crypto" formats={FORMATS} onNearLeftEdge={() => undefined} />,
+      <CandleChart bars={bars} market="crypto" dateStyle={STYLE} onNearLeftEdge={() => undefined} />,
     );
     expect(classes(html, /<div [^>]*>/)).toEqual(
       expect.arrayContaining(['relative', 'flex-1', 'min-h-64', 'sm:min-h-80']),

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 
+import { DashboardCard } from '@/components/DashboardCard';
 import { preferencesQueryOptions, saveBacktestDefaults, type DefaultTimeframe } from '@/api';
 import { ACCENT_BUTTON, BUTTON_SIZES } from '@/components/buttonStyles';
 import { SlidersIcon } from '@/components/icons';
@@ -8,7 +9,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 import { BenchmarkSelect } from './BenchmarkSelect';
-import { Choice, SettingsCard, SettingsFooter, SettingsRow } from './Card';
+import { Choice } from './controls';
+import { SettingsFooter, SettingsRow } from './rows';
 import { DirectionCards, PeriodInput, UnitInput, ValueSlider } from './defaultsControls';
 import { checkDefaults, formOf, sameDefaults, type DefaultsForm, type TypedField } from './defaultsForm';
 
@@ -142,7 +144,7 @@ export function BacktestDefaultsSection() {
   const fields = { form, set, invalid };
   return (
     <form onSubmit={submit}>
-      <SettingsCard
+      <DashboardCard
         icon={SlidersIcon}
         title="Backtest defaults"
         aside={<span className="text-xs text-muted-foreground">New backtests start here</span>}
@@ -155,7 +157,7 @@ export function BacktestDefaultsSection() {
             Save defaults
           </Button>
         </SettingsFooter>
-      </SettingsCard>
+      </DashboardCard>
     </form>
   );
 }

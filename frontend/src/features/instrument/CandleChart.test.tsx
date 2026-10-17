@@ -44,14 +44,22 @@ function crosshairText(): string | undefined {
 }
 
 describe('the candle chart', () => {
-  it("writes the crosshair's date and time in the user's formats, and follows a change", () => {
-    const chart = (dateFormat: 'dmy' | 'iso', timeFormat: '24' | '12') => (
-      <CandleChart bars={BARS} market="stock" formats={{ dateFormat, timeFormat }} onNearLeftEdge={() => undefined} />
+  it("writes the crosshair's date and time in the user's zone and formats, and follows a change", () => {
+    const chart = (timeZone: string, dateFormat: 'dmy' | 'iso', timeFormat: '24' | '12') => (
+      <CandleChart
+        bars={BARS}
+        market="stock"
+        dateStyle={{ timeZone, dateFormat, timeFormat }}
+        onNearLeftEdge={() => undefined}
+      />
     );
-    const { rerender } = render(chart('dmy', '24'));
+    const { rerender } = render(chart('America/New_York', 'dmy', '24'));
     expect(crosshairText()).toBe('3 Jun 2024, 09:30');
 
-    rerender(chart('iso', '12'));
+    rerender(chart('America/New_York', 'iso', '12'));
     expect(crosshairText()).toBe('2024-06-03, 9:30 AM');
+
+    rerender(chart('Europe/Bratislava', 'iso', '12'));
+    expect(crosshairText()).toBe('2024-06-03, 3:30 PM');
   });
 });

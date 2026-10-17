@@ -1,9 +1,10 @@
 import { Code as CodeIcon } from 'lucide-react';
 
+import { DashboardCard } from '@/components/DashboardCard';
 import { ComingSoonTag } from '@/components/ComingSoon';
 import { PlugIcon } from '@/components/icons';
 
-import { Code, SettingsCard, SettingsLead, SettingsRow } from './Card';
+import { Code, SettingsLead, SettingsRow } from './rows';
 
 // The tag at the right of a card's title (.cs-tag.st-soon): smaller, flat.
 const SOON = <ComingSoonTag className="px-[11px] py-[5px] text-[11px]/[normal]" />;
@@ -13,7 +14,7 @@ const SOON = <ComingSoonTag className="px-[11px] py-[5px] text-[11px]/[normal]" 
 export function ApiSection() {
   return (
     <>
-      <SettingsCard icon={CodeIcon} title="API keys" aside={SOON}>
+      <DashboardCard icon={CodeIcon} title="API keys" aside={SOON}>
         <SettingsLead>
           Run backtests and read results from your own scripts. A key acts as you, so you keep it secret.
         </SettingsLead>
@@ -27,8 +28,8 @@ export function ApiSection() {
             API docs
           </a>
         </SettingsRow>
-      </SettingsCard>
-      <SettingsCard icon={PlugIcon} title="MCP server" aside={SOON}>
+      </DashboardCard>
+      <DashboardCard icon={PlugIcon} title="MCP server" aside={SOON}>
         <SettingsLead>
           Use CandleStack from Claude or ChatGPT. Ask about your backtests, start new ones and compare them in a chat.
           You sign in with your CandleStack account.
@@ -36,7 +37,7 @@ export function ApiSection() {
         <SettingsRow label="Server URL">
           <Code>{`${window.location.origin}/mcp`}</Code>
         </SettingsRow>
-      </SettingsCard>
+      </DashboardCard>
     </>
   );
 }

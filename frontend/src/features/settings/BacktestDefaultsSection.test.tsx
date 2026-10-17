@@ -57,10 +57,10 @@ describe('Backtest defaults', () => {
   it('draws no line between the title and the first row', async () => {
     stubApi(sessionWithPreferences(ARSEN));
     await renderApp('/settings/backtest-defaults');
-    // The rows' top line is left out right after the title (Card.tsx), so the first row has to
-    // follow it in the card.
+    // The rows' top line is left out right after the card's title (rows.tsx), so the first row has
+    // to follow it in the card.
     const first = card().getByText('Timeframe').closest('[data-slot=settings-row]');
-    expect(first?.previousElementSibling?.getAttribute('data-slot')).toBe('settings-head');
+    expect(first?.previousElementSibling?.getAttribute('data-slot')).toBe('card-head');
   });
 
   it('saves the choices: the timeframe, the direction, the threshold and the stop loss', async () => {

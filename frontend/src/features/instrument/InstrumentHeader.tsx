@@ -1,8 +1,6 @@
-import { exchangeName, type DateFormat, type InstrumentDetail } from '@/api';
+import { exchangeName, type InstrumentDetail } from '@/api';
 import { InstrumentIcon } from '@/components/InstrumentIcon';
-import { formatDate } from '@/lib/dates';
-
-import { chartTimeZone } from './time';
+import { formatDate, type DateStyle } from '@/lib/dates';
 
 function Fact({ label, value, className }: { label: string; value: string; className?: string }) {
   return (
@@ -15,16 +13,12 @@ function Fact({ label, value, className }: { label: string; value: string; class
 
 // Icon, name, symbol, exchange, source and since when there is data. On a phone the facts fit
 // one line: the symbol is shown only to screen readers (on screen it ends the id above the name)
-// and the gaps are narrower, so the chart below keeps its room. A long id or name wraps instead of running off the screen.
-// The first day is written in the user's date format, as the day it was in the market's zone.
-export function InstrumentHeader({ instrument, dateFormat }: { instrument: InstrumentDetail; dateFormat: DateFormat }) {
+// and the gaps are narrower, so the chart below keeps its room. A long id or name wraps instead
+// of running off the screen. The first day is written as the user writes dates, as the day it was
+// in the chart's zone.
+export function InstrumentHeader({ instrument, dateStyle }: { instrument: InstrumentDetail; dateStyle: DateStyle }) {
   const since =
-    instrument.available_from === null
-      ? 'unknown'
-      : formatDate(new Date(instrument.available_from * 1000), {
-          timeZone: chartTimeZone(instrument.market),
-          dateFormat,
-        });
+    instrument.available_from === null ? 'unknown' : formatDate(new Date(instrument.available_from * 1000), dateStyle);
 
   return (
     <div className="mb-6">

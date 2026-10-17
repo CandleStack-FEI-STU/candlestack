@@ -7,7 +7,8 @@ import { cn } from '@/lib/utils';
 
 // shadcn/ui's Dialog with the app design's modal (mockups/app, modalShell): 560 px wide and at
 // most the screen high less 16 px around it, a title row with the close button, a body that
-// scrolls, and the buttons in a footer under a line. It fades and scales in from 10 px lower; the backdrop fades in.
+// scrolls, and the buttons in a footer under a line. It fades and scales in from 10 px lower; the
+// backdrop fades in.
 
 function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />;

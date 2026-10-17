@@ -1,4 +1,5 @@
 import { useMutation, useMutationState, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 
 import { preferencesQueryOptions, updateAppearance, type Appearance, type Preferences } from '@/api';
 
@@ -16,8 +17,11 @@ export function useUpdateAppearance() {
     scope: { id: 'appearance' },
     mutationFn: (update: Partial<Appearance>) => updateAppearance(update),
     onMutate: async (update): Promise<{ before: Preferences | undefined }> => {
-      await queryClient.cancelQueries({ queryKey: key });
       const before = queryClient.getQueryData(key);
+      // A fetch on the way would overwrite the change with the old value. Without anything in the
+      // cache yet it is the first one: it carries on, so the account's settings still arrive, and
+      // the answer goes on top of them (onSuccess).
+      if (before) await queryClient.cancelQueries({ queryKey: key });
       queryClient.setQueryData(
         key,
         (preferences) => preferences && { ...preferences, appearance: { ...preferences.appearance, ...update } },
@@ -27,18 +31,33 @@ export function useUpdateAppearance() {
     onError: (_error, _update, context) => {
       if (context?.before) queryClient.setQueryData(key, context.before);
     },
-    onSuccess: (appearance) => {
+    onSuccess: async (appearance) => {
       if (queryClient.isMutating({ mutationKey: MUTATION_KEY }) > 1) return;
+      // The first fetch may still be on the way, sent before the change: wait for it (a failed one
+      // leaves the cache empty, and the next fetch brings the change).
+      await queryClient.ensureQueryData(preferencesQueryOptions()).catch(() => undefined);
       queryClient.setQueryData(key, (preferences) => preferences && { ...preferences, appearance });
     },
   });
 }
 
 // Why the latest change failed, wherever it was made (Settings or the header's toggle); null once
-// a change went through.
+// a change went through. Changes that had ended when the caller showed up do not count: a failure
+// from before, still in the cache for a while, is not shown again on coming back to Settings.
 export function useAppearanceError(): Error | null {
+  const queryClient = useQueryClient();
+  // The cache numbers mutations as they are made.
+  const [ended] = useState(() =>
+    Math.max(
+      0,
+      ...queryClient
+        .getMutationCache()
+        .findAll({ mutationKey: MUTATION_KEY, predicate: (mutation) => mutation.state.status !== 'pending' })
+        .map((mutation) => mutation.mutationId),
+    ),
+  );
   const errors = useMutationState({
-    filters: { mutationKey: MUTATION_KEY },
+    filters: { mutationKey: MUTATION_KEY, predicate: (mutation) => mutation.mutationId > ended },
     select: (mutation) => mutation.state.error,
   });
   return errors.at(-1) ?? null;

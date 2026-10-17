@@ -219,7 +219,8 @@ The two sections with the account's preferences load them in the route's loader
 - Profile: the drawn initials, the display name to change (`PATCH /api/v1/me`; Save sends it once
   it changed and is not empty, an empty one is marked, the answer becomes the user in the header
   and the menu), the email and the user ID. Save is off only while it saves, as in the design.
-- Sign-in: GitHub and Google, a connected one with the account's email. Connect is a full page navigation to
+- Sign-in: GitHub and Google (names and marks from `src/features/signin/providers.ts`, as on the
+  sign-in page), a connected one with the account's email. Connect is a full page navigation to
   `/api/v1/auth/{provider}/start?intent=connect&next=/settings/sign-in`; the API comes back with
   `?error=taken` or `?error=failed`, which the card says under the list. Disconnect
   (`DELETE /api/v1/me/sign-in-methods/{provider}`) is off for the last method, with the title
@@ -229,18 +230,26 @@ The two sections with the account's preferences load them in the route's loader
   defaults, which sends the whole set (`PUT .../backtest-defaults`) once something changed and the
   typed fields are right (`defaultsForm.ts`: real days, the period ending after it starts, 0 to
   5 %; a wrong one is marked as it is typed).
-- Appearance: each control saves as it changes (`PATCH .../appearance`, `src/features/preferences/`):
-  at once in the cache the page reads, then on the account, one change after another; a failed
-  one goes back and the card says why. The theme is the page's (`src/theme.ts`): the header's
+- Appearance: each control saves as it changes (`PATCH .../appearance`,
+  `src/features/preferences/`): at once in the cache the page reads, then on the account, one
+  change after another; a failed one goes back and the card says why (until the next change, not
+  on coming back to the section). The theme is the page's (`src/theme.ts`): the header's
   toggle and the card change the same one, and signed in both save it to the account.
   `AppearanceSync`, on every page, puts the account's theme and Reduce motion on `<html>` once
   they arrive (the account wins over the browser) and keeps both in `localStorage`, which
   `public/theme.js` reads before the page paints, so neither flashes. Signed out, Reduce motion is
   the system's alone.
 - Dates and times go through `src/lib/dates.ts` (`formatDate`, `formatTime`, the zone of the
-  setting); `useDateStyle()` gives the account's choice, or the API's defaults for a visitor. The
-  instrument page writes its first day, the chart's crosshair and the axis's times in the user's
-  formats (the chart keeps the market's zone, `src/features/instrument/time.ts`).
+  setting); `useDateStyle()` gives the account's choice, zone and all. A visitor has no setting:
+  the API's formats, in New York time or the zone the page passes. The instrument page writes its
+  first day, the chart's crosshair and axis and the note under it in the user's zone and formats
+  (a visitor sees the market's zone: New York for stocks, their own for crypto,
+  `src/features/instrument/time.ts`). The list's mini candles write their day in the user's date
+  format.
+- The cards are the dashboard's (`src/components/DashboardCard.tsx`: the icon tile by the title),
+  their rows in `src/features/settings/rows.tsx` and their text field and segments in
+  `controls.tsx`. A failure is a line in the design's hint style (12 px, muted) with
+  `role="alert"`.
 - Data and storage shows the market data; the backtests and models rows come with those pages.
   API and MCP shows both cards as Coming soon, with the API docs of the same host.
 - Account: Sign out everywhere (`POST /api/v1/auth/sign-out-everywhere`) and Delete account
@@ -297,8 +306,8 @@ instruments first and shows each one's 24 h stats from the API (`price`, `change
   least 1 px high), scaled to the days' low and high with 1 px padding. Up (close ≥ open)
   `--candle-up` (#2e9e44, dark #43b049), down `--candle-down` (#f23645), as on the chart. A day
   without a candle (`null`) is an empty slot; no candles at all is a 1.5 px dashed line (3/3,
-  muted at 45 %). Hovering a day shows a 1 px hairline and "Oct 9 · close 82,635.55" (UTC date,
-  the list's price format) above it, Geist Mono 11/16 on ink. The hover layer lies over the
+  muted at 45 %). Hovering a day shows a 1 px hairline and "9 Oct 2025 · close 82,635.55" (the
+  UTC date in the user's date format, the list's price format) above it, Geist Mono 11/16 on ink. The hover layer lies over the
   row's stretched link, so it is a link to the instrument too, with `tabindex="-1"` and
   `aria-hidden`: the symbol stays the row's one tab stop. Screen readers hear "10 daily candles,
   +1.25%" (first open to last close) or "No chart yet".

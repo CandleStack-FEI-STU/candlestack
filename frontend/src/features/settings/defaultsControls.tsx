@@ -4,7 +4,7 @@ import { Slider } from '@/components/ui/slider';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
 
-import { INPUT } from './Card';
+import { INPUT } from './controls';
 
 // The controls of the Backtest defaults card (mockups/app, ddSettings).
 

@@ -1,3 +1,4 @@
+import { DashboardCard } from '@/components/DashboardCard';
 import { BUTTON_SIZES, DANGER_ACCENT_BUTTON, DANGER_BUTTON, OUTLINE_BUTTON } from '@/components/buttonStyles';
 import { WarnIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
@@ -15,7 +16,7 @@ import {
 import { useDeleteAccount, useSignOutEverywhere } from '@/features/account';
 import { cn } from '@/lib/utils';
 
-import { ActionRow, ErrorNote, SettingsCard } from './Card';
+import { ActionRow, ErrorNote } from './rows';
 
 // The question before the account goes: what goes with it, Cancel, and the red Delete account.
 function DeleteAccountQuestion() {
@@ -72,7 +73,7 @@ function DeleteAccount() {
 export function AccountSection() {
   const signOutEverywhere = useSignOutEverywhere();
   return (
-    <SettingsCard icon={WarnIcon} title="Account" danger>
+    <DashboardCard icon={WarnIcon} title="Account" danger>
       <ActionRow title="Sign out everywhere" hint="Ends every session on every device.">
         <Button
           type="button"
@@ -88,6 +89,6 @@ export function AccountSection() {
         <DeleteAccount />
       </ActionRow>
       {signOutEverywhere.error && <ErrorNote className="mt-2">{signOutEverywhere.error.message}</ErrorNote>}
-    </SettingsCard>
+    </DashboardCard>
   );
 }

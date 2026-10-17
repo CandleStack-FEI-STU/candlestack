@@ -15,14 +15,14 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 
 import type { Market } from '@/api';
 import { Button } from '@/components/ui/button';
-import type { DateFormats } from '@/lib/dates';
+import type { DateStyle } from '@/lib/dates';
 import { priceDecimals } from '@/lib/numbers';
 import { useTheme } from '@/theme';
 
 import type { Bar } from './bars';
 import { ChartLegend } from './ChartLegend';
 import { legendFor } from './legend';
-import { chartTimeZone, crosshairFormatter, tickFormatter } from './time';
+import { crosshairFormatter, tickFormatter } from './time';
 
 // Start loading the older page this many bars before the left edge, so it is there in time.
 const PRELOAD_BARS = 30;
@@ -88,9 +88,8 @@ function setBars(series: Series, bars: readonly Bar[], colors: { up: string; dow
   );
 }
 
-// The axis and the crosshair write dates and times as the user does, in the market's zone.
-function applyTimeFormats(chart: IChartApi, market: Market, formats: DateFormats) {
-  const style = { ...formats, timeZone: chartTimeZone(market) };
+// The axis and the crosshair write dates and times as the user does, in the style's zone.
+function applyTimeFormats(chart: IChartApi, style: DateStyle) {
   const ticks = tickFormatter(style);
   const crosshair = crosshairFormatter(style);
   chart.applyOptions({
@@ -123,16 +122,21 @@ function showBars(instance: Instance, bars: readonly Bar[], firstTime: number | 
   return bars[0]?.time;
 }
 
-// The axis and the crosshair follow the user's formats once the chart is there, and on a change.
-function useTimeFormats(chart: RefObject<Instance | null>, market: Market, { dateFormat, timeFormat }: DateFormats) {
+// The axis and the crosshair follow the user's zone and formats once the chart is there (a new one
+// for each market), and on a change.
+function useTimeFormats(
+  chart: RefObject<Instance | null>,
+  market: Market,
+  { timeZone, dateFormat, timeFormat }: DateStyle,
+) {
   useEffect(() => {
-    if (chart.current) applyTimeFormats(chart.current.chart, market, { dateFormat, timeFormat });
-  }, [chart, market, dateFormat, timeFormat]);
+    if (chart.current) applyTimeFormats(chart.current.chart, { timeZone, dateFormat, timeFormat });
+  }, [chart, market, timeZone, dateFormat, timeFormat]);
 }
 
 // Creates the chart and follows it: loads older pages near the left edge, tracks the candle under
 // the cursor for the legend, and whether the newest candle is out of view.
-function useCandleChart(market: Market, formats: DateFormats, bars: readonly Bar[], onNearLeftEdge: () => void) {
+function useCandleChart(market: Market, dateStyle: DateStyle, bars: readonly Bar[], onNearLeftEdge: () => void) {
   const container = useRef<HTMLDivElement>(null);
   const chart = useRef<Instance | null>(null);
   const lastIndex = useRef(-1);
@@ -169,7 +173,7 @@ function useCandleChart(market: Market, formats: DateFormats, bars: readonly Bar
     };
   }, [market]);
 
-  useTimeFormats(chart, market, formats);
+  useTimeFormats(chart, market, dateStyle);
 
   useEffect(() => {
     if (!chart.current) return;
@@ -181,10 +185,15 @@ function useCandleChart(market: Market, formats: DateFormats, bars: readonly Bar
   return { container, hovered, awayFromLatest, scrollToLatest };
 }
 
-type Props = { bars: readonly Bar[]; market: Market; formats: DateFormats; onNearLeftEdge: () => void };
+type Props = { bars: readonly Bar[]; market: Market; dateStyle: DateStyle; onNearLeftEdge: () => void };
 
-export function CandleChart({ bars, market, formats, onNearLeftEdge }: Props) {
-  const { container, hovered, awayFromLatest, scrollToLatest } = useCandleChart(market, formats, bars, onNearLeftEdge);
+export function CandleChart({ bars, market, dateStyle, onNearLeftEdge }: Props) {
+  const { container, hovered, awayFromLatest, scrollToLatest } = useCandleChart(
+    market,
+    dateStyle,
+    bars,
+    onNearLeftEdge,
+  );
   const legend = legendFor(bars, hovered, priceDecimals(bars.at(-1)?.close ?? 0));
 
   // As tall as the rest of the page leaves room for on the screen, however many lines the name,

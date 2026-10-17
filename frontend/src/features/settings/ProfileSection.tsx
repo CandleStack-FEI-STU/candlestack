@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 
+import { DashboardCard } from '@/components/DashboardCard';
 import { meQueryOptions, updateMe, type Me } from '@/api';
 import { ACCENT_BUTTON, BUTTON_SIZES } from '@/components/buttonStyles';
 import { UserIcon } from '@/components/icons';
@@ -8,7 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Avatar, useSignedInUser } from '@/features/account';
 import { cn } from '@/lib/utils';
 
-import { Code, INPUT, SettingsCard, SettingsFooter, SettingsRow } from './Card';
+import { INPUT } from './controls';
+import { Code, SettingsFooter, SettingsRow } from './rows';
 
 // The API's limit (MeUpdate); it trims the name, so the check does too.
 const NAME_MAX = 80;
@@ -49,7 +51,7 @@ export function ProfileSection() {
   const { name, setName, empty, saving, submit, error } = useDisplayNameForm(user.display_name);
   return (
     <form onSubmit={submit}>
-      <SettingsCard icon={UserIcon} title="Profile">
+      <DashboardCard icon={UserIcon} title="Profile">
         <Who user={user} />
         <SettingsRow label="Display name">
           <input
@@ -73,7 +75,7 @@ export function ProfileSection() {
             Save
           </Button>
         </SettingsFooter>
-      </SettingsCard>
+      </DashboardCard>
     </form>
   );
 }

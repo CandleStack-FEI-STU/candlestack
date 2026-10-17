@@ -1,9 +1,10 @@
 import type { SVGProps } from 'react';
 
 // The design's own line icons where lucide draws a different one (mockups/app: the sidebar, the
-// account menu, the theme toggle, the cards of Settings). The icons lucide draws the same way (the dashboard's grid, the
-// API docs' brackets, sign out's door, the plus, the sun) stay lucide's. Same frame as lucide's:
-// a 24 px grid, 2 px round strokes in the text colour, 24 px unless a class sizes it.
+// account menu, the theme toggle, the cards of Settings). The icons lucide draws the same way (the
+// dashboard's grid, the API docs' brackets, sign out's door, the plus, the sun) stay lucide's.
+// Same frame as lucide's: a 24 px grid, 2 px round strokes in the text colour, 24 px unless a
+// class sizes it.
 
 type IconProps = Omit<SVGProps<SVGSVGElement>, 'children'>;
 

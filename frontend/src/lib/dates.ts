@@ -24,9 +24,6 @@ export function cityOf(zone: string): string {
 
 export type DateStyle = { timeZone: string; dateFormat: DateFormat; timeFormat: TimeFormat };
 
-// How dates and times are written, for a place that has its own zone (the chart).
-export type DateFormats = Pick<DateStyle, 'dateFormat' | 'timeFormat'>;
-
 // The API's defaults, for a visitor who is not signed in.
 const DEFAULT_APPEARANCE = { time_zone: 'ny', date_format: 'dmy', time_format: '24' } as const;
 

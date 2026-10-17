@@ -1,24 +1,17 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearch } from '@tanstack/react-router';
-import type { ComponentType } from 'react';
 
+import { DashboardCard } from '@/components/DashboardCard';
 import { ApiError, connectUrl, disconnectSignInMethod, meQueryOptions, type Provider } from '@/api';
 import { ACCENT_BUTTON, BUTTON_SIZES, OUTLINE_BUTTON } from '@/components/buttonStyles';
 import { KeyIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { useSignedInUser } from '@/features/account';
-import { GitHubMark, GoogleMark } from '@/features/signin';
+import { PROVIDER_INFO, PROVIDERS } from '@/features/signin';
 import { cn } from '@/lib/utils';
 import type { ConnectError } from '@/routes/settingsSections';
 
-import { ErrorNote, SettingsCard, SettingsLead } from './Card';
-
-type ProviderInfo = { provider: Provider; name: string; Mark: ComponentType<{ className?: string }> };
-
-const PROVIDERS: readonly ProviderInfo[] = [
-  { provider: 'github', name: 'GitHub', Mark: GitHubMark },
-  { provider: 'google', name: 'Google', Mark: GoogleMark },
-];
+import { ErrorNote, SettingsLead } from './rows';
 
 // The API returns here after adding a method.
 const RETURN_PATH = '/settings/sign-in';
@@ -48,7 +41,7 @@ function disconnectError(error: Error | null): string | undefined {
 }
 
 type RowProps = {
-  info: ProviderInfo;
+  provider: Provider;
   // The account's email, which a connected provider signs in with.
   email: string;
   connected: boolean;
@@ -60,7 +53,8 @@ type RowProps = {
 
 // A provider: its mark on a tile, its name over whether it is connected (and as whom), and what to
 // do about it.
-function ProviderRow({ info: { provider, name, Mark }, email, connected, only, busy, onDisconnect }: RowProps) {
+function ProviderRow({ provider, email, connected, only, busy, onDisconnect }: RowProps) {
+  const { name, Mark } = PROVIDER_INFO[provider];
   return (
     <div className="flex items-center gap-3 rounded-lg border px-3 py-2.5">
       <span className="grid size-[34px] flex-none place-items-center rounded-lg bg-muted">
@@ -100,22 +94,22 @@ export function SignInSection() {
   const disconnect = useDisconnect();
   const error = disconnectError(disconnect.error) ?? (connectError && CONNECT_ERRORS[connectError]);
   return (
-    <SettingsCard icon={KeyIcon} title="Sign-in">
+    <DashboardCard icon={KeyIcon} title="Sign-in">
       <SettingsLead>Sign in with either. Keep at least one connected.</SettingsLead>
       <div className="flex flex-col gap-2">
-        {PROVIDERS.map((info) => (
+        {PROVIDERS.map((provider) => (
           <ProviderRow
-            key={info.provider}
-            info={info}
+            key={provider}
+            provider={provider}
             email={user.email}
-            connected={user.providers.includes(info.provider)}
+            connected={user.providers.includes(provider)}
             only={user.providers.length === 1}
             busy={disconnect.isPending}
-            onDisconnect={() => disconnect.mutate(info.provider)}
+            onDisconnect={() => disconnect.mutate(provider)}
           />
         ))}
       </div>
       {error && <ErrorNote className="mt-2">{error}</ErrorNote>}
-    </SettingsCard>
+    </DashboardCard>
   );
 }

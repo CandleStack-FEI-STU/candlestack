@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { memo } from 'react';
 
+import { useDateStyle } from '@/features/preferences';
 import { cn } from '@/lib/utils';
 
 import { candlePaths, candlesLabel, dayLabel, type CandlePaths, type Spark } from './candlePaths';
@@ -15,11 +16,12 @@ type Props = {
   className?: string;
 };
 
-// A slot per day over the candles: hovering a day shows a 1 px hairline and "Oct 9 · close
-// 82,635.55" above it. The layer lies over the row's stretched link, so it is a link to the
-// instrument too, hidden from the keyboard and screen readers (the symbol stays the row's one tab
-// stop).
+// A slot per day over the candles: hovering a day shows a 1 px hairline and "9 Oct 2025 · close
+// 82,635.55" (the user's date format) above it. The layer lies over the row's stretched link, so
+// it is a link to the instrument too, hidden from the keyboard and screen readers (the symbol
+// stays the row's one tab stop).
 function DayHover({ id, days }: { id: string; days: CandlePaths['days'] }) {
+  const { dateFormat } = useDateStyle();
   return (
     <Link to="/instrument/$id" params={{ id }} tabIndex={-1} aria-hidden className="absolute inset-0 z-10 flex">
       {days.map((day, index) => (
@@ -29,7 +31,7 @@ function DayHover({ id, days }: { id: string; days: CandlePaths['days'] }) {
             <>
               <span className="absolute -inset-y-0.5 left-1/2 hidden w-px bg-muted-foreground/60 group-hover/day:block" />
               <span className="pointer-events-none absolute bottom-[calc(100%+5px)] left-1/2 z-20 hidden -translate-x-1/2 rounded bg-foreground px-1.5 font-mono text-[11px] leading-4 whitespace-nowrap text-background group-hover/day:block">
-                {dayLabel(day)}
+                {dayLabel(day, dateFormat)}
               </span>
             </>
           )}

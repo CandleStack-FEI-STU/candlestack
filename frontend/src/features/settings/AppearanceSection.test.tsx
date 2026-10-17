@@ -101,4 +101,16 @@ describe('Appearance', () => {
     expect(choices('Theme')).toEqual(['Light', 'Dark *']);
     expect(queryClient.getQueryData(preferencesQueryOptions().queryKey)?.appearance.theme).toBe('dark');
   });
+
+  it('does not bring back an old failure on coming back to the section', async () => {
+    stubApi({ ...sessionWithPreferences(ARSEN), [UPDATE]: { status: 503, body: { detail: 'Down for a minute.' } } });
+    const { router } = await renderApp('/settings/appearance');
+    await userEvent.setup().click(card().getByRole('radio', { name: 'Light' }));
+    await card().findByRole('alert');
+
+    await router.navigate({ to: '/settings/$section', params: { section: 'profile' } });
+    await router.navigate({ to: '/settings/$section', params: { section: 'appearance' } });
+    expect(await screen.findByRole('region', { name: 'Appearance' })).toBeDefined();
+    expect(card().queryByRole('alert')).toBeNull();
+  });
 });

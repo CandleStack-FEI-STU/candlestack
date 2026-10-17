@@ -1,15 +1,16 @@
+import { DashboardCard } from '@/components/DashboardCard';
 import { DataIcon } from '@/components/icons';
 
-import { SettingsCard, SettingsRow } from './Card';
+import { SettingsRow } from './rows';
 
 // Where the candles come from. What the account keeps (backtests, models) joins it with those
 // pages.
 export function DataSection() {
   return (
-    <SettingsCard icon={DataIcon} title="Data and storage">
+    <DashboardCard icon={DataIcon} title="Data and storage">
       <SettingsRow label="Market data" hint="Delayed 15 min">
         <span>Alpaca, SIP feed</span>
       </SettingsRow>
-    </SettingsCard>
+    </DashboardCard>
   );
 }
