@@ -6,6 +6,9 @@ Other modules import only from here (``from candlestack.experiments import backt
 never from the submodules. ``candlestack.main`` puts ``model_usage`` on ``app.state.model_usage``,
 so the models list of ``ml``, which cannot import this module, shows how the backtests used
 each model. A user's backtests go with the account by the foreign key's cascade: no hook.
+
+``python -m candlestack.experiments.seed --email <email>`` fills an account with test backtests
+(stage and local only).
 """
 
 from candlestack.experiments.api import router as backtests_router

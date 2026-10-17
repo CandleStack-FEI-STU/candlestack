@@ -319,14 +319,14 @@ layers = [
     "schemas",
 ]
 
-# Inside experiments, the same: routes, their dependencies, the
+# Inside experiments, the same: routes and the seed command, the routes' dependencies, the
 # service, the queries, then the table and the errors, and the bodies at the bottom.
 [[tool.importlinter.contracts]]
-name = "Inside experiments: HTTP -> dependencies -> service -> store -> models"
+name = "Inside experiments: HTTP and seed -> dependencies -> service -> store -> models"
 type = "layers"
 containers = ["candlestack.experiments"]
 layers = [
-    "api",
+    "api | seed",
     "dependencies",
     "service",
     "store",
