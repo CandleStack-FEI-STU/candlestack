@@ -20,7 +20,6 @@ export {
   type Backtest,
   type BacktestsPage,
   type BacktestsParams,
-  type BacktestSort,
   type BestMetric,
   type Dashboard,
   type Representation,

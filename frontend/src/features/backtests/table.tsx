@@ -1,6 +1,10 @@
 import type { ReactNode } from 'react';
 
+import type { Backtest } from '@/api';
+import { StarButton } from '@/components/StarButton';
 import { cn } from '@/lib/utils';
+
+import { BacktestNumber } from './parts';
 
 // The tables of backtests (mockups/app, .tbl): 13 px, the headers medium and muted over a line,
 // the rows 8 px high around their text with a line under each but the last, 10 px at the sides
@@ -55,5 +59,35 @@ export function RowOpener({ label, onOpen, children }: { label: string; onOpen: 
     >
       {children}
     </button>
+  );
+}
+
+// The star of a row in a list or a table: above the row's own click target, so it does not open
+// the row.
+export function RowStar({ starred, label, onToggle }: { starred: boolean; label: string; onToggle: () => void }) {
+  return <StarButton starred={starred} label={label} onToggle={onToggle} className="relative z-10" />;
+}
+
+// The star and the number of a backtest, the number opening it (the Backtest column).
+export function BacktestCell({
+  backtest,
+  onOpen,
+  onStar,
+}: {
+  backtest: Backtest;
+  onOpen: (backtest: Backtest) => void;
+  onStar: (backtest: Backtest) => void;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <RowStar
+        starred={backtest.starred}
+        label={`Star backtest ${backtest.number}`}
+        onToggle={() => onStar(backtest)}
+      />
+      <RowOpener label={`Backtest #${backtest.number}`} onOpen={() => onOpen(backtest)}>
+        <BacktestNumber backtest={backtest} />
+      </RowOpener>
+    </span>
   );
 }

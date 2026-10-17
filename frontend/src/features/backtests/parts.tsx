@@ -1,5 +1,7 @@
 import type { Backtest } from '@/api';
 import { FrameworkMini, frameworkOf } from '@/features/models';
+import { useDateStyle } from '@/features/preferences';
+import { formatRecentTime } from '@/lib/dates';
 import { formatPercent, MISSING } from '@/lib/results';
 import { cn } from '@/lib/utils';
 
@@ -68,4 +70,16 @@ export function ModelName({ name, framework }: { name: string; framework: string
       <span>{name}</span>
     </span>
   );
+}
+
+// A backtest's return, or the Failed badge when it has none.
+export function BacktestReturn({ backtest }: { backtest: Backtest }) {
+  const value = backtest.status === 'finished' ? backtest.total_return : null;
+  return value === null ? <FailedBadge /> : <ReturnValue value={value} />;
+}
+
+// When it ran, in the user's zone and formats: "Today 16:05".
+export function BacktestWhen({ backtest }: { backtest: Backtest }) {
+  const dateStyle = useDateStyle();
+  return formatRecentTime(new Date(backtest.created_at), dateStyle);
 }

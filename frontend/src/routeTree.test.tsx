@@ -3,7 +3,7 @@ import { cleanup, screen, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ARSEN, session, stubApi } from '@/test/api';
+import { ARSEN, dashboardAnswer, session, stubApi } from '@/test/api';
 import { renderApp } from '@/test/app';
 
 afterEach(() => {
@@ -34,9 +34,9 @@ describe('the signed-in pages', () => {
   });
 
   it('show the app shell to a signed-in user: header, sidebar, title, footer', async () => {
-    stubApi(session(ARSEN));
+    stubApi({ ...session(ARSEN), ...dashboardAnswer({ counts: { all: 1, starred: 0, failed: 0 } }) });
     await renderApp('/dashboard');
-    expect(heading()).toBe('Welcome back, Arsen Labovich');
+    await vi.waitFor(() => expect(heading()).toBe('Welcome back, Arsen Labovich'));
     expect(screen.getByRole('link', { name: 'CandleStack dashboard' }).getAttribute('href')).toBe('/dashboard');
     expect(screen.getByRole('button', { name: 'New backtest' })).toBeDefined();
     expect(screen.getByRole('button', { name: 'Account' }).textContent).toBe('AL');

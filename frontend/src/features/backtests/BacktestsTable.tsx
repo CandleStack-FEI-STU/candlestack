@@ -1,13 +1,10 @@
 import type { Backtest } from '@/api';
-import { StarButton } from '@/components/StarButton';
-import { useDateStyle } from '@/features/preferences';
-import { formatRecentTime } from '@/lib/dates';
 import { formatCount, formatPercent, formatSharpe } from '@/lib/results';
 import { cn } from '@/lib/utils';
 import type { BacktestsColumn, BacktestsSearch } from '@/routes/backtestsSearch';
 
-import { BacktestNumber, FailedBadge, InstrumentChips, Missing, ModelName, ReturnValue } from './parts';
-import { CELL, HEAD, NUMBER, ROW, RowOpener, SortButton, TABLE } from './table';
+import { BacktestReturn, BacktestWhen, InstrumentChips, Missing, ModelName } from './parts';
+import { BacktestCell, CELL, HEAD, NUMBER, ROW, SortButton, TABLE } from './table';
 
 // The columns (mockups/app, BT_COLS) and from which width down each one hides, so the table never
 // scrolls sideways: Trades at 1100 px, Max drawdown at 1060, When at 760, Model at 560, Sharpe at
@@ -61,23 +58,12 @@ type RowProps = { backtest: Backtest; onOpen: (backtest: Backtest) => void; onSt
 
 // A finished backtest shows its results; a failed one the Failed badge and dashes.
 function Row({ backtest, onOpen, onStar }: RowProps) {
-  const dateStyle = useDateStyle();
   const done = backtest.status === 'finished';
   const result = (text: string) => (done ? text : <Missing />);
   return (
     <tr className={ROW}>
       <td className={CELL}>
-        <span className="inline-flex items-center gap-1.5">
-          <StarButton
-            starred={backtest.starred}
-            label={`Star backtest ${backtest.number}`}
-            onToggle={() => onStar(backtest)}
-            className="relative z-10"
-          />
-          <RowOpener label={`Backtest #${backtest.number}`} onOpen={() => onOpen(backtest)}>
-            <BacktestNumber backtest={backtest} />
-          </RowOpener>
-        </span>
+        <BacktestCell backtest={backtest} onOpen={onOpen} onStar={onStar} />
       </td>
       <td className={CELL}>
         <InstrumentChips backtest={backtest} max={2} />
@@ -86,13 +72,13 @@ function Row({ backtest, onOpen, onStar }: RowProps) {
         <ModelName name={backtest.model.name} framework={backtest.model.framework} />
       </td>
       <td className={cn(CELL, NUMBER)}>
-        {done && backtest.total_return !== null ? <ReturnValue value={backtest.total_return} /> : <FailedBadge />}
+        <BacktestReturn backtest={backtest} />
       </td>
       <td className={cn(CELL, NUMBER, hideOf('Sharpe'))}>{result(formatSharpe(backtest.sharpe))}</td>
       <td className={cn(CELL, NUMBER, hideOf('Max drawdown'))}>{result(formatPercent(backtest.max_drawdown))}</td>
       <td className={cn(CELL, NUMBER, hideOf('Trades'))}>{result(formatCount(backtest.num_trades))}</td>
       <td className={cn(CELL, hideOf('When'), 'text-muted-foreground')}>
-        {formatRecentTime(new Date(backtest.created_at), dateStyle)}
+        <BacktestWhen backtest={backtest} />
       </td>
     </tr>
   );
