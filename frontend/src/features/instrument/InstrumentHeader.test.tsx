@@ -35,13 +35,18 @@ describe('InstrumentHeader', () => {
     expect(icon).toBeLessThan(html.indexOf('Apple Inc.'));
   });
 
-  it('keeps the symbol for screen readers on a phone and wraps a long id or name', () => {
+  it('shows the four facts on every screen, wrapping as the mockup does, and wraps a long id or name', () => {
     const html = renderToStaticMarkup(<InstrumentHeader instrument={AAPL} dateStyle={STYLE} />);
-    // On a phone the symbol ends the id above the name: its fact is only hidden from the screen.
-    const symbol = classes(html, /<div [^>]*><dt[^>]*>Symbol</);
-    expect(symbol).toContain('sr-only');
-    expect(symbol).toContain('sm:not-sr-only');
-    expect(symbol).not.toContain('hidden');
+    expect(
+      [...html.matchAll(/<dt[^>]*>([^<]*)<\/dt><dd[^>]*>([^<]*)</g)].map(([, label, value]) => [label, value]),
+    ).toEqual([
+      ['Symbol', 'AAPL'],
+      ['Exchange', 'NASDAQ'],
+      ['Source', 'alpaca (sip)'],
+      ['Data since', 'unknown'],
+    ]);
+    expect(html).not.toContain('sr-only');
+    expect(classes(html, /<dl [^>]*>/)).toEqual(expect.arrayContaining(['flex-wrap', 'gap-x-10', 'gap-y-3']));
     expect(classes(html, /<div [^>]*><p[^>]*>stock:AAPL</)).toContain('min-w-0');
     expect(classes(html, /<p [^>]*>stock:AAPL</)).toContain('break-all');
     expect(classes(html, /<h1 [^>]*>Apple Inc\.</)).toContain('break-words');

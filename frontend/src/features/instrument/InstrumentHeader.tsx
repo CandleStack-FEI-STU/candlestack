@@ -11,11 +11,11 @@ function Fact({ label, value, className }: { label: string; value: string; class
   );
 }
 
-// Icon, name, symbol, exchange, source and since when there is data. On a phone the facts fit
-// one line: the symbol is shown only to screen readers (on screen it ends the id above the name)
-// and the gaps are narrower, so the chart below keeps its room. A long id or name wraps instead
-// of running off the screen. The first day is written as the user writes dates, as the day it was
-// in the chart's zone.
+// Icon, name, symbol, exchange, source and since when there is data. The facts keep 40 px between
+// them and wrap to a next line 12 px below when the screen is too narrow, as the mockup lays them
+// out: on a phone two lines, the symbol first like on every other screen. A long id or name wraps
+// instead of running off the screen. The first day is written as the user writes dates, as the
+// day it was in the chart's zone.
 export function InstrumentHeader({ instrument, dateStyle }: { instrument: InstrumentDetail; dateStyle: DateStyle }) {
   const since =
     instrument.available_from === null ? 'unknown' : formatDate(new Date(instrument.available_from * 1000), dateStyle);
@@ -29,8 +29,8 @@ export function InstrumentHeader({ instrument, dateStyle }: { instrument: Instru
           <h1 className="mt-1 text-3xl font-semibold tracking-tight break-words">{instrument.name}</h1>
         </div>
       </div>
-      <dl className="mt-4 flex flex-wrap gap-x-5 gap-y-3 sm:gap-x-8">
-        <Fact label="Symbol" value={instrument.symbol} className="sr-only sm:not-sr-only" />
+      <dl className="mt-4 flex flex-wrap gap-x-10 gap-y-3">
+        <Fact label="Symbol" value={instrument.symbol} />
         <Fact label="Exchange" value={exchangeName(instrument)} />
         <Fact label="Source" value={`${instrument.source} (${instrument.feed})`} />
         <Fact label="Data since" value={since} />
