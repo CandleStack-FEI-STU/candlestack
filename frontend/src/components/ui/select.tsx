@@ -45,7 +45,7 @@ function SelectContent({ className, children, ...props }: React.ComponentProps<t
         align="start"
         sideOffset={6}
         className={cn(
-          'z-50 origin-(--radix-select-content-transform-origin) rounded-lg border bg-popover text-sm text-popover-foreground shadow-[0_10px_28px_var(--shadow)]',
+          'z-50 origin-(--radix-select-content-transform-origin) rounded-lg border bg-popover text-[14px]/[1.5] text-popover-foreground shadow-[0_10px_28px_var(--shadow)]',
           'duration-140 ease-out data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-98 data-[state=open]:slide-in-from-top-1 motion-reduce:animate-none',
           className,
         )}
@@ -70,7 +70,7 @@ function SelectItem({
       data-slot="select-item"
       textValue={text}
       className={cn(
-        'flex cursor-pointer items-center gap-2 rounded-sm p-2 text-foreground transition-colors duration-150 outline-none select-none data-[highlighted]:bg-muted',
+        'flex cursor-pointer items-center gap-2 rounded-sm p-2 text-foreground transition-colors duration-150 outline-none select-none hover:bg-muted data-[highlighted]:not-data-[state=checked]:bg-muted',
         className,
       )}
       {...props}

@@ -12,7 +12,7 @@ import { PROVIDER_INFO, PROVIDERS } from '@/features/signin';
 import { cn } from '@/lib/utils';
 import type { ConnectError } from '@/routes/settingsSections';
 
-import { ErrorNote, SettingsLead } from './rows';
+import { ErrorNote, HINT, SettingsLead } from './rows';
 
 // The API returns here after adding a method.
 const RETURN_PATH = '/settings/sign-in';
@@ -80,9 +80,7 @@ function ProviderRow({ provider, method, only, busy, onDisconnect }: RowProps) {
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
         <b>{name}</b>
-        <span className="truncate text-xs text-muted-foreground">
-          {method ? `Connected · ${method.email}` : 'Not connected'}
-        </span>
+        <span className={cn('truncate', HINT)}>{method ? `Connected · ${method.email}` : 'Not connected'}</span>
       </span>
       {method ? (
         <Button

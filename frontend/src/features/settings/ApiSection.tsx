@@ -23,7 +23,7 @@ export function ApiSection() {
             href="/api/v1/docs"
             target="_blank"
             rel="noopener"
-            className="text-[13px] font-medium text-primary underline-offset-2 hover:underline"
+            className="inline-block text-[13px]/[normal] font-medium text-primary underline-offset-2 hover:underline"
           >
             API docs
           </a>

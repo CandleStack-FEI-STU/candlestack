@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Avatar, useSignedInUser } from '@/features/account';
 import { cn } from '@/lib/utils';
 
-import { Code, SettingsFooter, SettingsRow } from './rows';
+import { Code, HINT, SettingsFooter, SettingsRow } from './rows';
 
 // The API's limit (MeUpdate); it trims the name, so the check does too.
 const NAME_MAX = 80;
@@ -39,7 +39,7 @@ function Who({ user }: { user: Me }) {
       <Avatar user={user} className="size-11 text-[15px]/[normal]" />
       <span className="flex min-w-0 flex-col">
         <b className="truncate">{user.display_name}</b>
-        <span className="truncate text-xs text-muted-foreground">{user.email}</span>
+        <span className={cn('truncate', HINT)}>{user.email}</span>
       </span>
     </div>
   );

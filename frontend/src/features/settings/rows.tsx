@@ -9,6 +9,9 @@ import { cn } from '@/lib/utils';
 // it, so a form goes around the card, not inside it.
 const RULED = 'border-t [[data-slot=card-head]+&]:border-t-0';
 
+// .hint: 12 px on an 18 px line (1.5), muted. Tailwind's text-xs would give 16 px.
+export const HINT = 'text-[12px]/[1.5] text-muted-foreground';
+
 type RowProps = { label: string; hint?: ReactNode; top?: boolean; children: ReactNode };
 
 // A 128 px label (13.5 px, its hint 11.5 px under it), 12 px, then the control. `top` lines the
@@ -30,7 +33,7 @@ export function SettingsRow({ label, hint, top = false, children }: RowProps) {
 
 // A line under the title saying what the card is for.
 export function SettingsLead({ children }: { children: ReactNode }) {
-  return <p className="-mt-1 mb-2 text-xs text-muted-foreground">{children}</p>;
+  return <p className={cn('-mt-1 mb-2', HINT)}>{children}</p>;
 }
 
 // An action of the account card: what it does over a hint, its button at the right.
@@ -39,7 +42,7 @@ export function ActionRow({ title, hint, children }: { title: string; hint: stri
     <div className={cn('flex items-center justify-between gap-3 py-2.5', RULED)}>
       <div className="flex flex-col gap-0.5">
         <b>{title}</b>
-        <span className="text-xs text-muted-foreground">{hint}</span>
+        <span className={HINT}>{hint}</span>
       </div>
       {children}
     </div>
@@ -60,7 +63,7 @@ export function SettingsFooter({ error, children }: { error?: string | undefined
 // text in a card. Read out as soon as it shows.
 export function ErrorNote({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <p role="alert" className={cn('text-xs text-muted-foreground', className)}>
+    <p role="alert" className={cn(HINT, className)}>
       {children}
     </p>
   );
