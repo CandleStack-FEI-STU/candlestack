@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { ApiError, type Model, type StorageUsage } from '@/api';
+import { ApiError, errorMessage, type Model, type StorageUsage } from '@/api';
 
 import { frameworkOfFile, type Framework } from './frameworks';
 import { formatSize } from './format';
@@ -49,7 +49,7 @@ export function failureOf(error: unknown, usage?: StorageUsage): UploadFailure {
   if (!(error instanceof ApiError)) {
     return { kind: 'other', detail: error instanceof Error ? error.message : String(error) };
   }
-  const detail = error.message;
+  const detail = errorMessage(error, 'The file could not be sent. Rename it and try again.');
   if (error.problem === 'model-check-failed') {
     return { kind: checkOf(error.body) === 'weights' ? 'weights' : 'opens', detail };
   }

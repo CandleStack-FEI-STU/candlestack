@@ -4,7 +4,7 @@ import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { preferencesQueryOptions } from '@/api';
-import { ARSEN, DEFAULT_PREFERENCES, sentBody, sessionWithPreferences, stubApi } from '@/test/api';
+import { ARSEN, DEFAULT_PREFERENCES, problem, sentBody, sessionWithPreferences, stubApi } from '@/test/api';
 import { renderApp, warmUpSettings } from '@/test/app';
 
 beforeAll(warmUpSettings);
@@ -153,5 +153,19 @@ describe('Backtest defaults', () => {
     await user.click(card().getByRole('radio', { name: '1d' }));
     await user.click(save());
     expect((await card().findByRole('alert')).textContent).toBe('Threshold too high.');
+  });
+
+  it("says in plain words when the API refuses a value, not in the API's", async () => {
+    stubApi({
+      ...sessionWithPreferences(ARSEN),
+      [SAVE]: problem(422, 'validation', "body 'threshold': Input should be less than or equal to 0.5"),
+    });
+    await renderApp('/settings/backtest-defaults');
+    const user = userEvent.setup();
+    await user.click(card().getByRole('radio', { name: '1d' }));
+    await user.click(save());
+    expect((await card().findByRole('alert')).textContent).toBe(
+      'Could not save the defaults. Check the values and try again.',
+    );
   });
 });

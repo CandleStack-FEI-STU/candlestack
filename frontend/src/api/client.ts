@@ -29,6 +29,13 @@ export class ApiError extends Error {
   }
 }
 
+// What to show for a failed request. The API's own check of a request (422 `validation`) names
+// its fields and rules ("body 'name': String should match pattern ..."), which tells the user
+// nothing: the page says in `fallback` what did not work instead.
+export function errorMessage(error: Error, fallback: string): string {
+  return error instanceof ApiError && error.problem === 'validation' ? fallback : error.message;
+}
+
 // Retry-After is either whole seconds ("30", "0") or an HTTP date. Anything else: no hint.
 export function parseRetryAfter(value: string | null, now: number = Date.now()): number | undefined {
   if (value === null || value.trim() === '') return undefined;

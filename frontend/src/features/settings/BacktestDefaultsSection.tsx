@@ -2,7 +2,7 @@ import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-q
 import { useState, type FormEvent } from 'react';
 
 import { DashboardCard } from '@/components/DashboardCard';
-import { preferencesQueryOptions, saveBacktestDefaults, type DefaultTimeframe } from '@/api';
+import { errorMessage, preferencesQueryOptions, saveBacktestDefaults, type DefaultTimeframe } from '@/api';
 import { ACCENT_BUTTON, BUTTON_SIZES } from '@/components/buttonStyles';
 import { Hint } from '@/components/Hint';
 import { SlidersIcon } from '@/components/icons';
@@ -41,7 +41,10 @@ function useDefaultsForm() {
     event.preventDefault();
     if (defaults !== undefined && !sameDefaults(defaults, saved) && !save.isPending) save.mutate(defaults);
   };
-  return { form, set, invalid, saving: save.isPending, submit, error: save.error?.message };
+  const error = save.error
+    ? errorMessage(save.error, 'Could not save the defaults. Check the values and try again.')
+    : undefined;
+  return { form, set, invalid, saving: save.isPending, submit, error };
 }
 
 // What to test: the timeframe and the test period.

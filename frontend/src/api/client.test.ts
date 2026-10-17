@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError, del, get, parseRetryAfter, patch, post, postFile, put } from './client';
+import { ApiError, del, errorMessage, get, parseRetryAfter, patch, post, postFile, put } from './client';
 
 function answer(status: number, body: string | null, headers: Record<string, string> = {}) {
   vi.stubGlobal(
@@ -176,6 +176,21 @@ describe('postFile', () => {
       vi.fn(() => Promise.reject(abort)),
     );
     await expect(postFile('/v1/models?name=a.keras', new Blob([]), controller.signal)).rejects.toBe(abort);
+  });
+});
+
+describe('errorMessage', () => {
+  it("says the page's own words instead of the API's check of the request", () => {
+    const validation = new ApiError(422, "body 'name': String should match pattern '^[^/]+$'", {
+      problem: 'validation',
+    });
+    expect(errorMessage(validation, 'Could not save.')).toBe('Could not save.');
+  });
+
+  it('keeps the plain words of any other problem', () => {
+    expect(errorMessage(new ApiError(409, 'Keep one.', { problem: 'last-sign-in-method' }), 'x')).toBe('Keep one.');
+    expect(errorMessage(new ApiError(0, 'Cannot reach the server.'), 'x')).toBe('Cannot reach the server.');
+    expect(errorMessage(new Error('Boom.'), 'x')).toBe('Boom.');
   });
 });
 

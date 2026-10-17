@@ -338,6 +338,13 @@ describe('a failed upload', () => {
     expect(checks(dialog)).toEqual(['Failed: Upload failedSomething broke on our side.']);
   });
 
+  it("refused by the API's check of the request: plain words, not the API's", async () => {
+    const { dialog } = await failWith(
+      problem(422, 'validation', "query parameter 'name': String should have at most 255 characters"),
+    );
+    expect(checks(dialog)).toEqual(['Failed: Upload failedThe file could not be sent. Rename it and try again.']);
+  });
+
   it('without an answer: the message', async () => {
     const { dialog } = await failWith(() => Promise.reject(new TypeError('Failed to fetch')));
     expect(checks(dialog)).toEqual(['Failed: Upload failedCannot reach the server. Check your connection.']);

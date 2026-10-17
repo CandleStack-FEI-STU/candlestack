@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 
 import { DashboardCard } from '@/components/DashboardCard';
-import { meQueryOptions, updateMe, type Me } from '@/api';
+import { errorMessage, meQueryOptions, updateMe, type Me } from '@/api';
 import { ACCENT_BUTTON, BUTTON_SIZES } from '@/components/buttonStyles';
 import { HINT } from '@/components/Hint';
 import { UserIcon } from '@/components/icons';
@@ -30,7 +30,8 @@ function useDisplayNameForm(saved: string) {
     event.preventDefault();
     if (trimmed !== '' && trimmed !== saved && !save.isPending) save.mutate(trimmed);
   };
-  return { name, setName, empty: trimmed === '', saving: save.isPending, submit, error: save.error?.message };
+  const error = save.error ? errorMessage(save.error, 'This name cannot be used. Try another one.') : undefined;
+  return { name, setName, empty: trimmed === '', saving: save.isPending, submit, error };
 }
 
 // Who is signed in: the drawn initials (44 px) with the name and email.

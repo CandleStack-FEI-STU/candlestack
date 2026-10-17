@@ -3,7 +3,7 @@ import { cleanup, screen, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { ARSEN, sentBody, session, stubApi } from '@/test/api';
+import { ARSEN, problem, sentBody, session, stubApi } from '@/test/api';
 import { renderApp, warmUpSettings } from '@/test/app';
 
 beforeAll(warmUpSettings);
@@ -66,5 +66,17 @@ describe('Profile', () => {
     expect((await card().findByRole('alert')).textContent).toBe('Down for a minute.');
     expect(card().getByRole<HTMLInputElement>('textbox', { name: 'Display name' }).value).toBe('Arsen Labovich Jr');
     expect(save()).toHaveProperty('disabled', false);
+  });
+
+  it("says in plain words when the API refuses the name, not in the API's", async () => {
+    stubApi({
+      ...session(ARSEN),
+      'PATCH /api/v1/me': problem(422, 'validation', "body 'display_name': String should have at most 80 characters"),
+    });
+    await renderApp('/settings/profile');
+    const user = userEvent.setup();
+    await user.type(card().getByRole('textbox', { name: 'Display name' }), ' Jr');
+    await user.keyboard('{Enter}');
+    expect((await card().findByRole('alert')).textContent).toBe('This name cannot be used. Try another one.');
   });
 });

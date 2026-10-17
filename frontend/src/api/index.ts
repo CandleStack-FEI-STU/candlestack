@@ -26,7 +26,7 @@ export {
   type SortOrder,
 } from './backtests';
 export { candleBridgeQueryOptions, candlePageQueryOptions, type Candles } from './candles';
-export { ApiError } from './client';
+export { ApiError, errorMessage } from './client';
 export { EXCHANGES, exchangeLabel, exchangeMarket, type Exchange } from './exchanges';
 export {
   exchangeName,

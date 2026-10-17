@@ -102,6 +102,15 @@ describe('the Backtests page', () => {
     await vi.waitFor(() => expect(subtitle()).toBe('Down.'));
   });
 
+  it("says in plain words when the API refuses the request, not in the API's", async () => {
+    stubApi({
+      ...sessionWithPreferences(ARSEN),
+      'GET /api/v1/backtests': problem(422, 'validation', "query parameter 'page': Input should be at least 1"),
+    });
+    await renderApp('/backtests');
+    await vi.waitFor(() => expect(subtitle()).toBe('Could not load the backtests.'));
+  });
+
   it.each(['page=0', 'page=abc', 'page=-3', 'show=bar', 'sort=foo', 'order=x', 'show=bar&sort=foo&page=abc'])(
     'opens the plain list for ?%s, without asking the API for it',
     async (query) => {
