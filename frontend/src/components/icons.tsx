@@ -97,12 +97,31 @@ export function TrashIcon(props: IconProps) {
   );
 }
 
-// Not yet: a clock.
+// Not yet, and Last backtests: a clock.
 export function ClockIcon(props: IconProps) {
   return (
     <Icon {...props}>
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7v5l3 2" />
+    </Icon>
+  );
+}
+
+// Best backtests: a cup with two handles on its stem.
+export function TrophyIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z" />
+      <path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3" />
+    </Icon>
+  );
+}
+
+// Compare backtests: two arrows passing each other.
+export function SwapIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 7h13l-3-3M20 17H7l3 3" />
     </Icon>
   );
 }
