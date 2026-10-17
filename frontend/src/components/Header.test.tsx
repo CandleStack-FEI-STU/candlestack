@@ -15,7 +15,7 @@ import { ARSEN } from '@/test/api';
 import { classes } from '@/test/markup';
 
 // The theme reads the page's <html>, which a server render has not.
-vi.mock('@/theme', () => ({ useTheme: () => ({ theme: 'dark', toggle: () => undefined }) }));
+vi.mock('@/theme', () => ({ useTheme: () => 'dark' }));
 
 // The header over the public pages, on the given URL, loaded first, for a visitor signed out
 // (null) or in.

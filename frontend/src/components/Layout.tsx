@@ -9,10 +9,19 @@ import { Header } from '@/components/Header';
 // header's, 24 px at the sides (16 px on a phone), 28 px above and 40 px below (20 and 28 px on a
 // phone). It is a flex column, so the chart can take the height the rest of the page leaves
 // (CandleChart.tsx). At least as tall as the visible screen (dvh: on a phone without the address
-// bar), 100vh where the browser has no dvh.
-export function PageFrame({ header, children }: { header: ReactNode; children: ReactNode }) {
+// bar), 100vh where the browser has no dvh. `app` marks the signed-in app, where the system's
+// reduced motion turns off every animation (index.css).
+export function PageFrame({
+  header,
+  app = false,
+  children,
+}: {
+  header: ReactNode;
+  app?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <div className="flex min-h-screen flex-col supports-[height:100dvh]:min-h-dvh">
+    <div data-app={app || undefined} className="flex min-h-screen flex-col supports-[height:100dvh]:min-h-dvh">
       {header}
       <main className="mx-auto flex w-full max-w-[75rem] flex-1 flex-col pt-7 pr-[max(24px,env(safe-area-inset-right,0px))] pb-10 pl-[max(24px,env(safe-area-inset-left,0px))] max-sm:pt-5 max-sm:pr-[max(16px,env(safe-area-inset-right,0px))] max-sm:pb-7 max-sm:pl-[max(16px,env(safe-area-inset-left,0px))]">
         {children}

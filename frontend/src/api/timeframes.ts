@@ -1,6 +1,8 @@
 import type { components } from './schema';
 
-export type Timeframe = components['schemas']['Timeframe'];
+// The chart's timeframes, as an instrument lists them. Taken from the instrument rather than by
+// the enum's name, which the generator qualifies while another schema is also called Timeframe.
+export type Timeframe = components['schemas']['InstrumentDetailOut']['timeframes'][number];
 
 export const TIMEFRAMES: readonly Timeframe[] = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'];
 export const DEFAULT_TIMEFRAME: Timeframe = '1h';

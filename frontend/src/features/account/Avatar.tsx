@@ -10,7 +10,7 @@ export function Avatar({ user, className }: { user: Pick<Me, 'display_name' | 'e
     <span
       aria-hidden
       className={cn(
-        'grid size-[30px] place-items-center rounded-full bg-[color-mix(in_srgb,var(--accent)_12%,var(--bg))] font-mono text-xs/[normal] font-semibold text-primary',
+        'grid size-[30px] place-items-center rounded-full bg-accent-soft font-mono text-xs/[normal] font-semibold text-primary',
         className,
       )}
     >

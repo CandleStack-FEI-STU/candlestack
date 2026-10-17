@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError, get, parseRetryAfter, post } from './client';
+import { ApiError, del, get, parseRetryAfter, patch, post, put } from './client';
 
 function answer(status: number, body: string | null, headers: Record<string, string> = {}) {
   vi.stubGlobal(
@@ -104,6 +104,44 @@ describe('post', () => {
       vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))),
     );
     expect((await errorOf(post('/v1/auth/sign-out'))).status).toBe(0);
+  });
+});
+
+describe('del', () => {
+  it('sends a DELETE and resolves on 204 No Content', async () => {
+    answer(204, null);
+    await expect(del('/v1/me')).resolves.toBeUndefined();
+    expect(fetch).toHaveBeenCalledWith('/api/v1/me', expect.objectContaining({ method: 'DELETE' }));
+  });
+
+  it('maps an error answer to an ApiError', async () => {
+    answer(409, '{"type":"https://candlestack.tech/problems/last-sign-in-method","detail":"Keep one."}');
+    expect(await errorOf(del('/v1/me/sign-in-methods/github'))).toMatchObject({
+      status: 409,
+      problem: 'last-sign-in-method',
+    });
+  });
+});
+
+describe('patch and put', () => {
+  it('send the body as JSON and return the JSON answer', async () => {
+    for (const [send, method] of [
+      [patch, 'PATCH'],
+      [put, 'PUT'],
+    ] as const) {
+      answer(200, '{"display_name":"Arsen"}');
+      await expect(send('/v1/me', { display_name: 'Arsen' })).resolves.toEqual({ display_name: 'Arsen' });
+      expect(fetch).toHaveBeenCalledWith('/api/v1/me', {
+        method,
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: '{"display_name":"Arsen"}',
+      });
+    }
+  });
+
+  it('map an error answer to an ApiError', async () => {
+    answer(422, '{"title":"Unprocessable"}');
+    expect(await errorOf(patch('/v1/me', {}))).toMatchObject({ status: 422, message: 'Unprocessable' });
   });
 });
 

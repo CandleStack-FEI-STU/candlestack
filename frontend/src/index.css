@@ -6,6 +6,17 @@
 /* Dark theme: data-theme="dark" on <html>, like on the website. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
+/* Less motion: the system's setting, or the account's Reduce motion (data-motion="reduce" on
+   <html>, src/motion.ts). motion-reduce: classes follow both. */
+@custom-variant motion-reduce {
+  @media (prefers-reduced-motion: reduce) {
+    @slot;
+  }
+  &:where([data-motion='reduce'], [data-motion='reduce'] *) {
+    @slot;
+  }
+}
+
 /*
  * All colors of the app, in one place.
  * The first group is the website palette (website/src/styles/global.css), kept 1:1.
@@ -71,6 +82,11 @@
 /* The names shadcn/ui components use, mapped onto the palette above. */
 :root {
   --surface: color-mix(in srgb, var(--ink) 5%, var(--bg));
+  /* The app design's tints: a stronger surface (the active sidebar entry, tracks, tags), and the
+     accent and the falling red washed into the background (icon tiles, the chosen card). */
+  --surface-2: color-mix(in srgb, var(--ink) 9%, var(--bg));
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  --down-soft: color-mix(in srgb, var(--down) 12%, var(--bg));
   --background: var(--bg);
   --foreground: var(--ink);
   --card: var(--bg);
@@ -108,6 +124,9 @@
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-accent-soft: var(--accent-soft);
+  --color-down-soft: var(--down-soft);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--hover);
   --color-accent-foreground: var(--hover-foreground);
@@ -131,6 +150,26 @@
   /* A link to a section (/#markets) stops below the 56 px sticky header, as in the design. */
   html {
     scroll-padding-top: 72px;
+  }
+  /* Less motion turns off every animation and transition, as in the app's design: what appears
+     is simply there. The system's setting does so in the signed-in app (data-app, AppLayout.tsx);
+     the public pages keep their design's motion-reduce: classes. The account's Reduce motion does
+     so everywhere. */
+  @media (prefers-reduced-motion: reduce) {
+    :root:has([data-app]),
+    :root:has([data-app]) *,
+    :root:has([data-app]) ::before,
+    :root:has([data-app]) ::after {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+  [data-motion='reduce'],
+  [data-motion='reduce'] *,
+  [data-motion='reduce'] ::before,
+  [data-motion='reduce'] ::after {
+    animation: none !important;
+    transition: none !important;
   }
   body {
     @apply min-h-screen bg-background text-foreground font-sans antialiased;

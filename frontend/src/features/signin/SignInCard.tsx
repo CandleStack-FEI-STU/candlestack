@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 import { ProviderButton } from './ProviderButton';
+import { PROVIDERS } from './providers';
 import { useProviderSignIn } from './useProviderSignIn';
 
 const TITLE = 'text-[22px]/7 font-semibold tracking-[-0.02em]';
@@ -31,8 +32,9 @@ export function StartSignIn({ next }: { next: string | undefined }) {
       <h1 className={TITLE}>Sign in to CandleStack</h1>
       <p className={LEAD}>New here? The same buttons create your account.</p>
       <div className="mt-[22px] flex w-full flex-col gap-2.5">
-        <ProviderButton provider="github" busy={busy} onStart={start} />
-        <ProviderButton provider="google" busy={busy} onStart={start} />
+        {PROVIDERS.map((provider) => (
+          <ProviderButton key={provider} provider={provider} busy={busy} onStart={start} />
+        ))}
       </div>
       <p className="mt-[18px] flex items-center justify-center gap-2 text-[12.5px] text-muted-foreground">
         <AccentDot />

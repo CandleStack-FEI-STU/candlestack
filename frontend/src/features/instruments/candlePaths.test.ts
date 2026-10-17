@@ -65,8 +65,17 @@ describe('candlesLabel', () => {
 
 describe('dayLabel', () => {
   it('writes the UTC date and the close as the list writes prices', () => {
-    expect(dayLabel([OCT_4 + 5 * DAY, 81_754.46, 83_528.98, 81_603.52, 82_635.55])).toBe('Oct 9 · close 82,635.55');
+    expect(dayLabel([OCT_4 + 5 * DAY, 81_754.46, 83_528.98, 81_603.52, 82_635.55], false)).toBe(
+      'Oct 9 · close 82,635.55',
+    );
     // a stock session opens at 13:30 UTC: still its day
-    expect(dayLabel([OCT_4 + 3 * DAY + 13.5 * 3600, 1, 1, 1, 0.08438])).toBe('Oct 7 · close 0.08438');
+    expect(dayLabel([OCT_4 + 3 * DAY + 13.5 * 3600, 1, 1, 1, 0.08438], false)).toBe('Oct 7 · close 0.08438');
+  });
+
+  it("writes the day as the chart's axis does for a signed-in user", () => {
+    expect(dayLabel([OCT_4 + 5 * DAY, 81_754.46, 83_528.98, 81_603.52, 82_635.55], true)).toBe(
+      '9 Oct · close 82,635.55',
+    );
+    expect(dayLabel([OCT_4 + 3 * DAY + 13.5 * 3600, 1, 1, 1, 0.08438], true)).toBe('7 Oct · close 0.08438');
   });
 });

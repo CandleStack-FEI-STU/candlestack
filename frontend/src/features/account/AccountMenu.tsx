@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 import { Avatar } from './Avatar';
-import { useSignOut } from './useSignOut';
+import { useSignOut } from './useLeaveAccount';
 
 // Who is signed in, then the way to Settings, the home page and the API docs and, in red under a
 // line, Sign out.

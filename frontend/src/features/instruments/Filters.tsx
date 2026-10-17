@@ -5,6 +5,7 @@ import { Check, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 
 import type { Exchange, Market } from '@/api';
+import { DROPDOWN_CHEVRON, DROPDOWN_TRIGGER } from '@/components/buttonStyles';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useMediaQuery } from '@/lib/useMediaQuery';
 import { cn } from '@/lib/utils';
@@ -184,14 +185,11 @@ function Trigger({ summary, onOpen, ref }: TriggerProps) {
         event.preventDefault();
         onOpen();
       }}
-      className="group flex h-[34px] w-[200px] shrink-0 items-center gap-2 rounded-md border bg-background pr-2.5 pl-3 text-left text-sm text-muted-foreground transition-[color,border-color,box-shadow] outline-none hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[state=open]:border-ring data-[state=open]:text-foreground"
+      className={cn(DROPDOWN_TRIGGER, 'w-[200px] shrink-0 data-[state=open]:border-ring')}
     >
       <SlidersHorizontal aria-hidden className="size-4 shrink-0" />
       <span className="min-w-0 flex-1 truncate text-foreground">{summary}</span>
-      <ChevronDown
-        aria-hidden
-        className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
-      />
+      <ChevronDown aria-hidden className={DROPDOWN_CHEVRON} />
     </PopoverTrigger>
   );
 }

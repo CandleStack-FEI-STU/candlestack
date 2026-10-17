@@ -1,4 +1,5 @@
 import type { Instrument } from '@/api';
+import { formatShortDay } from '@/lib/dates';
 import { formatPrice, formatSignedChange } from '@/lib/numbers';
 
 // The last daily candles of a list row (#189), as the API sends them: oldest first, one entry per
@@ -55,9 +56,12 @@ export function candlesLabel(days: readonly (Day | null)[]): string {
 }
 
 // UTC: a crypto day starts at 00:00 UTC, a stock's session opens at 13:30 or 14:30 UTC.
-const DATE = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+const VISITOR_DAY = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
-// The hover text of a day: "Oct 9 · close 82,635.55".
-export function dayLabel(day: Day): string {
-  return `${DATE.format(day[0] * 1000)} · close ${formatPrice(day[4])}`;
+// The hover text of a day: "Oct 9 · close 82,635.55" for a visitor, as the home page's design
+// writes it; signed in, the day as the chart's axis writes it, "9 Oct · close 82,635.55".
+export function dayLabel(day: Day, signedIn: boolean): string {
+  const date = new Date(day[0] * 1000);
+  const written = signedIn ? formatShortDay(date, { timeZone: 'UTC' }) : VISITOR_DAY.format(date);
+  return `${written} · close ${formatPrice(day[4])}`;
 }

@@ -103,3 +103,21 @@ export async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
 export async function post(path: string): Promise<void> {
   await send(path, { method: 'POST', headers: { Accept: 'application/json' } });
 }
+
+// DELETE, answered without a body (204), e.g. deleting the account.
+export async function del(path: string): Promise<void> {
+  await send(path, { method: 'DELETE', headers: { Accept: 'application/json' } });
+}
+
+// A change sent as JSON (PATCH a part, PUT the whole), answered with the changed resource.
+async function sendJson<T>(method: 'PATCH' | 'PUT', path: string, body: unknown): Promise<T> {
+  const res = await send(path, {
+    method,
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return readBody<T>(res);
+}
+
+export const patch = <T>(path: string, body: unknown) => sendJson<T>('PATCH', path, body);
+export const put = <T>(path: string, body: unknown) => sendJson<T>('PUT', path, body);
