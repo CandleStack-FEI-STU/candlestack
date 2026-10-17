@@ -35,6 +35,7 @@ const BTC: Instrument = {
   change_24h: 1.51,
   volume_24h: 1258811866,
   spark: TEN_DAYS,
+  available_from: 1_502_942_400, // 2017-08-17 04:00 UTC
 };
 const AAPL: Instrument = {
   id: 'stock:AAPL',
@@ -62,6 +63,7 @@ const AAPL: Instrument = {
     null,
     [OCT_4 + 2 * DAY, 248, 249, 247.5, 248.5],
   ],
+  available_from: 1_451_917_800, // 2016-01-04 14:30 UTC
 };
 const NEW: Instrument = {
   ...AAPL,

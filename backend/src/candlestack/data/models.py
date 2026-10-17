@@ -246,14 +246,16 @@ NO_STATS = InstrumentStats(None, None, None)
 class SearchResult:
     """A page of the instruments found, best first, the number of all of them, and the
     searched markets that were left out because their catalog cannot be loaded right now
-    (their source is down). ``stats`` and ``sparks`` have an entry per item: its stats and its
-    mini chart, or ``None`` when there are none (yet)."""
+    (their source is down). ``stats``, ``sparks`` and ``firsts`` have an entry per item: its
+    stats, its mini chart and the open time of its first candle, or ``None`` when there are
+    none (yet) or the first candle is not known yet."""
 
     items: list[Instrument]
     unavailable: list[Market]
     total: int
     stats: list[InstrumentStats | None]
     sparks: list[Spark | None]
+    firsts: list[int | None]
 
 
 @dataclass(frozen=True)

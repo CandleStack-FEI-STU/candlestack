@@ -84,7 +84,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     uses them: the client ``rate_limiter`` and the market ``data_service``. With
     ``STATS_REFRESH`` (prod and stage) the instrument stats are refreshed in a background task
     while the app runs. The model storage is made ready, and what crashed uploads left there
-    is removed now and every 10 minutes."""
+    is removed now and every 10 minutes. On shutdown the data service's lookups in the
+    background stop before the clients close."""
     settings: Settings = app.state.settings
     model_storage: ModelStorage = app.state.model_storage
     await model_storage.prepare()
@@ -94,12 +95,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         async with create_http_client(settings) as http:
             app.state.http = http
-            app.state.data_service = build_data_service(settings, app.state.redis, http)
+            data_service = build_data_service(settings, app.state.redis, http)
+            app.state.data_service = data_service
             async with (
-                _background(app.state.data_service, stats=settings.stats_refresh),
+                _background(data_service, stats=settings.stats_refresh),
                 _running(keep_incoming_swept(model_storage), "The sweep of incoming model files"),
             ):
-                yield
+                try:
+                    yield
+                finally:
+                    # Before the HTTP client closes under the lookups it may still run.
+                    await data_service.close()
     finally:
         await app.state.db.dispose()
         await app.state.redis.aclose()

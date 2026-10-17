@@ -44,6 +44,7 @@ const BTC: Instrument = {
   change_24h: 1.51,
   volume_24h: 1258811866,
   spark: TEN_DAYS,
+  available_from: 1_502_942_400,
 };
 const NVDA: Instrument = {
   id: 'stock:NVDA',
@@ -59,6 +60,7 @@ const NVDA: Instrument = {
   change_24h: -3.12,
   volume_24h: 612000000,
   spark: null,
+  available_from: 1_451_917_800,
 };
 const TOP: Instrument[] = [
   BTC,

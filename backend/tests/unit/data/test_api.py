@@ -55,6 +55,7 @@ AAPL = Instrument(
 BTCUSDT_STATS = InstrumentStats(83249.35, 1.51, 1258811866.0)
 # Two days of BTCUSDT's mini chart, the first without a candle.
 BTCUSDT_SPARK = [None, (1760313600, 115271.8, 115950.1, 113000.4, 115166.0)]
+BTCUSDT_FIRST = 1502942400  # 2017-08-17T04:00Z; AAPL's is not known yet
 AAPL_LOGO = Icon(b"\x89PNG\r\n\x1a\n-aapl", "image/png", 86400)
 # 2024-06-03T00:00:00Z and 2024-06-04T00:00:00Z
 DAY_START, DAY_END = 1717372800, 1717459200
@@ -123,12 +124,14 @@ class FakeDataService:
         found = [BTCUSDT, AAPL]
         stats = [BTCUSDT_STATS, None]
         sparks = [BTCUSDT_SPARK, None]
+        firsts = [BTCUSDT_FIRST, None]
         return SearchResult(
             found[offset : offset + limit],
             self.unavailable,
             len(found),
             stats[offset : offset + limit],
             sparks[offset : offset + limit],
+            firsts[offset : offset + limit],
         )
 
     async def instrument(self, instrument_id: InstrumentId) -> InstrumentInfo:
@@ -224,6 +227,7 @@ def test_search(client: TestClient, service: FakeDataService) -> None:
                 "change_24h": 1.51,
                 "volume_24h": 1258811866.0,
                 "spark": [None, [1760313600, 115271.8, 115950.1, 113000.4, 115166.0]],
+                "available_from": 1502942400,
             },
             {
                 "id": "stock:AAPL",
@@ -239,6 +243,7 @@ def test_search(client: TestClient, service: FakeDataService) -> None:
                 "change_24h": None,
                 "volume_24h": None,
                 "spark": None,
+                "available_from": None,
             },
         ],
         "count": 2,

@@ -13,7 +13,7 @@ import math
 import secrets
 import struct
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 
 import orjson
 import polars as pl
@@ -117,6 +117,18 @@ class Cache:
         except _REDIS_ERRORS as exc:
             self._failed(exc)
             return None
+
+    async def get_many(self, names: Sequence[str]) -> list[bytes | None]:
+        """The cached values of ``names`` in one round trip (``MGET``), ``None`` for each miss;
+        all ``None`` when Redis fails."""
+        if not names or self._is_down():
+            return [None] * len(names)
+        try:
+            # redis-py types values as bytes | str; this client never decodes (create_redis).
+            return await self._redis.mget([key(name) for name in names])  # ty: ignore[invalid-return-type]
+        except _REDIS_ERRORS as exc:
+            self._failed(exc)
+            return [None] * len(names)
 
     async def set(self, name: str, value: bytes, ttl: int) -> None:
         """Stores a value for ``ttl`` seconds; a Redis failure only logs."""

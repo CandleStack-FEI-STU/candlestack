@@ -83,6 +83,24 @@ async def test_a_value_is_a_miss(error: Exception, caplog: pytest.LogCaptureFixt
     assert warned(caplog, error) == 1
 
 
+async def test_values_are_misses(error: Exception, caplog: pytest.LogCaptureFixture) -> None:
+    redis = FailingRedis(error)
+    cache = redis.cache()
+
+    assert await cache.get_many(["first:crypto:BTCUSDT", "first:stock:AAPL"]) == [None, None]
+    assert await cache.get_many(["first:crypto:BTCUSDT"]) == [None]  # Redis is left alone
+
+    assert redis.calls == ["mget"]
+    assert warned(caplog, error) == 1
+
+
+async def test_no_values_ask_nothing(error: Exception) -> None:
+    redis = FailingRedis(error)
+
+    assert await redis.cache().get_many([]) == []
+    assert redis.calls == []
+
+
 @pytest.mark.parametrize(
     ("write", "command"),
     [

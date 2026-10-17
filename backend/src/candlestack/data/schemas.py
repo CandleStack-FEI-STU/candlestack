@@ -73,8 +73,9 @@ def _instrument_fields(instrument: Instrument) -> dict[str, Any]:
 
 
 class InstrumentItemOut(InstrumentOut):
-    """An instrument of the list with its 24 h stats, refreshed every few minutes, and its mini
-    chart of the last daily candles, refreshed once a day; null while there are none (yet)."""
+    """An instrument of the list with its 24 h stats, refreshed every few minutes, its mini
+    chart of the last daily candles, refreshed once a day, and since when there is data; null
+    while there are none (yet)."""
 
     price: float | None = Field(
         description="Last price: in the quote asset for a crypto pair, in USD for a stock "
@@ -100,12 +101,28 @@ class InstrumentItemOut(InstrumentOut):
         "daily close.",
         examples=[[[1760313600, 115271.8, 115950.1, 113000.4, 115166.0], None]],
     )
+    available_from: int | None = Field(
+        description="Open time of the first candle, UTC epoch seconds, as in the instrument "
+        "detail. Null while it is not known yet: the list never waits for a source, and looks "
+        "up a few unknown ones per request in the background, so a later request has them. "
+        "Also null for an instrument without any candle yet.",
+        examples=[1502942400],
+    )
 
     @classmethod
     def of_item(
-        cls, instrument: Instrument, stats: InstrumentStats | None, spark: Spark | None
+        cls,
+        instrument: Instrument,
+        stats: InstrumentStats | None,
+        spark: Spark | None,
+        available_from: int | None,
     ) -> Self:
-        return cls(**_instrument_fields(instrument), **asdict(stats or NO_STATS), spark=spark)
+        return cls(
+            **_instrument_fields(instrument),
+            **asdict(stats or NO_STATS),
+            spark=spark,
+            available_from=available_from,
+        )
 
 
 class InstrumentSearchOut(BaseModel):

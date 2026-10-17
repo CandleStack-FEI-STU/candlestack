@@ -213,8 +213,9 @@ export interface paths {
          * Search instruments
          * @description Searches the instruments of both markets: every Binance spot pair that is trading and
          *     every active tradable US stock and ETF at Alpaca (without OTC). Each item carries its last
-         *     price, 24 h change and 24 h volume in USD, refreshed every few minutes, and its last 10 daily
-         *     candles (`spark`), refreshed once a day (null without them).
+         *     price, 24 h change and 24 h volume in USD, refreshed every few minutes, its last 10 daily
+         *     candles (`spark`), refreshed once a day (null without them), and the open time of its first
+         *     candle (`available_from`, null while not known yet).
          *
          *     Ranking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`
          *     first), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word
@@ -1183,10 +1184,17 @@ export interface components {
         };
         /**
          * InstrumentItemOut
-         * @description An instrument of the list with its 24 h stats, refreshed every few minutes, and its mini
-         *     chart of the last daily candles, refreshed once a day; null while there are none (yet).
+         * @description An instrument of the list with its 24 h stats, refreshed every few minutes, its mini
+         *     chart of the last daily candles, refreshed once a day, and since when there is data; null
+         *     while there are none (yet).
          */
         InstrumentItemOut: {
+            /**
+             * Available From
+             * @description Open time of the first candle, UTC epoch seconds, as in the instrument detail. Null while it is not known yet: the list never waits for a source, and looks up a few unknown ones per request in the background, so a later request has them. Also null for an instrument without any candle yet.
+             * @example 1502942400
+             */
+            available_from: number | null;
             /**
              * Base
              * @description Base asset of a crypto pair; null for stocks.
