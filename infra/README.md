@@ -81,8 +81,9 @@ The limits of one environment add up to 896 MB without `migrate`, 1.79 GB for pr
 on top of the edge Caddy, cloudflared, the server agent (`2 x 64m`) and the system. Besides
 Redis' cache, what runs is about 200 MB per environment; the cache grows up to `maxmemory`,
 so the two environments stay within the memory with room for the system and a check. The
-backend's limit leaves room for the check's child (limited to 256 MB of data itself) next to
-the app at its peak.
+backend's 384 MB hold the app (about 150 MB at its peak so far) and the check's child, which
+limits itself to 192 MB of data (`RLIMIT_DATA`; a real model's check takes about 45 MB): about
+40 MB stay free even when both are at their limits.
 
 ### Backups
 

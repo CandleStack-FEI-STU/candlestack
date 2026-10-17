@@ -90,7 +90,8 @@ flowchart LR
   file over 50 MB), `storage-full` (409: the file does not fit into the user's 100 MB, with
   `used_bytes` and `quota_bytes`), `unsupported-model-format` (415: not `.keras`, "coming
   soon"), `model-check-failed` (422: a check failed, `check` names it, `opens` or `weights`)
-  `model-name-taken` (409: renaming to a name the user has), `too-many-models` (409: the user
+  `model-name-taken` (409: renaming to a name the user has, rarely an upload's numbered name),
+  `too-many-models` (409: the user
   has 100 models, with `limit`), `upload-in-progress` (409: another upload of the user runs)
   and `upload-timeout` (408: the file did not arrive within 2 minutes), and uses `not-found`
   (404: no model of the user with the ID, another user's included) and `not-signed-in` (401:
@@ -165,7 +166,9 @@ flowchart LR
   Only Keras files (`.keras`) for now: another extension is a 415 before anything is read. A
   `Content-Length` over 50 MB is a 413 at once. A user uploads one file at a time: a lock in
   Redis (`SET NX EX 300`, released when the upload ends) turns a second upload away with
-  `409 upload-in-progress`, so nobody fills the disk with uploads side by side. Then, still
+  `409 upload-in-progress`, so nobody fills the disk with uploads side by side. While Redis
+  is down, uploads go on without that lock (a warning in the log): the lock of the user's
+  models in Postgres (below) still keeps the quota and the names. Then, still
   before reading anything, a user with 100 models gets `409 too-many-models`, and a file that
   does not fit `409 storage-full`: by its `Content-Length`, or without one when the storage is
   full. The file goes to an incoming file of the storage while it is counted and hashed
@@ -173,8 +176,9 @@ flowchart LR
   2 minutes (`408 upload-timeout`). Then it is checked (below). A file that passed is kept in
   one transaction under an advisory lock of the user (`pg_advisory_xact_lock`), so two uploads
   cannot both pass the quota or take one name: the model count and the quota again, a free name
-  (`lstm (2).keras`, the names it may become read in one query and compared in any case, like
-  the unique index on `(user_id, lower(name))`), the row, the file moved to its place, the
+  (`lstm (2).keras`, the names it may become read in one query, lowercased by Postgres as the
+  unique index on `(user_id, lower(name))` compares them; should the index still refuse the
+  name, the upload is a `409 model-name-taken`), the row, the file moved to its place, the
   commit (the file goes again when it fails, also when the request was cancelled). An account
   deleted meanwhile (its deletion takes the same lock) fails the insert: `401 not-signed-in`,
   nothing is kept. The incoming files go whatever happens; the ones a crash left are removed
@@ -182,8 +186,12 @@ flowchart LR
 - **The check** (`ml/inspect.py`) reads the file and never loads it: a `.keras` file is a zip of
   `config.json` (the architecture), `metadata.json` (the Keras version) and
   `model.weights.h5` (the weights), and loading it could run code from it. It runs in a child
-  process (`ml/sandbox.py`), one at a time, killed after 20 s; on Linux it limits itself to
-  256 MB of data, 15 s of CPU and files of 100 MB. A crafted file that crashes or exhausts the
+  process (`ml/sandbox.py`), killed after 20 s; on Linux it limits itself to 192 MB of data,
+  15 s of CPU and files of 100 MB, and writes no core dump. The checks of all users run one
+  after another: an upload that waits more than 2 minutes for its turn fails `opens` ("Many
+  models are being checked right now..."). The parent takes the child's result only in the
+  form the table holds (the Keras version, positive counts, shapes of positive sizes), else
+  the check failed. A crafted file that crashes or exhausts the
   parsers (zipfile, json, h5py and the HDF5 C library) takes down only the child and fails the
   check; the API process never imports h5py. `opens` fails for a zip whose index declares more
   than 1000 entries, is larger than 1 MB or is zip64 (read from the end record before zipfile
@@ -204,8 +212,9 @@ flowchart LR
   (optimizer, loss, metrics) is not checked at all, as the worker removes it before loading:
   models saved with another backend name its optimizer (`keras.src.backend.torch...`), and
   users register their own metrics and metric functions there. The `compile_config` of a model
-  nested in the model is checked like the rest. The detail names the layer. `weights` fails when the weights do not read as HDF5 (from a copy unpacked to the
-  incoming directory), hold a soft or external link or more than 100 000 objects, or the
+  nested in the model is checked like the rest. The detail names the layer. `weights` fails
+  when the weights do not read as HDF5 (from a copy unpacked to the incoming directory), hold
+  a soft or external link or more than 100 000 objects, or the
   layers hold no weights: `parameters` counts the datasets under `layers`, not the optimizer's
   state. The input shape (one input) and the output shape (`Dense`, `Flatten` and layers that
   keep their input's shape) are read from the config when it says them plainly, else null.
@@ -269,8 +278,8 @@ the ones whose folder exists while their code is being written.
 - No module imports `cli`: it is the entry point of the `candlestack-bt` command
   (`[project.scripts]` in `backend/pyproject.toml`).
 - The API part of `ml` reads the uploaded files (zip, JSON, the HDF5 metadata with h5py, in
-  the check's child process) and never imports a deep learning framework, so the API process never loads one and never runs
-  code from a file. An import-linter `forbidden` contract enforces it: sources `candlestack.ml`
+  the check's child process) and never imports a deep learning framework, so the API process
+  never loads one and never runs code from a file. An import-linter `forbidden` contract enforces it: sources `candlestack.ml`
   and `candlestack.main`, forbidden `keras`, `tensorflow`, `torch` and `jax`
   (`include_external_packages = true`). Running models comes later, in a worker: only its
   composition root (a future `candlestack/worker.py`) will import the framework, which goes
