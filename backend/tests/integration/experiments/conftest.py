@@ -152,6 +152,7 @@ class Account:
         num_trades: int | None = 100,
         starred: bool = False,
         seeded: bool = False,
+        equity: dict[str, list[float]] | None = None,
     ) -> str:
         """Adds a backtest straight in the table, started `number` hours after ``EPOCH``; its
         ID. A failed one has no results."""
@@ -161,11 +162,12 @@ class Account:
         self._sql(
             "INSERT INTO backtests (id, user_id, number, status, instruments, representation, "
             "model_id, model_name, model_framework, setup, total_return, buy_and_hold_return, "
-            "sharpe, max_drawdown, win_rate, num_trades, duration_s, engine_version, error, "
-            "starred, seeded, created_at, finished_at) VALUES (:id, :user_id, :number, :status, "
-            "CAST(:instruments AS jsonb), 'renko', :model_id, :model_name, 'keras', "
+            "sharpe, max_drawdown, win_rate, num_trades, equity, duration_s, engine_version, "
+            "error, starred, seeded, created_at, finished_at) VALUES (:id, :user_id, :number, "
+            ":status, CAST(:instruments AS jsonb), 'renko', :model_id, :model_name, 'keras', "
             "CAST(:setup AS jsonb), :total_return, 0.5, :sharpe, :max_drawdown, :win_rate, "
-            ":num_trades, 20, '0.2.0', :error, :starred, :seeded, :created, :finished)",
+            ":num_trades, CAST(:equity AS jsonb), 20, '0.2.0', :error, :starred, :seeded, "
+            ":created, :finished)",
             id=backtest_id,
             user_id=self.id,
             number=number,
@@ -179,6 +181,7 @@ class Account:
             max_drawdown=None if failed else max_drawdown,
             win_rate=None if failed else win_rate,
             num_trades=None if failed else num_trades,
+            equity=None if equity is None else json.dumps(equity),
             error="It failed." if failed else None,
             starred=starred,
             seeded=seeded,

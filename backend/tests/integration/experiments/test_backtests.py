@@ -60,6 +60,7 @@ def test_a_backtest_as_the_list_shows_it(ada) -> None:
                 "max_drawdown": -0.1,
                 "win_rate": 0.5,
                 "num_trades": 100,
+                "equity": None,
                 "duration_s": 20.0,
                 "error": None,
                 "starred": False,
@@ -108,6 +109,23 @@ def test_a_failed_backtest_has_its_error_and_no_results(ada) -> None:
     assert [backtest[key] for key in ("total_return", "sharpe", "max_drawdown", "num_trades")] == [
         None
     ] * 4
+
+
+EQUITY = {"strategy": [0.0, 0.05, 0.1], "benchmark": [0.0, -0.02, 0.5]}
+
+
+def test_a_backtest_shows_its_equity_series(ada) -> None:
+    ada.backtest(1, equity=EQUITY)
+    ada.backtest(2, equity=EQUITY, status="failed")
+
+    shown = {item["number"]: item["equity"] for item in ada.backtests().json()["backtests"]}
+    starred = ada.backtest(3, equity=EQUITY, starred=True)
+
+    assert shown == {1: EQUITY, 2: None}  # a failed backtest shows none
+    assert ada.star(starred).json()["equity"] == EQUITY
+    assert ada.dashboard().json()["starred"]["backtests"][0]["equity"] == EQUITY
+    # Its numbers are no part of the search.
+    assert numbers(ada.backtests(q="0.05")) == []
 
 
 @pytest.mark.parametrize(

@@ -654,6 +654,8 @@ export interface components {
              * @example 162
              */
             duration_s: number | null;
+            /** @description A short equity series of the strategy and of buy and hold, for a small chart; null for a backtest that did not finish or has none */
+            equity: components["schemas"]["EquitySeries"] | null;
             /**
              * Error
              * @description What went wrong and what to do, for a failed backtest; else null
@@ -1023,6 +1025,36 @@ export interface components {
          * @enum {string}
          */
         Direction: "long" | "both";
+        /**
+         * EquitySeries
+         * @description The equity of the strategy and of buy and hold over the test period, for a small chart:
+         *     cumulative returns as fractions (0 at the start; 0.246 is 24.6 %), sampled at evenly spaced
+         *     times from the first day to the last, the same times in both.
+         */
+        EquitySeries: {
+            /**
+             * Benchmark
+             * @description Cumulative return of buying and holding the instruments, as many points
+             * @example [
+             *       0,
+             *       0.12,
+             *       0.35,
+             *       0.682
+             *     ]
+             */
+            benchmark: number[];
+            /**
+             * Strategy
+             * @description Cumulative return of the strategy, 2 to 60 points
+             * @example [
+             *       0,
+             *       0.031,
+             *       0.118,
+             *       0.246
+             *     ]
+             */
+            strategy: number[];
+        };
         /**
          * Exchange
          * @description Where the instruments of the catalog trade: for stocks the listing exchanges Alpaca

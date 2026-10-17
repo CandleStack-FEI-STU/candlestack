@@ -11,6 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 PAGE_SIZE = 10
 # The longest search the list takes.
 QUERY_MAX = 100
+# The most points of a backtest's equity series: enough for a small chart.
+EQUITY_POINTS = 60
 
 
 class BacktestStatus(StrEnum):
@@ -87,6 +89,33 @@ class BacktestSetup(BaseModel):
         return self
 
 
+class EquitySeries(BaseModel):
+    """The equity of the strategy and of buy and hold over the test period, for a small chart:
+    cumulative returns as fractions (0 at the start; 0.246 is 24.6 %), sampled at evenly spaced
+    times from the first day to the last, the same times in both."""
+
+    model_config = ConfigDict(allow_inf_nan=False, extra="forbid")
+
+    strategy: list[float] = Field(
+        min_length=2,
+        max_length=EQUITY_POINTS,
+        description=f"Cumulative return of the strategy, 2 to {EQUITY_POINTS} points",
+        examples=[[0.0, 0.031, 0.118, 0.246]],
+    )
+    benchmark: list[float] = Field(
+        min_length=2,
+        max_length=EQUITY_POINTS,
+        description="Cumulative return of buying and holding the instruments, as many points",
+        examples=[[0.0, 0.12, 0.35, 0.682]],
+    )
+
+    @model_validator(mode="after")
+    def _same_times(self) -> Self:
+        if len(self.strategy) != len(self.benchmark):
+            raise ValueError("strategy and benchmark must have as many points")
+        return self
+
+
 class UsedModel(BaseModel):
     """The model a backtest used."""
 
@@ -134,6 +163,10 @@ class BacktestOut(BaseModel):
         description="Share of the trades that made money, a fraction", examples=[0.512]
     )
     num_trades: int | None = Field(description="Number of trades", examples=[1712])
+    equity: EquitySeries | None = Field(
+        description="A short equity series of the strategy and of buy and hold, for a small "
+        "chart; null for a backtest that did not finish or has none"
+    )
     duration_s: float | None = Field(
         description="How long the run took, in seconds", examples=[162.0]
     )

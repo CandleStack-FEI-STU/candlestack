@@ -9,7 +9,17 @@ import pytest
 
 from candlestack.core import Settings, get_settings
 from candlestack.experiments import seed as seed_module
-from candlestack.experiments.seed import RUNS, main, seed_backtests, started_at
+from candlestack.experiments.seed import (
+    RUNS,
+    downsample,
+    equity_walk,
+    gauss,
+    main,
+    mulberry32,
+    seed_backtests,
+    seed_equity,
+    started_at,
+)
 from candlestack.experiments.store import UserModel
 
 USER_ID = "usr_7f3k2m9qx4"
@@ -107,6 +117,73 @@ def test_early_in_the_day_todays_runs_move_back_but_keep_their_gaps() -> None:
     assert starts[1] - starts[0] == timedelta(minutes=24)  # 13:58 to 14:22
     yesterday = next(run for run in RUNS if run.days_ago == 1)
     assert started_at(yesterday, morning).date() == morning.date() - timedelta(days=1)
+
+
+def test_the_random_numbers_are_the_mockups() -> None:
+    # What the mockup's mulberry(15 * 7919 + 13) draws first, in a browser.
+    draw = mulberry32(15 * 7919 + 13)
+
+    assert [draw() for _ in range(4)] == [
+        0.8188890744931996,
+        0.6068964912556112,
+        0.5411353525705636,
+        0.1895393084269017,
+    ]
+
+
+def test_the_equity_walk_is_the_mockups() -> None:
+    # The mockup's eqRun of #15 (return 24.6 %, buy and hold 68.2 %, drawdown -19.7 %), minus 1.
+    draw = mulberry32(15 * 7919 + 13)
+    volatility = min(1.4, 0.6 + 19.7 / 25)
+
+    strategy = equity_walk(draw, 0.246, 0.018 * volatility)
+    benchmark = equity_walk(draw, 0.682, 0.03 * volatility)
+
+    assert len(strategy) == 121
+    assert strategy[0] == 0
+    assert strategy[-1] == pytest.approx(0.246)
+    assert strategy[1] == pytest.approx(-0.008811369370075206)
+    assert strategy[60] == pytest.approx(0.19943062867440609)
+    assert benchmark[1] == pytest.approx(0.023422844172914514)
+    assert benchmark[119] == pytest.approx(0.6871947615654217)
+
+
+def test_gauss_skips_a_zero_draw() -> None:
+    draws = iter([0.0, 0.5, 0.0, 0.25])
+
+    assert gauss(lambda: next(draws)) == pytest.approx(0.0, abs=1e-12)  # cos(pi / 2)
+
+
+def test_downsample_keeps_the_ends_and_spaces_the_rest_evenly() -> None:
+    points = [float(i) for i in range(121)]
+
+    sampled = downsample(points)
+
+    assert len(sampled) == 60
+    assert (sampled[0], sampled[-1]) == (0.0, 120.0)
+    assert sorted(set(sampled)) == sampled
+    assert downsample(points, 3) == [0.0, 60.0, 120.0]
+
+
+def test_the_seeded_equity() -> None:
+    run = RUNS[14]  # the mockup's #15
+
+    strategy, benchmark = seed_equity(run) or ([], [])
+
+    assert len(strategy) == len(benchmark) == 60
+    assert (strategy[0], strategy[-1]) == (0.0, 0.246)
+    assert (benchmark[0], benchmark[-1]) == (0.0, 0.682)
+    assert seed_equity(run) == (strategy, benchmark)  # the same lines every time
+    assert (seed_equity(RUNS[13]) or ([], []))[0] != strategy  # each run its own
+    assert seed_equity(RUNS[12]) is None  # #13 failed
+
+
+def test_the_seeded_backtests_keep_their_equity() -> None:
+    backtests = by_number(seed_backtests(USER_ID, first_number=1, models=[], now=EVENING))
+
+    assert backtests[8].equity is not None
+    assert backtests[8].equity["strategy"][-1] == -0.042
+    assert backtests[6].equity is None
 
 
 @pytest.fixture

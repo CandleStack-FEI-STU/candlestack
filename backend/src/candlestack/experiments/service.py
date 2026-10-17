@@ -17,6 +17,7 @@ from candlestack.experiments.schemas import (
     BacktestStatus,
     BestBacktests,
     DashboardOut,
+    EquitySeries,
     ModelCount,
     Representation,
     SortOrder,
@@ -43,6 +44,13 @@ class ListQuery:
     page: int = 1
 
 
+def _equity(backtest: Backtest) -> EquitySeries | None:
+    """The backtest's equity series; only a finished backtest shows one."""
+    if backtest.equity is None or backtest.status != BacktestStatus.finished.value:
+        return None
+    return EquitySeries.model_validate(backtest.equity)
+
+
 def backtest_out(listed: Listed) -> BacktestOut:
     backtest = listed.backtest
     return BacktestOut(
@@ -61,6 +69,7 @@ def backtest_out(listed: Listed) -> BacktestOut:
         max_drawdown=backtest.max_drawdown,
         win_rate=backtest.win_rate,
         num_trades=backtest.num_trades,
+        equity=_equity(backtest),
         duration_s=backtest.duration_s,
         error=backtest.error,
         starred=backtest.starred,

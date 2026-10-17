@@ -36,6 +36,7 @@ def upgrade() -> None:
         sa.Column("max_drawdown", sa.Float(), nullable=True),
         sa.Column("win_rate", sa.Float(), nullable=True),
         sa.Column("num_trades", sa.Integer(), nullable=True),
+        sa.Column("equity", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("duration_s", sa.Float(), nullable=True),
         sa.Column("engine_version", sa.String(length=16), nullable=True),
         sa.Column("error", sa.Text(), nullable=True),

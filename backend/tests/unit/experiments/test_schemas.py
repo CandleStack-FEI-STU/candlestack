@@ -1,9 +1,16 @@
+import math
 from datetime import date
 
 import pytest
 from pydantic import ValidationError
 
-from candlestack.experiments.schemas import BacktestSetup, BacktestUpdate
+from candlestack.experiments.models import Backtest
+from candlestack.experiments.schemas import (
+    EQUITY_POINTS,
+    BacktestSetup,
+    BacktestUpdate,
+    EquitySeries,
+)
 
 SETUP = {
     "timeframe": "30m",
@@ -41,6 +48,41 @@ def test_a_setup_reads_what_settings_save() -> None:
 def test_a_setup_is_checked(change: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
         BacktestSetup.model_validate({**SETUP, **change})
+
+
+def test_a_backtest_keeps_a_checked_equity_series() -> None:
+    backtest = Backtest()
+
+    backtest.set_equity((0.0, 0.1), [0, -0.05])
+
+    assert backtest.equity == {"strategy": [0.0, 0.1], "benchmark": [0.0, -0.05]}
+
+
+@pytest.mark.parametrize(
+    ("strategy", "benchmark"),
+    [
+        ([0.0, 0.1], [0.0, 0.1, 0.2]),
+        ([0.0] * 61, [0.0] * 61),
+        ([0.0], [0.0]),
+        ([0.0, math.nan], [0.0, 0.1]),
+        ([0.0, 0.1], [0.0, math.inf]),
+        ([0.0, -math.inf], [0.0, 0.1]),
+        ([0.0, "x"], [0.0, 0.1]),
+    ],
+    ids=["unequal", "too-long", "too-short", "nan", "inf", "minus-inf", "text"],
+)
+def test_an_equity_series_is_checked(strategy: list[object], benchmark: list[object]) -> None:
+    backtest = Backtest()
+
+    with pytest.raises(ValidationError):
+        backtest.set_equity(strategy, benchmark)  # ty: ignore[invalid-argument-type]
+    assert backtest.equity is None
+
+
+def test_sixty_points_fit() -> None:
+    series = EquitySeries(strategy=[0.0] * 60, benchmark=[0.0] * 60)
+
+    assert len(series.strategy) == EQUITY_POINTS == 60
 
 
 def test_a_star_has_only_the_star() -> None:

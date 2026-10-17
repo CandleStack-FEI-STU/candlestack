@@ -317,6 +317,17 @@
             ],
             "title": "Duration S"
           },
+          "equity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EquitySeries"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A short equity series of the strategy and of buy and hold, for a small chart; null for a backtest that did not finish or has none"
+          },
           "error": {
             "anyOf": [
               {
@@ -474,6 +485,7 @@
           "max_drawdown",
           "win_rate",
           "num_trades",
+          "equity",
           "duration_s",
           "error",
           "starred",
@@ -1019,6 +1031,54 @@
         ],
         "title": "Direction",
         "type": "string"
+      },
+      "EquitySeries": {
+        "additionalProperties": false,
+        "description": "The equity of the strategy and of buy and hold over the test period, for a small chart:\ncumulative returns as fractions (0 at the start; 0.246 is 24.6 %), sampled at evenly spaced\ntimes from the first day to the last, the same times in both.",
+        "properties": {
+          "benchmark": {
+            "description": "Cumulative return of buying and holding the instruments, as many points",
+            "examples": [
+              [
+                0.0,
+                0.12,
+                0.35,
+                0.682
+              ]
+            ],
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 60,
+            "minItems": 2,
+            "title": "Benchmark",
+            "type": "array"
+          },
+          "strategy": {
+            "description": "Cumulative return of the strategy, 2 to 60 points",
+            "examples": [
+              [
+                0.0,
+                0.031,
+                0.118,
+                0.246
+              ]
+            ],
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 60,
+            "minItems": 2,
+            "title": "Strategy",
+            "type": "array"
+          }
+        },
+        "required": [
+          "strategy",
+          "benchmark"
+        ],
+        "title": "EquitySeries",
+        "type": "object"
       },
       "Exchange": {
         "description": "Where the instruments of the catalog trade: for stocks the listing exchanges Alpaca\nreports for tradable US equities without OTC (docs/data.md, \"Alpaca\"), for crypto pairs\nBinance.",

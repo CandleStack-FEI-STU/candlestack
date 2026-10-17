@@ -264,8 +264,16 @@ flowchart LR
   API names it, `stock` or `crypto`, and symbol), the representation (`renko`, `kagi`,
   `windows`), the model, the setup (JSONB, the fields of Settings > Backtest defaults), the
   results (total and buy-and-hold return, Sharpe ratio, max drawdown, win rate, trades, how
-  long the run took, the engine version), the error of a failed one, the star, and when it
-  started and finished. Results are null for a failed backtest.
+  long the run took, the engine version), a short equity series, the error of a failed one,
+  the star, and when it started and finished. Results are null for a failed backtest.
+- **The equity series** (`equity`: `{strategy, benchmark}`, JSONB) draws the small lines of the
+  Dashboard's starred backtests: the cumulative return of the strategy and of buy and hold as
+  fractions (0 at the start), at most 60 points each, at the same evenly spaced times over the
+  test period. `Backtest.set_equity` checks it on the way in (as many points in both, 2 to 60,
+  finite numbers); the list neither searches nor sorts by it. It is null for a failed backtest
+  and for one stored without it. The seed command draws it as the mockup does (a random walk
+  seeded by the run's number in the mockup, ending exactly at the run's returns), so every run
+  of the command draws the same lines.
 - **Results are fractions** (0.246 is 24.6 %), in the table and the API, as `metrics.stats`
   gives them; the app formats them. The max drawdown is stored as the fall it is, negative
   (`metrics.stats` gives it positive): -0.197.

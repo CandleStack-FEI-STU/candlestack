@@ -51,6 +51,11 @@ def test_the_seed_adds_the_mockups_backtests(ada, bob, run_seed) -> None:
     assert newest["number"] == 15
     assert newest["model"] == {"id": None, "name": "my-tsmixer.keras", "framework": "keras"}
     assert len(newest["instruments"]) == 8
+    equity = newest["equity"]
+    assert [len(equity["strategy"]), len(equity["benchmark"])] == [60, 60]
+    assert (equity["strategy"][-1], equity["benchmark"][-1]) == (0.246, 0.682)
+    failed = ada.backtests(show="failed").json()["backtests"]
+    assert [backtest["equity"] for backtest in failed] == [None, None]
     assert bob.backtests().json()["total"] == 0
 
 
@@ -60,9 +65,13 @@ def test_a_second_run_replaces_only_what_the_seed_added(ada, sql, run_seed) -> N
     ada.backtest(17)
     first_ids = {row[0] for row in sql("SELECT id FROM backtests WHERE seeded")}
 
+    first_equity = sql("SELECT equity FROM backtests WHERE seeded ORDER BY number")
+
     numbers = run_seed(ada.email)
 
     assert numbers == list(range(18, 33))
+    # Drawn from the mockup's numbers, the lines stay the same.
+    assert sql("SELECT equity FROM backtests WHERE seeded ORDER BY number") == first_equity
     rows = sql("SELECT id, number, seeded FROM backtests ORDER BY number")
     assert len(rows) == 17
     assert [(number, seeded) for _, number, seeded in rows[:1] + rows[-1:]] == [

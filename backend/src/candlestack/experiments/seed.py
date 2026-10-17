@@ -11,8 +11,9 @@ name if there is one, else it keeps only the name, as a backtest of a deleted mo
 
 import argparse
 import asyncio
+import math
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 
@@ -22,6 +23,7 @@ from candlestack.core import Database, get_settings
 from candlestack.experiments.errors import UnknownUser
 from candlestack.experiments.models import Backtest, new_backtest_id
 from candlestack.experiments.schemas import (
+    EQUITY_POINTS,
     BacktestSetup,
     BacktestStatus,
     InstrumentMarket,
@@ -187,6 +189,75 @@ def started_at(run: SeedRun, now: datetime) -> datetime:
     return start
 
 
+# The equity of a mockup run: a random walk of this many steps over the period, drawn as the
+# mockup draws it (eqRun), then sampled down to what a backtest keeps.
+_WALK_STEPS = 120
+_U32 = 0xFFFFFFFF
+
+
+def mulberry32(seed: int) -> Callable[[], float]:
+    """The mockup's random numbers (mulberry32): the same seed draws the same numbers in
+    [0, 1) as the mockup's JavaScript."""
+    state = seed & _U32
+
+    def draw() -> float:
+        nonlocal state
+        state = (state + 0x6D2B79F5) & _U32
+        t = (state ^ (state >> 15)) * (1 | state) & _U32
+        t = ((t + ((t ^ (t >> 7)) * (61 | t) & _U32)) & _U32) ^ t
+        return (t ^ (t >> 14)) / 2**32
+
+    return draw
+
+
+def gauss(draw: Callable[[], float]) -> float:
+    """A standard normal number from `draw` (Box-Muller), as the mockup makes it."""
+    u = v = 0.0
+    while not u:
+        u = draw()
+    while not v:
+        v = draw()
+    return math.sqrt(-2 * math.log(u)) * math.cos(2 * math.pi * v)
+
+
+def equity_walk(draw: Callable[[], float], target: float, volatility: float) -> list[float]:
+    """A cumulative return from 0 to `target` over ``_WALK_STEPS`` steps: a random walk with
+    steps of `volatility`, bent so that it ends at `target`."""
+    walk = [0.0]
+    for _ in range(_WALK_STEPS):
+        walk.append(walk[-1] + gauss(draw) * volatility)
+    end = walk[-1]
+    return [
+        target * i / _WALK_STEPS + walk[i] - end * i / _WALK_STEPS for i in range(_WALK_STEPS + 1)
+    ]
+
+
+def downsample(points: Sequence[float], count: int = EQUITY_POINTS) -> list[float]:
+    """`count` of `points` at evenly spaced positions, the first and the last included."""
+    last = len(points) - 1
+    return [points[round(k * last / (count - 1))] for k in range(count)]
+
+
+def seed_equity(run: SeedRun) -> tuple[list[float], list[float]] | None:
+    """The equity series of a finished run, the strategy's and buy and hold's, as the mockup
+    draws them (seeded by the run's number of the mockup, so every run of the command draws
+    the same lines), ending exactly at its returns; None for a failed run."""
+    if run.results is None:
+        return None
+    total, buy_and_hold, _, drawdown, _, _ = run.results
+    draw = mulberry32(run.number * 7919 + 13)
+    volatility = min(1.4, 0.6 + abs(drawdown) / 25)
+    series = []
+    for percent, step in ((total, 0.018), (buy_and_hold, 0.03)):
+        points = [
+            round(value, 6)
+            for value in downsample(equity_walk(draw, percent / 100, step * volatility))
+        ]
+        points[0], points[-1] = 0.0, _fraction(percent)
+        series.append(points)
+    return series[0], series[1]
+
+
 def _framework(model_name: str) -> str:
     return model_name.rsplit(".", 1)[-1]
 
@@ -242,6 +313,8 @@ def seed_backtest(
         backtest.max_drawdown = _fraction(drawdown)
         backtest.num_trades = trades
         backtest.win_rate = _fraction(win_rate)
+    if (equity := seed_equity(run)) is not None:
+        backtest.set_equity(*equity)
     return backtest
 
 
