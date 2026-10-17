@@ -1,37 +1,43 @@
 """The models of a user: uploading a file, listing, renaming, starring and deleting them, and
 deleting them with the account.
 
-An upload streams to an incoming file of the storage while it is counted and hashed, never
-held in memory, and is checked there (``inspect.py``) in a worker thread. Only a file that
-passed is kept: in one transaction under the lock of the user's models, so two uploads cannot
-both pass the quota or take the same name, its row goes in and the file moves to its place;
-the file goes again when the commit fails. The incoming files are removed whatever happens.
+A user uploads one file at a time (``uploads.py``). An upload streams to an incoming file of
+the storage while it is counted and hashed, never held in memory, within a time limit, and is
+checked there in a child process (``sandbox.py``). Only a file that passed is kept: in one
+transaction under the lock of the user's models, so two uploads cannot both pass the quota or
+take the same name, its row goes in and the file moves to its place; the file goes again when
+the commit fails. The incoming files are removed whatever happens.
 """
 
 import hashlib
 import logging
-import re
 from collections.abc import AsyncIterable
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 
 import anyio
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from candlestack.accounts import AfterDeletion
 from candlestack.ml.errors import (
+    AccountGone,
     ModelCheckFailed,
     ModelNameTaken,
     ModelNotFound,
     ModelTooLarge,
     StorageFull,
+    TooManyModels,
     UnsupportedModelFormat,
+    UploadTimeout,
 )
-from candlestack.ml.inspect import ModelFacts, inspect_keras
+from candlestack.ml.inspect import ModelFacts
 from candlestack.ml.models import Model, new_model_id
+from candlestack.ml.sandbox import check_upload
 from candlestack.ml.schemas import (
     FILE_MAX_BYTES,
+    MODELS_MAX,
     NAME_MAX,
     QUOTA_BYTES,
     Framework,
@@ -40,16 +46,23 @@ from candlestack.ml.schemas import (
     ModelsOut,
     ModelUpdate,
     StorageUsage,
+    without_invisible,
 )
 from candlestack.ml.storage import ModelStorage
 from candlestack.ml.store import ModelStore
+from candlestack.ml.uploads import UploadLocks
 
 logger = logging.getLogger(__name__)
 
 KERAS_SUFFIX = ".keras"
 # The name a file without a usable one gets (".keras").
 DEFAULT_STEM = "model"
-_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+# How long the file may take to arrive: 50 MB at about 3.5 Mbit/s.
+RECEIVE_TIMEOUT = 120.0
+# What a numbered name adds at most: " (101)", as a user has at most 100 models.
+_LABEL_MAX = len(f" ({MODELS_MAX + 1})")
+# Postgres' error of a foreign key that points to nothing: the user's row is gone.
+_FOREIGN_KEY_VIOLATION = "23503"
 _EMPTY = "The file is empty. Choose the model's .keras file and upload it again."
 
 
@@ -59,7 +72,8 @@ def _now() -> datetime:
 
 def upload_name(file_name: str) -> str:
     """The name an uploaded file is kept under: its base name (a client may send a path)
-    without control characters, the part before the extension cut to what Rename saves.
+    without control and format characters, the part before the extension cut to what Rename
+    saves.
 
     Raises:
         UnsupportedModelFormat: Not a Keras file (``.keras``, in any case).
@@ -68,7 +82,7 @@ def upload_name(file_name: str) -> str:
     if not base.lower().endswith(KERAS_SUFFIX):
         raise UnsupportedModelFormat
     stem, suffix = _split(base)
-    stem = _CONTROL.sub("", stem).strip()[:NAME_MAX].rstrip()
+    stem = without_invisible(stem).strip()[:NAME_MAX].rstrip()
     return (stem or DEFAULT_STEM) + suffix
 
 
@@ -80,6 +94,15 @@ def numbered(name: str, number: int) -> str:
     stem, suffix = _split(name)
     label = f" ({number})"
     return stem[: NAME_MAX - len(label)].rstrip() + label + suffix
+
+
+def free_name(name: str, taken: list[str]) -> str:
+    """`name`, or with the first number that makes it none of `taken`, in any case."""
+    lowered = {other.lower() for other in taken}
+    number = 1
+    while numbered(name, number).lower() in lowered:
+        number += 1
+    return numbered(name, number)
 
 
 def _split(name: str) -> tuple[str, str]:
@@ -104,31 +127,51 @@ def _out(model: Model) -> ModelOut:
     )
 
 
+def _check_room(used: int, count: int, size: int) -> None:
+    """Fails unless a file of `size` bytes fits next to `count` models taking `used` bytes.
+
+    Raises:
+        TooManyModels: The user has as many models as a user may keep.
+        StorageFull: The file does not fit into the user's storage.
+    """
+    if count >= MODELS_MAX:
+        raise TooManyModels
+    if used + size > QUOTA_BYTES:
+        raise StorageFull(used, QUOTA_BYTES)
+
+
 async def _receive(chunks: AsyncIterable[bytes], path: Path) -> tuple[int, bytes]:
     """Writes the uploaded file to `path`; its size and SHA-256.
 
     Raises:
+        UploadTimeout: The file did not arrive within ``RECEIVE_TIMEOUT``.
         ModelTooLarge: It is larger than an upload may be (it stops reading there).
         ModelCheckFailed: It is empty.
     """
     digest = hashlib.sha256()
     size = 0
-    async with await anyio.open_file(path, "wb") as file:
-        async for chunk in chunks:
-            size += len(chunk)
-            if size > FILE_MAX_BYTES:
-                raise ModelTooLarge
-            digest.update(chunk)
-            await file.write(chunk)
+    try:
+        # The file is closed outside the time limit: a close it cancelled would leave it open.
+        async with await anyio.open_file(path, "wb") as file:
+            with anyio.fail_after(RECEIVE_TIMEOUT):
+                async for chunk in chunks:
+                    size += len(chunk)
+                    if size > FILE_MAX_BYTES:
+                        raise ModelTooLarge
+                    digest.update(chunk)
+                    await file.write(chunk)
+    except TimeoutError:
+        raise UploadTimeout from None
     if size == 0:
         raise ModelCheckFailed(ModelCheck.opens, _EMPTY)
     return size, digest.digest()
 
 
 class ModelsService:
-    def __init__(self, store: ModelStore, storage: ModelStorage) -> None:
+    def __init__(self, store: ModelStore, storage: ModelStorage, uploads: UploadLocks) -> None:
         self._store = store
         self._storage = storage
+        self._uploads = uploads
 
     async def models(self, user_id: str) -> ModelsOut:
         """The user's models, oldest first, and the storage they take."""
@@ -151,38 +194,49 @@ class ModelsService:
     ) -> ModelOut:
         """Checks the uploaded file and keeps it as a model of the user. `declared_size` is the
         size the client announced (Content-Length), if any: one too large fails before anything
-        is read.
+        is read, as does any file when the storage is full or the user has the most models.
 
         Raises:
             UnsupportedModelFormat: `file_name` is not that of a Keras file; nothing is read.
             ModelTooLarge: The file is larger than an upload may be.
+            UploadInProgress: Another upload of the user is in progress.
+            TooManyModels: The user has as many models as a user may keep.
             StorageFull: The file does not fit into the user's storage.
+            UploadTimeout: The file did not arrive in time.
             ModelCheckFailed: The file failed a check.
+            AccountGone: The account was deleted meanwhile.
         """
         name = upload_name(file_name)
         if declared_size is not None and declared_size > FILE_MAX_BYTES:
             raise ModelTooLarge
-        used = await self._store.used_bytes(user_id)
-        # Ends the transaction, so its connection goes back to the pool while the file comes in.
-        await self._store.commit()
-        if declared_size is not None and used + declared_size > QUOTA_BYTES:
-            raise StorageFull(used, QUOTA_BYTES)
+        async with self._uploads.hold(user_id):
+            used, count = await self._store.usage(user_id)
+            # Ends the transaction, so its connection goes back to the pool while the file
+            # comes in.
+            await self._store.commit()
+            # Without a size announced, a full storage still fails at once (a file is 1 byte
+            # at least).
+            _check_room(used, count, declared_size or 1)
+            model = await self._receive_and_keep(user_id, name, chunks)
+        logger.info("User %s uploaded model %s (%d bytes)", user_id, model.id, model.size_bytes)
+        return _out(model)
+
+    async def _receive_and_keep(
+        self, user_id: str, name: str, chunks: AsyncIterable[bytes]
+    ) -> Model:
         incoming = self._storage.incoming_path()
         scratch = self._storage.incoming_path()
         try:
             size, sha256 = await _receive(chunks, incoming)
-            facts = await anyio.to_thread.run_sync(inspect_keras, incoming, scratch)
-            model = await self._keep(
+            facts = await check_upload(incoming, scratch)
+            return await self._keep(
                 user_id, incoming, name=name, size=size, sha256=sha256, facts=facts
             )
-        except ModelCheckFailed as failed:
-            logger.info("An upload of user %s failed the %s check", user_id, failed.check)
-            raise
         finally:
-            await self._storage.discard(incoming)
-            await self._storage.discard(scratch)
-        logger.info("User %s uploaded model %s (%d bytes)", user_id, model.id, size)
-        return _out(model)
+            # Also when the request is cancelled (the client went away).
+            with anyio.CancelScope(shield=True):
+                await self._storage.discard(incoming)
+                await self._storage.discard(scratch)
 
     async def _keep(
         self,
@@ -198,12 +252,12 @@ class ModelsService:
         under the lock of the user's models.
 
         Raises:
+            TooManyModels: The user has as many models as a user may keep.
             StorageFull: The file does not fit into the user's storage.
+            AccountGone: The account was deleted meanwhile.
         """
         await self._store.lock_user(user_id)
-        used = await self._store.used_bytes(user_id)
-        if used + size > QUOTA_BYTES:
-            raise StorageFull(used, QUOTA_BYTES)
+        _check_room(*await self._store.usage(user_id), size)
         model = Model(
             id=new_model_id(),
             user_id=user_id,
@@ -219,21 +273,27 @@ class ModelsService:
             created_at=_now(),
         )
         self._store.add(model)
-        await self._store.flush()
+        try:
+            await self._store.flush()
+        except IntegrityError as error:
+            if getattr(error.orig, "sqlstate", None) == _FOREIGN_KEY_VIOLATION:
+                raise AccountGone from None
+            raise
         await self._storage.save(incoming, user_id, model.id)
         try:
             await self._store.commit()
         except BaseException:
-            await self._storage.delete(user_id, model.id)
+            with anyio.CancelScope(shield=True):
+                await self._storage.delete(user_id, model.id)
             raise
         return model
 
     async def _free_name(self, user_id: str, name: str) -> str:
-        """`name`, or with the first number that makes it one the user does not have yet."""
-        number = 1
-        while await self._store.name_taken(user_id, candidate := numbered(name, number)):
-            number += 1
-        return candidate
+        """`name`, or with the first number that makes it one the user does not have yet: the
+        names it may become are looked up at once."""
+        stem = _split(name)[0]
+        taken = await self._store.names_starting(user_id, stem[: NAME_MAX - _LABEL_MAX].rstrip())
+        return free_name(name, taken)
 
     async def update(self, user_id: str, model_id: str, update: ModelUpdate) -> ModelOut:
         """Renames the user's model (its extension stays) or stars or unstars it; what
@@ -280,11 +340,14 @@ class ModelsService:
 
 class ModelsAccountDeletion:
     """Deletes a user's models with their account (an ``AccountDeletionHook``): the rows in the
-    deletion's transaction, the files once it is committed."""
+    deletion's transaction, the files once it is committed. It takes the lock of the user's
+    models first, so an upload that is being kept finishes before, or finds the user gone."""
 
     def __init__(self, storage: ModelStorage) -> None:
         self._storage = storage
 
     async def __call__(self, user_id: str, db: AsyncSession, /) -> AfterDeletion:
-        await ModelStore(db).delete_all(user_id)
+        store = ModelStore(db)
+        await store.lock_user(user_id)
+        await store.delete_all(user_id)
         return partial(self._storage.delete_user, user_id)

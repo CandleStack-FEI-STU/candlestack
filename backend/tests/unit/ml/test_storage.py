@@ -1,13 +1,16 @@
 """The model files in a directory."""
 
+import asyncio
 import logging
 import os
 import time
 from pathlib import Path
+from typing import cast
 
 import pytest
 
-from candlestack.ml.storage import LocalModelStorage
+from candlestack.ml import storage as storage_module
+from candlestack.ml.storage import LocalModelStorage, ModelStorage, keep_incoming_swept
 
 pytestmark = pytest.mark.anyio
 
@@ -101,3 +104,58 @@ async def test_prepare_removes_what_crashed_uploads_left(
     assert not stale.exists()
     assert fresh.exists()  # an upload in progress
     assert "Removed 1 incoming model files that crashed uploads left" in caplog.text
+
+
+async def test_the_sweep_skips_what_is_no_file_and_goes_on_after_an_error(
+    storage: LocalModelStorage,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    two_hours_ago = time.time() - 7200
+    directory = tmp_path / "models" / ".incoming" / "a-directory"
+    directory.mkdir()
+    stuck, stale = await incoming(storage), await incoming(storage)
+    for path in (directory, stuck, stale):
+        os.utime(path, (two_hours_ago, two_hours_ago))
+    unlink = Path.unlink
+
+    def failing_unlink(path: Path, *, missing_ok: bool = False) -> None:
+        if path == stuck:
+            raise PermissionError(str(path))
+        unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", failing_unlink)
+
+    with caplog.at_level(logging.INFO):
+        await storage.sweep()
+
+    assert directory.is_dir()
+    assert stuck.exists()
+    assert not stale.exists()
+    assert "An incoming model file was not removed (PermissionError)" in caplog.text
+    assert "Removed 1 incoming model files" in caplog.text
+
+
+async def test_the_incoming_files_are_swept_every_10_minutes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sweeps: list[float] = []
+    sleeps: list[float] = []
+
+    class Storage:
+        async def sweep(self) -> None:
+            sweeps.append(1)
+            if len(sweeps) == 3:
+                raise asyncio.CancelledError
+
+    async def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(storage_module.anyio, "sleep", sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await keep_incoming_swept(cast("ModelStorage", Storage()))
+
+    assert sleeps == [600, 600, 600]
+    assert len(sweeps) == 3

@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 # An incoming file older than this was left by an upload that crashed.
 STALE_INCOMING = timedelta(hours=1)
+SWEEP_EVERY = timedelta(minutes=10)
 _INCOMING = ".incoming"
 _SUFFIX = ".keras"
 
@@ -49,8 +50,11 @@ class ModelStorage(Protocol):
         ...
 
     async def prepare(self) -> None:
-        """Makes the storage ready at startup and removes what crashed uploads left there
-        (incoming files older than an hour)."""
+        """Makes the storage ready at startup and sweeps it."""
+        ...
+
+    async def sweep(self) -> None:
+        """Removes what crashed uploads left (incoming files older than an hour)."""
         ...
 
 
@@ -95,16 +99,31 @@ class LocalModelStorage:
         await anyio.to_thread.run_sync(partial(incoming.unlink, missing_ok=True))
 
     async def prepare(self) -> None:
-        removed = await anyio.to_thread.run_sync(self._prepare)
+        await anyio.to_thread.run_sync(partial(self._incoming.mkdir, parents=True, exist_ok=True))
+        await self.sweep()
+
+    async def sweep(self) -> None:
+        removed = await anyio.to_thread.run_sync(self._sweep)
         if removed:
             logger.info("Removed %d incoming model files that crashed uploads left", removed)
 
-    def _prepare(self) -> int:
-        self._incoming.mkdir(parents=True, exist_ok=True)
+    def _sweep(self) -> int:
         stale_before = time.time() - STALE_INCOMING.total_seconds()
         removed = 0
         for path in self._incoming.iterdir():
-            if path.stat().st_mtime < stale_before:
-                path.unlink(missing_ok=True)
-                removed += 1
+            # One entry that cannot be read or removed does not stop the others.
+            try:
+                if path.is_file() and path.stat().st_mtime < stale_before:
+                    path.unlink(missing_ok=True)
+                    removed += 1
+            except OSError as error:
+                logger.warning("An incoming model file was not removed (%s)", type(error).__name__)
         return removed
+
+
+async def keep_incoming_swept(storage: ModelStorage) -> None:
+    """Removes what crashed uploads left every ``SWEEP_EVERY`` while the app runs, so a process
+    that keeps running does not keep their files either."""
+    while True:
+        await anyio.sleep(SWEEP_EVERY.total_seconds())
+        await storage.sweep()

@@ -5,7 +5,7 @@ from pydantic import ValidationError
 
 from candlestack.ml.errors import UnsupportedModelFormat
 from candlestack.ml.schemas import ModelUpdate
-from candlestack.ml.service import numbered, upload_name
+from candlestack.ml.service import free_name, numbered, upload_name
 
 
 @pytest.mark.parametrize(
@@ -16,6 +16,8 @@ from candlestack.ml.service import numbered, upload_name
         ("C:\\Users\\ada\\models\\lstm.keras", "lstm.keras"),
         ("../../etc/lstm.keras", "lstm.keras"),
         ("  lstm\t\x00 .keras", "lstm.keras"),
+        ("ls\u202etm\u200b.keras", "lstm.keras"),  # a bidi override, a zero-width space (Cf)
+        ("\u2066\u2069.keras", "model.keras"),
         (".keras", "model.keras"),
         ("dir/\x07.keras", "model.keras"),
         ("a" * 80 + ".keras", "a" * 60 + ".keras"),
@@ -49,12 +51,39 @@ def test_a_numbered_name_stays_within_what_rename_takes() -> None:
     assert len(name.removesuffix(".KERAS")) == 60
 
 
+@pytest.mark.parametrize(
+    ("taken", "name"),
+    [
+        ([], "lstm.keras"),
+        (["LSTM.keras"], "lstm (2).keras"),
+        (["lstm.keras", "lstm (2).keras", "lstm (4).keras"], "lstm (3).keras"),
+        (["lstm (2).keras", "lstm v2.keras"], "lstm.keras"),
+    ],
+)
+def test_the_free_name(taken: list[str], name: str) -> None:
+    assert free_name("lstm.keras", taken) == name
+
+
 def test_rename_strips_the_name() -> None:
     assert ModelUpdate(name="  lstm v2 ").name == "lstm v2"
 
 
 @pytest.mark.parametrize(
-    "name", ["", "   ", "a" * 61, "lstm/v2", "lstm\\v2", "lstm\nv2", "lstm\x00", "tab\there"]
+    "name",
+    [
+        "",
+        "   ",
+        "a" * 61,
+        "lstm/v2",
+        "lstm\\v2",
+        "lstm\nv2",
+        "lstm\x00",
+        "tab\there",
+        "gpj.\u202eexe",
+        "ls\u200btm",
+        "\ufeffbom",
+        "n\x85el",
+    ],
 )
 def test_rename_takes_1_to_60_characters_without_slashes_or_control_characters(name: str):
     with pytest.raises(ValidationError):

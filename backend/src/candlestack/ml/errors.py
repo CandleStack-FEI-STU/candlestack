@@ -21,6 +21,22 @@ class StorageFull(Exception):
         self.quota_bytes = quota_bytes
 
 
+class TooManyModels(Exception):
+    """The user has as many models as a user may keep."""
+
+
+class UploadInProgress(Exception):
+    """Another upload of the user is still in progress."""
+
+
+class UploadTimeout(Exception):
+    """The file did not arrive in time."""
+
+
+class AccountGone(Exception):
+    """The user's account was deleted while the file was uploading."""
+
+
 class ModelCheckFailed(Exception):
     """A check of the uploaded file failed: ``check`` names it, ``detail`` tells the user what
     is wrong with the file and what to do, in plain words."""

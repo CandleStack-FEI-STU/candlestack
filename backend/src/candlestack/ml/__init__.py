@@ -5,13 +5,14 @@ the submodules. Nothing here imports Keras or TensorFlow: an upload is checked b
 file (its ``config.json`` and weights), not by loading it.
 
 ``candlestack.main`` puts the ``ModelStorage`` on ``app.state.model_storage``, prepares it at
-startup and registers ``ModelsAccountDeletion`` among the account deletion hooks.
+startup, sweeps it while the app runs (``keep_incoming_swept``) and registers
+``ModelsAccountDeletion`` among the account deletion hooks.
 """
 
 from candlestack.ml.api import router as models_router
 from candlestack.ml.schemas import ModelOut, ModelsOut
 from candlestack.ml.service import ModelsAccountDeletion
-from candlestack.ml.storage import LocalModelStorage, ModelStorage
+from candlestack.ml.storage import LocalModelStorage, ModelStorage, keep_incoming_swept
 
 __all__ = [
     "LocalModelStorage",
@@ -19,5 +20,6 @@ __all__ = [
     "ModelStorage",
     "ModelsAccountDeletion",
     "ModelsOut",
+    "keep_incoming_swept",
     "models_router",
 ]

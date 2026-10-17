@@ -6,6 +6,8 @@ It runs two checks on the file, ``opens`` and ``weights`` (``ModelCheck``), with
 anything from it; a failed check answers 422 ``model-check-failed`` naming the check.
 """
 
+import logging
+from collections.abc import Callable
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Path, Query, Request, Response
@@ -14,14 +16,28 @@ from candlestack.accounts import CurrentUserDep
 from candlestack.core import Problem, ProblemError, require_same_origin
 from candlestack.ml.dependencies import ModelsServiceDep
 from candlestack.ml.errors import (
+    AccountGone,
     ModelCheckFailed,
     ModelNameTaken,
     ModelNotFound,
     ModelTooLarge,
     StorageFull,
+    TooManyModels,
     UnsupportedModelFormat,
+    UploadInProgress,
+    UploadTimeout,
 )
-from candlestack.ml.schemas import FILE_MAX_BYTES, MB, ModelOut, ModelsOut, ModelUpdate
+from candlestack.ml.schemas import (
+    FILE_MAX_BYTES,
+    MB,
+    MODELS_MAX,
+    ModelOut,
+    ModelsOut,
+    ModelUpdate,
+)
+from candlestack.ml.service import RECEIVE_TIMEOUT
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["models"])
 
@@ -73,35 +89,72 @@ def _declared_size(request: Request) -> int | None:
     return int(value) if value.isdecimal() else None
 
 
-def _upload_problem(error: Exception) -> ProblemError:
-    """The problem of an upload that failed with `error`, one of the service's errors."""
-    if isinstance(error, UnsupportedModelFormat):
-        return ProblemError(
-            415,
-            "unsupported-model-format",
-            "Unsupported model format",
-            "Support for this format is coming soon. For now CandleStack takes Keras models "
-            "(.keras).",
-        )
-    if isinstance(error, ModelTooLarge):
-        return ProblemError(
-            413,
-            "model-too-large",
-            "Model too large",
-            f"The file is larger than {_megabytes(FILE_MAX_BYTES)}, the largest file an upload "
-            "takes. Upload a smaller model.",
-        )
-    if isinstance(error, StorageFull):
-        return ProblemError(
-            409,
-            "storage-full",
-            "Storage full",
-            f"The file does not fit into your storage: {_megabytes(error.used_bytes)} of "
-            f"{_megabytes(error.quota_bytes)} are taken. Delete models you no longer need and "
-            "upload it again.",
-            headers=NO_STORE,  # it tells what the user's storage holds
-            extensions={"used_bytes": error.used_bytes, "quota_bytes": error.quota_bytes},
-        )
+def _unsupported(_error: Exception) -> ProblemError:
+    return ProblemError(
+        415,
+        "unsupported-model-format",
+        "Unsupported model format",
+        "Support for this format is coming soon. For now CandleStack takes Keras models (.keras).",
+    )
+
+
+def _too_large(_error: Exception) -> ProblemError:
+    return ProblemError(
+        413,
+        "model-too-large",
+        "Model too large",
+        f"The file is larger than {_megabytes(FILE_MAX_BYTES)}, the largest file an upload "
+        "takes. Upload a smaller model.",
+    )
+
+
+def _storage_full(error: Exception) -> ProblemError:
+    assert isinstance(error, StorageFull)
+    return ProblemError(
+        409,
+        "storage-full",
+        "Storage full",
+        f"The file does not fit into your storage: {_megabytes(error.used_bytes)} of "
+        f"{_megabytes(error.quota_bytes)} are taken. Delete models you no longer need and "
+        "upload it again.",
+        headers=NO_STORE,  # it tells what the user's storage holds
+        extensions={"used_bytes": error.used_bytes, "quota_bytes": error.quota_bytes},
+    )
+
+
+def _too_many(_error: Exception) -> ProblemError:
+    return ProblemError(
+        409,
+        "too-many-models",
+        "Too many models",
+        f"You have {MODELS_MAX} models, the most CandleStack keeps for a user. Delete models "
+        "you no longer need and upload it again.",
+        headers=NO_STORE,
+        extensions={"limit": MODELS_MAX},
+    )
+
+
+def _in_progress(_error: Exception) -> ProblemError:
+    return ProblemError(
+        409,
+        "upload-in-progress",
+        "Upload in progress",
+        "Another upload of yours is still in progress. Wait until it finishes and upload this "
+        "file again.",
+    )
+
+
+def _timeout(_error: Exception) -> ProblemError:
+    return ProblemError(
+        408,
+        "upload-timeout",
+        "Upload timed out",
+        f"The file did not arrive within {RECEIVE_TIMEOUT // 60:.0f} minutes. Check the "
+        "connection and upload it again.",
+    )
+
+
+def _check_failed(error: Exception) -> ProblemError:
     assert isinstance(error, ModelCheckFailed)
     return ProblemError(
         422,
@@ -110,6 +163,37 @@ def _upload_problem(error: Exception) -> ProblemError:
         error.detail,
         extensions={"check": error.check.value},
     )
+
+
+def _account_gone(_error: Exception) -> ProblemError:
+    return ProblemError(
+        401,
+        "not-signed-in",
+        "Not signed in",
+        "Your account was deleted while the file was uploading, so it was not kept.",
+    )
+
+
+# The problems of a refused upload, by the service's error.
+_UPLOAD_PROBLEMS: dict[type[Exception], Callable[[Exception], ProblemError]] = {
+    UnsupportedModelFormat: _unsupported,
+    ModelTooLarge: _too_large,
+    StorageFull: _storage_full,
+    TooManyModels: _too_many,
+    UploadInProgress: _in_progress,
+    UploadTimeout: _timeout,
+    ModelCheckFailed: _check_failed,
+    AccountGone: _account_gone,
+}
+
+
+def _upload_problem(user_id: str, error: Exception) -> ProblemError:
+    """The problem of an upload that failed with `error`, one of the service's errors; logged
+    with the user's ID only."""
+    problem = _UPLOAD_PROBLEMS[type(error)](error)
+    check = f" {error.check}" if isinstance(error, ModelCheckFailed) else ""
+    logger.info("An upload of user %s was refused (%s%s)", user_id, problem.slug, check)
+    return problem
 
 
 @router.get("/api/v1/models", responses=_NOT_SIGNED_IN)
@@ -125,12 +209,19 @@ async def list_models(
     "/api/v1/models",
     status_code=201,
     responses={
-        **_NOT_SIGNED_IN,
+        **_problem(
+            401,
+            "Not signed in, or the account was deleted while the file was uploading "
+            "(`not-signed-in`).",
+        ),
         **_CROSS_ORIGIN,
+        **_problem(408, "The file did not arrive within 2 minutes (`upload-timeout`)."),
         **_problem(
             409,
-            "The file does not fit into the user's storage (`storage-full`); `used_bytes` and "
-            "`quota_bytes` say how much is taken.",
+            "The file does not fit into the user's storage (`storage-full`; `used_bytes` and "
+            "`quota_bytes` say how much is taken), the user has 100 models already "
+            "(`too-many-models`; `limit`), or another upload of the user is in progress "
+            "(`upload-in-progress`).",
         ),
         **_problem(413, "The file is larger than 50 MB (`model-too-large`)."),
         **_problem(
@@ -161,8 +252,8 @@ async def upload_model(
     response.headers.update(NO_STORE)
     try:
         return await service.upload(user.id, name, _declared_size(request), request.stream())
-    except (UnsupportedModelFormat, ModelTooLarge, StorageFull, ModelCheckFailed) as error:
-        raise _upload_problem(error) from None
+    except tuple(_UPLOAD_PROBLEMS) as error:
+        raise _upload_problem(user.id, error) from None
 
 
 @router.patch(

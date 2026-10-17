@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable, Coroutine
 from contextlib import asynccontextmanager, suppress
 from importlib.resources import files
 from typing import Any, override
@@ -33,7 +33,13 @@ from candlestack.core import (
     setup_sentry,
 )
 from candlestack.data import DataService, build_data_service, data_router
-from candlestack.ml import LocalModelStorage, ModelsAccountDeletion, ModelStorage, models_router
+from candlestack.ml import (
+    LocalModelStorage,
+    ModelsAccountDeletion,
+    ModelStorage,
+    keep_incoming_swept,
+    models_router,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +82,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Opens the shared clients on ``app.state`` (``redis``, ``db``, ``http``) and builds what
     uses them: the client ``rate_limiter`` and the market ``data_service``. With
     ``STATS_REFRESH`` (prod and stage) the instrument stats are refreshed in a background task
-    while the app runs. The model storage is made ready, without what crashed uploads left."""
+    while the app runs. The model storage is made ready, and what crashed uploads left there
+    is removed now and every 10 minutes."""
     settings: Settings = app.state.settings
     model_storage: ModelStorage = app.state.model_storage
     await model_storage.prepare()
@@ -87,20 +94,43 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         async with create_http_client(settings) as http:
             app.state.http = http
             app.state.data_service = build_data_service(settings, app.state.redis, http)
-            async with _background(app.state.data_service, stats=settings.stats_refresh):
+            async with (
+                _background(app.state.data_service, stats=settings.stats_refresh),
+                _running(keep_incoming_swept(model_storage), "The sweep of incoming model files"),
+            ):
                 yield
     finally:
         await app.state.db.dispose()
         await app.state.redis.aclose()
 
 
-def _report_death(task: asyncio.Task[None]) -> None:
-    """Makes a background task that ended other than by its cancellation a developer's issue
-    (Sentry), so the stats cannot stop being refreshed silently."""
-    if task.cancelled():
-        return
-    error = task.exception()
-    logger.error("The stats refresh stopped: %r", error, exc_info=error)
+def _death_report(what: str) -> Callable[[asyncio.Task[None]], None]:
+    """What makes a background task that ended other than by its cancellation a developer's
+    issue (Sentry), so `what` it does cannot stop silently."""
+
+    def report(task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            return
+        error = task.exception()
+        logger.error("%s stopped: %r", what, error, exc_info=error)
+
+    return report
+
+
+_report_death = _death_report("The stats refresh")
+
+
+@asynccontextmanager
+async def _running(work: Coroutine[Any, Any, None], what: str) -> AsyncIterator[None]:
+    """Runs `work` in a background task while the block runs; cancels it on shutdown."""
+    task = asyncio.create_task(work)
+    task.add_done_callback(_death_report(what))
+    try:
+        yield
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
 
 
 @asynccontextmanager
@@ -109,14 +139,8 @@ async def _background(service: DataService, *, stats: bool) -> AsyncIterator[Non
     if not stats:
         yield
         return
-    task = asyncio.create_task(service.keep_stats_fresh())
-    task.add_done_callback(_report_death)
-    try:
+    async with _running(service.keep_stats_fresh(), "The stats refresh"):
         yield
-    finally:
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

@@ -1,9 +1,10 @@
 """Request and response bodies of the models API."""
 
+import unicodedata
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # The name of a model without its extension, as the Rename dialog edits it.
 NAME_MAX = 60
@@ -11,6 +12,16 @@ NAME_MAX = 60
 MB = 1024 * 1024
 FILE_MAX_BYTES = 50 * MB
 QUOTA_BYTES = 100 * MB
+# Models a user may keep.
+MODELS_MAX = 100
+# Unicode categories a name never holds: control and format characters (bidirectional
+# overrides, zero-width spaces), which make a name read other than it is.
+_INVISIBLE = frozenset({"Cc", "Cf"})
+
+
+def without_invisible(text: str) -> str:
+    """`text` without control and format characters."""
+    return "".join(char for char in text if unicodedata.category(char) not in _INVISIBLE)
 
 
 class Framework(StrEnum):
@@ -84,7 +95,17 @@ class ModelUpdate(BaseModel):
         min_length=1,
         max_length=NAME_MAX,
         pattern=r"^[^/\\\x00-\x1f\x7f]+$",
-        description="New name without the extension, which stays; no slashes or control characters",
+        description=(
+            "New name without the extension, which stays; no slashes, control or format "
+            "characters (Unicode Cc and Cf)"
+        ),
         examples=["tsmixer-v2"],
     )
     starred: bool | None = Field(default=None, description="Star or unstar the model")
+
+    @field_validator("name")
+    @classmethod
+    def _visible(cls, name: str | None) -> str | None:
+        if name is not None and without_invisible(name) != name:
+            raise ValueError("must not hold control or format characters")
+        return name

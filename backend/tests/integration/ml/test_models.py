@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from redis import Redis
 
 from candlestack.ml import LocalModelStorage
 from candlestack.ml.schemas import FILE_MAX_BYTES, QUOTA_BYTES
@@ -175,6 +176,76 @@ def test_a_file_that_does_not_fit_is_refused_at_once(ada, sql) -> None:
     }
 
 
+def test_a_full_storage_refuses_any_file_at_once(ada, sql, storage, caplog) -> None:
+    fill_storage(sql, ada.id, QUOTA_BYTES)
+
+    with caplog.at_level(logging.INFO):
+        response = ada.upload(chunked(keras_file("functional")))  # no Content-Length
+
+    assert response.status_code == 409
+    assert response.json()["type"] == PROBLEMS + "storage-full"
+    assert storage.incoming() == []
+    assert f"An upload of user {ada.id} was refused (storage-full)" in caplog.text
+
+
+def test_100_models_are_the_most(ada, sql) -> None:
+    for number in range(100):
+        sql(
+            "INSERT INTO models (id, user_id, name, framework, size_bytes, sha256, parameters, "
+            "keras_version, created_at) VALUES (:id, :user_id, :name, 'keras', 1, :sha, 1, "
+            "'3.15.1', now())",
+            id=f"mdl_{number:010d}",
+            user_id=ada.id,
+            name=f"m{number}.keras",
+            sha=b"\0" * 32,
+        )
+
+    response = ada.upload(keras_file("functional"))
+
+    assert response.status_code == 409
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json() == {
+        "type": PROBLEMS + "too-many-models",
+        "title": "Too many models",
+        "status": 409,
+        "detail": "You have 100 models, the most CandleStack keeps for a user. Delete models you "
+        "no longer need and upload it again.",
+        "limit": 100,
+    }
+
+
+def test_an_upload_while_another_is_in_progress(ada, redis_url, storage) -> None:
+    redis = Redis.from_url(redis_url)
+    redis.set(f"ml:upload:{ada.id}", "another upload", ex=60)
+    try:
+        response = ada.upload(keras_file("functional"))
+
+        assert response.status_code == 409
+        assert response.json() == {
+            "type": PROBLEMS + "upload-in-progress",
+            "title": "Upload in progress",
+            "status": 409,
+            "detail": "Another upload of yours is still in progress. Wait until it finishes and "
+            "upload this file again.",
+        }
+        assert redis.get(f"ml:upload:{ada.id}") == b"another upload"  # not this upload's
+        assert storage.files() == []
+    finally:
+        redis.delete(f"ml:upload:{ada.id}")
+        redis.close()
+
+
+def test_the_upload_lock_goes_with_the_upload(ada, redis_url) -> None:
+    redis = Redis.from_url(redis_url)
+    try:
+        assert ada.upload(keras_file("functional")).status_code == 201
+        assert ada.upload(keras_file("lambda_layer")).status_code == 422
+
+        assert redis.get(f"ml:upload:{ada.id}") is None
+    finally:
+        redis.close()
+
+
 def test_a_streamed_file_that_does_not_fit_is_refused(ada, sql, storage) -> None:
     fill_storage(sql, ada.id, 50 * MB)
     sql(
@@ -221,7 +292,7 @@ def test_a_failed_check_is_named(ada, sql, storage, caplog, name, check, detail)
     assert sql("SELECT id FROM models") == []
     assert storage.incoming() == []
     assert storage.files() == []
-    assert f"An upload of user {ada.id} failed the {check} check" in caplog.text
+    assert f"An upload of user {ada.id} was refused (model-check-failed {check})" in caplog.text
 
 
 def test_an_empty_file_fails_opens(ada, storage) -> None:

@@ -3,18 +3,21 @@
 A ``.keras`` file is a zip of ``config.json`` (the architecture), ``metadata.json`` (the Keras
 version) and ``model.weights.h5`` (the weights, HDF5), with optional ``assets/``. Loading it
 with Keras could run code from the file (a ``Lambda`` layer is pickled Python, a custom layer
-is the user's class), so the API never imports Keras: it reads the JSON and the HDF5 metadata
-only, and rejects anything a load would have to run code for. Two checks, in order:
+is the user's class, a ``function`` object may name any Keras function), so the API never
+imports Keras: it reads the JSON and the HDF5 metadata only, and accepts only what it knows to
+be safe. Two checks, in order:
 
-- ``opens``: a real Functional or Sequential Keras model with nothing unsafe in the zip and no
-  custom code in the architecture. What only shapes or reports training is ignored: the
-  ``compile_config`` (optimizer, loss, metrics) and the ``*_regularizer`` and ``*_constraint``
-  objects, which a prediction never needs (the worker loads those with a stub).
+- ``opens``: a well-formed zip of a Functional or Sequential model whose every serialized
+  object is a built-in Keras class or function of the allowlist (``allowlist.py``). What only
+  shapes or reports training (``compile_config``, ``*_regularizer`` and ``*_constraint``) may
+  also hold the user's own registered objects, which the worker replaces with stubs; never a
+  Keras object off the allowlist or an unknown function.
 - ``weights``: the weights file reads as HDF5 and holds weights of the layers (not only the
   optimizer's state).
 
-Pure functions on a file path: no I/O besides reading the file and unpacking its weights to the
-scratch path the caller gives.
+It runs in a child process with resource limits (``sandbox.py``), as ``main``: a damaged file
+can then crash or exhaust only that process. Only the standard library, the allowlist and h5py
+(imported when the weights are read, after the limits are set).
 """
 
 import json
@@ -22,35 +25,45 @@ import math
 import re
 import shutil
 import struct
+import sys
+import unicodedata
 import zipfile
 import zlib
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-import h5py
+from candlestack.ml.allowlist import CLASSES, FUNCTIONS
 
-from candlestack.ml.errors import ModelCheckFailed
-from candlestack.ml.schemas import FILE_MAX_BYTES, MB, ModelCheck
-
+MIB = 1024 * 1024
 CONFIG = "config.json"
 METADATA = "metadata.json"
 WEIGHTS = "model.weights.h5"
 _MEMBERS = frozenset({CONFIG, METADATA, WEIGHTS})
 _ASSETS = "assets/"
-# A zip bomb unpacks to far more than it weighs; no real model needs more than this.
-UNPACKED_MAX = 4 * FILE_MAX_BYTES
-JSON_MAX = 5 * MB
+# The zip's index is read before anything else, so it is bounded first: a real model has a
+# handful of files and assets.
+ENTRIES_MAX = 1000
+CENTRAL_DIRECTORY_MAX = MIB
+JSON_MAX = MIB
+# How many HDF5 objects the weights may have; a real model has a few per layer.
+HDF5_OBJECTS_MAX = 100_000
 # Postgres' bigint, the column the count goes to.
 _PARAMETERS_MAX = 2**63 - 1
 _KERAS_VERSION_MAX = 32
 
-_MODEL_CLASSES = frozenset({"Functional", "Sequential"})
-# Layers that hold Python code (a lambda, an op of TensorFlow) instead of configuration.
-_CODE_LAYERS = frozenset({"Lambda", "TFOpLambda", "SlicingOpLambda", "__lambda__"})
-# Keys whose objects only shape or report training: skipped by the custom code check.
+_MODEL_CLASSES = frozenset({"keras.src.models.functional.Functional", "keras.Sequential"})
+# Keys whose objects only shape or report training: the user's registered objects are stubbed
+# there by the worker.
 _TRAINING_ONLY = "compile_config"
 _TRAINING_ONLY_SUFFIXES = ("_regularizer", "_constraint")
+# Values Keras serializes as objects of its own, without a module.
+_INTERNAL = frozenset(
+    {"__keras_tensor__", "__tensor__", "__numpy__", "__bytes__", "__ellipsis__", "__slice__"}
+)
+# Function names Keras looks up in its modules of built-ins (module ``builtins``).
+_BUILTIN_FUNCTIONS = frozenset(name.rsplit(".", 1)[1] for name in FUNCTIONS)
 # Layers whose output has the shape of their input.
 _SHAPE_KEEPING = frozenset(
     {
@@ -73,6 +86,13 @@ _SHAPE_KEEPING = frozenset(
         "UnitNormalization",
     }
 )
+# The end of central directory record: its signature, then 18 bytes, then a comment of up to
+# 64 KiB; zip64 adds a locator of 20 bytes before it.
+_EOCD = b"PK\x05\x06"
+_EOCD_SIZE = 22
+_ZIP64_LOCATOR = b"PK\x06\x07"
+_ZIP64_LOCATOR_SIZE = 20
+_TAIL = 64 * 1024 + _EOCD_SIZE
 # What a damaged or foreign zip raises while it is read.
 _ZIP_ERRORS = (
     zipfile.BadZipFile,
@@ -85,7 +105,6 @@ _ZIP_ERRORS = (
 )
 # What h5py raises on a file that is not HDF5 or is damaged inside.
 _HDF5_ERRORS = (OSError, KeyError, RuntimeError, ValueError, TypeError)
-_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 _SHOWN_MAX = 60
 
 _SAVE_AGAIN = 'Save the model again with model.save("model.keras") and upload that file.'
@@ -93,7 +112,19 @@ _BROKEN = (
     "The file is not a readable Keras model. It may be damaged or not a .keras file at all. "
     + _SAVE_AGAIN
 )
+_TOO_MANY_FILES = "The file holds far more files than a Keras model has. " + _SAVE_AGAIN
+_UNREADABLE_WEIGHTS = f"The weights of the model ({WEIGHTS}) cannot be read. " + _SAVE_AGAIN
 _NO_WEIGHTS = "The file holds the layers only. Save the model after training and upload that file."
+
+
+class CheckFailed(Exception):
+    """A check failed: ``check`` names it (``opens`` or ``weights``), ``detail`` tells the user
+    what is wrong with the file and what to do, in plain words."""
+
+    def __init__(self, check: str, detail: str) -> None:
+        super().__init__(f"{check}: {detail}")
+        self.check = check
+        self.detail = detail
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,16 +137,18 @@ class ModelFacts:
     output_shape: list[int] | None
 
 
-def inspect_keras(path: Path, scratch: Path) -> ModelFacts:
+def inspect_keras(path: Path, scratch: Path, *, file_max: int) -> ModelFacts:
     """Checks the Keras file at `path` without running anything from it and returns what it
-    holds. The weights are unpacked to `scratch` to be read; the caller removes that file.
+    holds. `file_max` is the largest upload; the weights are unpacked to `scratch` (at most
+    twice that) to be read, and the caller removes that file.
 
     Raises:
-        ModelCheckFailed: A check failed; its ``detail`` tells the user why.
+        CheckFailed: A check failed; its ``detail`` tells the user why.
     """
+    _check_index(path)
     try:
         with zipfile.ZipFile(path) as archive:
-            _check_members(archive)
+            _check_members(archive, file_max)
             keras_version = _keras_version(_read_json(archive, METADATA))
             config = _read_json(archive, CONFIG)
             _check_architecture(config)
@@ -134,18 +167,43 @@ def inspect_keras(path: Path, scratch: Path) -> ModelFacts:
     )
 
 
-def _opens(detail: str) -> ModelCheckFailed:
-    return ModelCheckFailed(ModelCheck.opens, detail)
+def _opens(detail: str) -> CheckFailed:
+    return CheckFailed("opens", detail)
 
 
-def _weights(detail: str) -> ModelCheckFailed:
-    return ModelCheckFailed(ModelCheck.weights, detail)
+def _weights(detail: str) -> CheckFailed:
+    return CheckFailed("weights", detail)
 
 
-def _check_members(archive: zipfile.ZipFile) -> None:
+def _check_index(path: Path) -> None:
+    """Fails unless the zip's index (its central directory) is small, read from the end of
+    central directory record before zipfile reads the index whole: a few kilobytes of zip can
+    declare a million entries. Zip64 is refused, no model needs it."""
+    with path.open("rb") as file:
+        size = file.seek(0, 2)
+        file.seek(max(0, size - _TAIL))
+        tail = file.read()
+    at = tail.rfind(_EOCD)
+    if at < 0 or len(tail) - at < _EOCD_SIZE:
+        raise _opens(_BROKEN)
+    _, _, on_disk, entries, directory_size, directory_at, _ = struct.unpack(
+        "<HHHHIIH", tail[at + 4 : at + _EOCD_SIZE]
+    )
+    zip64 = (
+        0xFFFF in (on_disk, entries)
+        or 0xFFFFFFFF in (directory_size, directory_at)
+        or tail[max(0, at - _ZIP64_LOCATOR_SIZE) : at].startswith(_ZIP64_LOCATOR)
+    )
+    if zip64 or entries > ENTRIES_MAX or directory_size > CENTRAL_DIRECTORY_MAX:
+        raise _opens(_TOO_MANY_FILES)
+
+
+def _check_members(archive: zipfile.ZipFile, file_max: int) -> None:
     """Fails unless the zip holds the three files of a Keras model, nothing outside it and
     nothing but assets besides, and unpacks to a size a model may have."""
     infos = archive.infolist()
+    if len(infos) > ENTRIES_MAX:
+        raise _opens(_TOO_MANY_FILES)
     for info in infos:
         name = info.filename
         if (
@@ -161,9 +219,13 @@ def _check_members(archive: zipfile.ZipFile) -> None:
         raise _opens(
             f"The file has no {missing[0]}, so it is not a whole Keras model. " + _SAVE_AGAIN
         )
-    if sum(info.file_size for info in infos) > UNPACKED_MAX:
+    # A zip bomb unpacks to far more than it weighs; no real model comes near these.
+    if (
+        sum(info.file_size for info in infos) > 4 * file_max
+        or archive.getinfo(WEIGHTS).file_size > 2 * file_max
+    ):
         raise _opens(
-            f"The file unpacks to more than {UNPACKED_MAX // MB} MB, more than any model "
+            f"The file unpacks to more than {4 * file_max // MIB} MB, more than any model "
             "CandleStack takes. Upload a smaller model."
         )
 
@@ -172,7 +234,7 @@ def _read_json(archive: zipfile.ZipFile, member: str) -> dict[str, Any]:
     """The JSON object in `member`."""
     if archive.getinfo(member).file_size > JSON_MAX:
         raise _opens(
-            f"The {member} of the file is larger than {JSON_MAX // MB} MB, more than any model "
+            f"The {member} of the file is larger than {JSON_MAX // MIB} MB, more than any model "
             "CandleStack takes. Upload a smaller model."
         )
     try:
@@ -200,10 +262,8 @@ def _is_keras_module(module: object) -> bool:
 
 def _check_architecture(config: dict[str, Any]) -> None:
     """Fails unless `config` is a Functional or Sequential Keras model without custom code."""
-    if (
-        config.get("class_name") not in _MODEL_CLASSES
-        or not _is_keras_module(config.get("module"))
-        or not isinstance(config.get("config"), dict)
+    if f"{config.get('module')}.{config.get('class_name')}" not in _MODEL_CLASSES or not isinstance(
+        config.get("config"), dict
     ):
         raise _opens(
             "The file holds no Functional or Sequential Keras model. A model of your own class "
@@ -215,54 +275,89 @@ def _check_architecture(config: dict[str, Any]) -> None:
 
 
 def _custom_code(config: dict[str, Any]) -> str | None:
-    """What tells the user about the first custom code in the architecture, None without any.
+    """What tells the user about the first object of the architecture that is not on the
+    allowlist, None without any.
 
     Walks the JSON with a stack of its own: a deeply nested file cannot exhaust Python's.
+    Each entry is a node, the layer it belongs to and whether it only shapes or reports
+    training.
     """
-    stack: list[tuple[Any, str | None]] = [(config, None)]
+    stack: list[tuple[Any, str | None, bool]] = [(config, None, False)]
     while stack:
-        node, layer = stack.pop()
+        node, layer, training_only = stack.pop()
         if isinstance(node, list):
-            stack.extend((item, layer) for item in reversed(node))
-        elif isinstance(node, dict):
-            if (code := _code_of(node)) is not None:
-                where = f'The layer "{layer}"' if layer else "The model"
-                return (
-                    f"{where} uses custom code ({code}), which CandleStack does not run. "
-                    "Rebuild the model with the built-in Keras layers only and upload it again."
+            stack.extend((item, layer, training_only) for item in reversed(node))
+            continue
+        if not isinstance(node, dict):
+            continue
+        verdict = _verdict(node, training_only=training_only)
+        if verdict is _STUB:
+            continue
+        if verdict is not None:
+            where = f'The layer "{layer}"' if layer else "The model"
+            return (
+                f"{where} uses custom code ({verdict}), which CandleStack does not run. "
+                "Rebuild the model with the built-in Keras layers only and upload it again."
+            )
+        for key, value in reversed(node.items()):
+            skipped = (
+                training_only or key == _TRAINING_ONLY or key.endswith(_TRAINING_ONLY_SUFFIXES)
+            )
+            if key == "layers" and isinstance(value, list):
+                stack.extend(
+                    (item, _shown(_layer_name(item)) or layer, skipped) for item in value[::-1]
                 )
-            for key, value in reversed(node.items()):
-                if key == _TRAINING_ONLY or key.endswith(_TRAINING_ONLY_SUFFIXES):
-                    continue
-                if key == "layers" and isinstance(value, list):
-                    stack.extend((item, _shown(_layer_name(item)) or layer) for item in value[::-1])
-                else:
-                    stack.append((value, layer))
+            else:
+                stack.append((value, layer, skipped))
     return None
 
 
-def _code_of(node: dict[str, Any]) -> str | None:
-    """The class of a serialized object that is code rather than Keras' own configuration
-    (a lambda, a class of another package or one the user registered); None for Keras' own."""
+class _Stub:
+    """The verdict on a user's registered object where only training uses it."""
+
+
+_STUB = _Stub()
+
+
+def _verdict(node: dict[str, Any], *, training_only: bool) -> str | _Stub | None:
+    """None for a dict that is no serialized object or one of the allowlist, ``_STUB`` for the
+    user's registered object where only training uses it (not walked further), else what to
+    name in the detail."""
     class_name = node.get("class_name")
     if class_name is None:
         return None
     module = node.get("module")
     registered = node.get("registered_name")
-    if (
-        class_name in _CODE_LAYERS
-        or (module is not None and not _is_keras_module(module))
-        or (registered is not None and registered != class_name)
-    ):
-        return _shown(class_name) or "an object without a name"
-    return None
+    shown = _shown(class_name) or "an object without a name"
+    if class_name == "function":
+        name = node.get("config")
+        allowed = (
+            isinstance(name, str)
+            and registered in (None, "function")
+            and (
+                (module == "builtins" and name in _BUILTIN_FUNCTIONS)
+                or f"{module}.{name}" in FUNCTIONS
+            )
+        )
+        return None if allowed else (_shown(name) or "a function")
+    if module is None and registered is None and class_name in _INTERNAL:
+        return None
+    if _is_keras_module(module):
+        allowed = f"{module}.{class_name}" in CLASSES and registered in (None, class_name)
+        return None if allowed else shown
+    # The user's own object, registered with Keras as ``package>name``.
+    if training_only and isinstance(registered, str) and ">" in registered:
+        return _STUB
+    return shown
 
 
 def _shown(value: object) -> str | None:
-    """`value` as a detail may show it: a string without control characters, cut short."""
+    """`value` as a detail may show it: a string without control or format characters, cut
+    short."""
     if not isinstance(value, str):
         return None
-    return _CONTROL.sub("", value).strip()[:_SHOWN_MAX] or None
+    kept = "".join(char for char in value if unicodedata.category(char) not in {"Cc", "Cf"})
+    return kept.strip()[:_SHOWN_MAX] or None
 
 
 def _layer_name(layer: object) -> object:
@@ -277,33 +372,63 @@ def _layer_name(layer: object) -> object:
 
 def count_parameters(weights: Path) -> int:
     """The number of weights of the layers in the HDF5 file `weights`: the sizes of the
-    datasets under ``layers``, not ``optimizer`` (the optimizer's state). Reads the
-    metadata of the datasets, never their data.
+    datasets under ``layers``, not ``optimizer`` (the optimizer's state). Reads the metadata
+    of the datasets, never their data, follows hard links only (a soft or external link could
+    point anywhere, a file on the server included) and visits at most ``HDF5_OBJECTS_MAX``
+    objects.
 
     Raises:
-        ModelCheckFailed: The file cannot be read as HDF5, or holds no weights.
+        CheckFailed: The file cannot be read as HDF5, has links or too many objects, or holds
+            no weights.
     """
-    sizes: list[int] = []
-
-    def add(_name: str, item: object) -> None:
-        if isinstance(item, h5py.Dataset):
-            sizes.append(item.size)
+    import h5py  # noqa: PLC0415 (in the check's process only, after its limits are set)
 
     try:
         with h5py.File(weights, "r") as file:
-            group = file.get("layers")
-            if isinstance(group, h5py.Group):
-                group.visititems(add)
+            parameters = _sizes_under(file, "layers", h5py)
     except _HDF5_ERRORS as error:
-        raise _weights(
-            f"The weights of the model ({WEIGHTS}) cannot be read. " + _SAVE_AGAIN
-        ) from error
-    parameters = sum(sizes)
+        raise _weights(_UNREADABLE_WEIGHTS) from error
     if parameters == 0:
         raise _weights(_NO_WEIGHTS)
     if parameters > _PARAMETERS_MAX:
-        raise _weights(f"The weights of the model ({WEIGHTS}) cannot be read. " + _SAVE_AGAIN)
+        raise _weights(_UNREADABLE_WEIGHTS)
     return parameters
+
+
+def _sizes_under(file: Any, name: str, h5py: Any) -> int:
+    """The total size of the datasets under the group `name` of `file`, 0 without one.
+
+    Raises:
+        CheckFailed: A soft or external link, or too many objects.
+    """
+    if name not in file:
+        return 0
+    top = _hard_linked(file, name, h5py)
+    total = 0
+    visited = 0
+    groups = [top] if isinstance(top, h5py.Group) else []
+    while groups:
+        for key in (group := groups.pop()):
+            visited += 1
+            if visited > HDF5_OBJECTS_MAX:
+                raise _weights(_UNREADABLE_WEIGHTS)
+            item = _hard_linked(group, key, h5py)
+            if isinstance(item, h5py.Group):
+                groups.append(item)
+            elif isinstance(item, h5py.Dataset):
+                total += item.size
+    return total
+
+
+def _hard_linked(group: Any, key: str, h5py: Any) -> Any:
+    """The object `key` of `group`, when a hard link names it.
+
+    Raises:
+        CheckFailed: A soft or external link names it.
+    """
+    if not isinstance(group.get(key, getlink=True), h5py.HardLink):
+        raise _weights(_UNREADABLE_WEIGHTS)
+    return group[key]
 
 
 def _layers(config: dict[str, Any]) -> list[dict[str, Any]]:
@@ -367,3 +492,30 @@ def _output_shape(config: dict[str, Any], layers: list[dict[str, Any]]) -> list[
     if kind == "Flatten":
         return [math.prod(shape)]
     return shape if kind in _SHAPE_KEEPING else None
+
+
+def limit_resources(resource: Any, *, file_max: int) -> None:
+    """Limits this process (Linux): memory, CPU time and the size of a file it writes (the
+    weights unpacked); past them the kernel stops it, which fails the check."""
+    for limit, value in (
+        (resource.RLIMIT_DATA, 256 * MIB),
+        (resource.RLIMIT_CPU, 15),
+        (resource.RLIMIT_FSIZE, 2 * file_max),
+    ):
+        resource.setrlimit(limit, (value, value))
+
+
+def main(argv: Sequence[str]) -> int:
+    """The check's process: ``<file> <scratch> <file_max>``; writes one JSON object to
+    stdout, ``{"facts": {...}}`` or ``{"failed": {"check": ..., "detail": ...}}``."""
+    path, scratch, file_max = Path(argv[0]), Path(argv[1]), int(argv[2])
+    if sys.platform == "linux":
+        import resource  # noqa: PLC0415 (Linux only)
+
+        limit_resources(resource, file_max=file_max)
+    try:
+        result: dict[str, Any] = {"facts": asdict(inspect_keras(path, scratch, file_max=file_max))}
+    except CheckFailed as failed:
+        result = {"failed": {"check": failed.check, "detail": failed.detail}}
+    sys.stdout.write(json.dumps(result))
+    return 0

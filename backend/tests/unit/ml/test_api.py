@@ -1,6 +1,7 @@
 """The models routes up to where they would need Postgres; the flows with it are integration
 tests (tests/integration/ml)."""
 
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -11,6 +12,18 @@ from fastapi.testclient import TestClient
 from candlestack.accounts import User
 from candlestack.accounts.dependencies import current_user
 from candlestack.core import Settings
+from candlestack.ml.api import _upload_problem
+from candlestack.ml.errors import (
+    AccountGone,
+    ModelCheckFailed,
+    ModelTooLarge,
+    StorageFull,
+    TooManyModels,
+    UnsupportedModelFormat,
+    UploadInProgress,
+    UploadTimeout,
+)
+from candlestack.ml.schemas import ModelCheck
 
 PROBLEMS = "https://candlestack.tech/problems/"
 ORIGIN = {"Origin": "http://testserver"}
@@ -126,3 +139,33 @@ def test_the_app_starts_with_its_model_storage(settings: Settings, client: TestC
 
 def test_the_default_model_storage_is_relative() -> None:
     assert Settings().model_storage_dir == Path("var/models")
+
+
+@pytest.mark.parametrize(
+    ("error", "status", "slug"),
+    [
+        (UnsupportedModelFormat(), 415, "unsupported-model-format"),
+        (ModelTooLarge(), 413, "model-too-large"),
+        (StorageFull(10, 20), 409, "storage-full"),
+        (TooManyModels(), 409, "too-many-models"),
+        (UploadInProgress(), 409, "upload-in-progress"),
+        (UploadTimeout(), 408, "upload-timeout"),
+        (ModelCheckFailed(ModelCheck.weights, "No weights."), 422, "model-check-failed"),
+        (AccountGone(), 401, "not-signed-in"),
+    ],
+)
+def test_each_refused_upload_has_its_problem_and_is_logged_by_ids(
+    error: Exception, status: int, slug: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO):
+        problem = _upload_problem("usr_7f3k2m9qx4", error)
+
+    assert (problem.status, problem.slug) == (status, slug)
+    assert ";" not in problem.detail
+    assert f"An upload of user usr_7f3k2m9qx4 was refused ({slug}" in caplog.text
+
+
+def test_the_timeout_problem_names_the_minutes() -> None:
+    assert _upload_problem("usr_7f3k2m9qx4", UploadTimeout()).detail == (
+        "The file did not arrive within 2 minutes. Check the connection and upload it again."
+    )

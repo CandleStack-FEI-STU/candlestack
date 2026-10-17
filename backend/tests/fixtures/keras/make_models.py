@@ -131,8 +131,26 @@ def two_inputs() -> None:
     model.save(OUT / "two_inputs.keras")
 
 
+def operations() -> None:
+    """Operations of keras.ops between the layers (they are saved as objects of their own), and
+    a compile config with a schedule, a loss and a metric of Keras."""
+    inputs = keras.Input((25, 23))
+    x = keras.ops.reshape(keras.ops.add(inputs, 1.0), (-1, 575))
+    x = layers.Dense(4, activation="gelu")(x[:, :100])
+    model = keras.Model(inputs, layers.Dense(1)(x))
+    schedule = keras.optimizers.schedules.ExponentialDecay(0.01, 10, 0.9)
+    model.compile(
+        optimizer=keras.optimizers.Adam(schedule),
+        loss=keras.losses.Huber(),
+        metrics=[keras.metrics.RootMeanSquaredError()],
+    )
+    model.fit(windows(), np.random.rand(32, 1), epochs=1, batch_size=8, verbose=0)
+    model.save(OUT / "operations.keras")
+
+
 if __name__ == "__main__":
     for build in (
+        operations,
         functional,
         sequential,
         custom_regularizer,

@@ -1281,7 +1281,7 @@
                 "type": "null"
               }
             ],
-            "description": "New name without the extension, which stays; no slashes or control characters",
+            "description": "New name without the extension, which stays; no slashes, control or format characters (Unicode Cc and Cf)",
             "examples": [
               "tsmixer-v2"
             ],
@@ -2768,7 +2768,7 @@
                 }
               }
             },
-            "description": "Not signed in (`not-signed-in`)."
+            "description": "Not signed in, or the account was deleted while the file was uploading (`not-signed-in`)."
           },
           "403": {
             "content": {
@@ -2780,6 +2780,16 @@
             },
             "description": "The request does not come from the app's own pages (`cross-origin-request`)."
           },
+          "408": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The file did not arrive within 2 minutes (`upload-timeout`)."
+          },
           "409": {
             "content": {
               "application/problem+json": {
@@ -2788,7 +2798,7 @@
                 }
               }
             },
-            "description": "The file does not fit into the user's storage (`storage-full`); `used_bytes` and `quota_bytes` say how much is taken."
+            "description": "The file does not fit into the user's storage (`storage-full`; `used_bytes` and `quota_bytes` say how much is taken), the user has 100 models already (`too-many-models`; `limit`), or another upload of the user is in progress (`upload-in-progress`)."
           },
           "413": {
             "content": {

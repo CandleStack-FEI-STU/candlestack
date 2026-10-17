@@ -50,6 +50,9 @@ class Database:
             # A connection the server closed (restart, idle timeout) is replaced, not handed out.
             pool_pre_ping=True,
             connect_args={"timeout": CONNECT_TIMEOUT},
+            # The parameters of a statement hold users' data (names, emails): an error's
+            # message, which reaches the logs and Sentry, shows the statement without them.
+            hide_parameters=True,
         )
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False)
 

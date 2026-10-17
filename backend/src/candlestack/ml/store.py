@@ -42,12 +42,27 @@ class ModelStore:
             select(Model).where(Model.id == model_id, Model.user_id == user_id)
         )
 
-    async def used_bytes(self, user_id: str) -> int:
-        """The bytes the user's models take."""
-        used = await self._db.scalar(
-            select(func.coalesce(func.sum(Model.size_bytes), 0)).where(Model.user_id == user_id)
+    async def usage(self, user_id: str) -> tuple[int, int]:
+        """The bytes the user's models take, and how many they are."""
+        row = (
+            await self._db.execute(
+                select(func.coalesce(func.sum(Model.size_bytes), 0), func.count()).where(
+                    Model.user_id == user_id
+                )
+            )
+        ).one()
+        return int(row[0]), int(row[1])
+
+    async def names_starting(self, user_id: str, prefix: str) -> list[str]:
+        """The names of the user's models that start with `prefix`, in any case."""
+        pattern = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        rows = await self._db.scalars(
+            select(Model.name).where(
+                Model.user_id == user_id,
+                func.lower(Model.name).like(func.lower(pattern), escape="\\"),
+            )
         )
-        return int(used or 0)
+        return list(rows)
 
     async def name_taken(self, user_id: str, name: str, *, other_than: str | None = None) -> bool:
         """Whether a model of the user (other than `other_than`) has `name`, in any case. Postgres

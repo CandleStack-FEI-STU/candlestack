@@ -1102,7 +1102,7 @@ export interface components {
         ModelUpdate: {
             /**
              * Name
-             * @description New name without the extension, which stays; no slashes or control characters
+             * @description New name without the extension, which stays; no slashes, control or format characters (Unicode Cc and Cf)
              * @example tsmixer-v2
              */
             name?: string | null;
@@ -2075,7 +2075,7 @@ export interface operations {
                     "application/json": components["schemas"]["ModelOut"];
                 };
             };
-            /** @description Not signed in (`not-signed-in`). */
+            /** @description Not signed in, or the account was deleted while the file was uploading (`not-signed-in`). */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2093,7 +2093,16 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The file does not fit into the user's storage (`storage-full`); `used_bytes` and `quota_bytes` say how much is taken. */
+            /** @description The file did not arrive within 2 minutes (`upload-timeout`). */
+            408: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The file does not fit into the user's storage (`storage-full`; `used_bytes` and `quota_bytes` say how much is taken), the user has 100 models already (`too-many-models`; `limit`), or another upload of the user is in progress (`upload-in-progress`). */
             409: {
                 headers: {
                     [name: string]: unknown;

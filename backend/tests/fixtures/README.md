@@ -39,4 +39,5 @@ them by name): the archives under their data.binance.vision paths, klines cut fr
 requested interval), and Alpaca bars merged from every `bars-<SYMBOL>-<timeframe>-*.json`.
 
 `keras/*.keras` are small real Keras 3.15 models for the upload check (`candlestack.ml`), built by
-`keras/make_models.py` in a throwaway container (its docstring says how and what each file is).
+`keras/make_models.py` in a throwaway container (its docstring says how and what each file is);
+`keras/make_allowlist.py` writes `candlestack/ml/allowlist.py` from Keras the same way.
