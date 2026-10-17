@@ -1,7 +1,13 @@
 // The mockups' buttons (.btn) as classes on shadcn's Button, for its variants to look like them.
 
-// .btn: 34 px high with 14 px either side; .btn.lg, in the hero, 42 px with 20 px and 15 px text.
-export const BUTTON_SIZES = { default: 'h-[34px] px-3.5', lg: 'h-[42px] px-5 text-[15px]' };
+// .btn: 34 px high with 14 px either side; .btn.lg, in the hero, 42 px with 20 px and 15 px text;
+// .btn.sm, in the cards of Settings, 28 px with 10 px and 13 px text. Disabled, a button fades to
+// 45 % and still shows its title on hover.
+export const BUTTON_SIZES = {
+  default: 'h-[34px] px-3.5',
+  lg: 'h-[42px] px-5 text-[15px]',
+  sm: 'h-7 px-2.5 text-[13px] disabled:pointer-events-auto disabled:cursor-default disabled:opacity-45',
+};
 
 // .btn on the outline variant: no shadow, and a solid background with the full surface on hover
 // in both themes, as the buttons stand on the grid.
@@ -15,3 +21,12 @@ export const GHOST_BUTTON = 'border border-transparent dark:hover:bg-accent';
 // button 2 px wider and stays as a rim around the hover color.
 export const ACCENT_BUTTON =
   'border border-primary shadow-none hover:bg-[color-mix(in_srgb,var(--accent)_86%,var(--ink))]';
+
+// .btn.danger on the outline variant (Delete account): the text in the falling red, the border
+// tinted with it.
+export const DANGER_BUTTON =
+  'border-[color-mix(in_srgb,var(--down)_45%,var(--rule))] text-down hover:text-down dark:border-[color-mix(in_srgb,var(--down)_45%,var(--rule))]';
+
+// .btn.danger.pri on the default variant (the dialog's Delete account): filled with the red, which
+// stays on hover.
+export const DANGER_ACCENT_BUTTON = 'border border-down bg-down text-background shadow-none hover:bg-down';

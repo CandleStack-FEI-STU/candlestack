@@ -1,5 +1,17 @@
 // The public face of src/api: pages and components import from '@/api' only.
-export { deniedSignInQueryOptions, meQueryOptions, signInUrl, signOut, type Me, type Provider } from './accounts';
+export {
+  connectUrl,
+  deleteMe,
+  deniedSignInQueryOptions,
+  disconnectSignInMethod,
+  meQueryOptions,
+  signInUrl,
+  signOut,
+  signOutEverywhere,
+  updateMe,
+  type Me,
+  type Provider,
+} from './accounts';
 export { candleBridgeQueryOptions, candlePageQueryOptions, type Candles } from './candles';
 export { ApiError } from './client';
 export { EXCHANGES, exchangeLabel, exchangeMarket, type Exchange } from './exchanges';
@@ -10,6 +22,21 @@ export {
   type InstrumentDetail,
   type Market,
 } from './instruments';
+export {
+  preferencesQueryOptions,
+  saveBacktestDefaults,
+  updateAppearance,
+  type Appearance,
+  type BacktestDefaults,
+  type Benchmark,
+  type DateFormat,
+  type DefaultTimeframe,
+  type Direction,
+  type Preferences,
+  type Theme,
+  type TimeFormat,
+  type TimeZone,
+} from './preferences';
 export { queryClient } from './queryClient';
 export {
   hasNextPage,

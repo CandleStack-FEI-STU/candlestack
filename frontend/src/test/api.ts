@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 
-import type { Me } from '@/api';
+import type { Me, Preferences } from '@/api';
 
 // A signed-in user as GET /api/v1/me sends it.
 export const ARSEN: Me = {
@@ -44,3 +44,33 @@ export function stubApi(answers: Record<string, Answer>) {
 export const session = (user: Me | null): Record<string, Answer> => ({
   'GET /api/v1/me': user === null ? NOT_SIGNED_IN : { status: 200, body: user },
 });
+
+// GET /api/v1/me/preferences of a user who never changed a setting: the API's defaults.
+export const DEFAULT_PREFERENCES: Preferences = {
+  backtest_defaults: {
+    timeframe: '30m',
+    period_start: '2021-01-04',
+    period_end: '2024-12-31',
+    direction: 'long',
+    threshold: 0.05,
+    stop_loss_pct: 7,
+    fees_pct: 0.1,
+    slippage_pct: 0.02,
+    benchmark: 'bh',
+  },
+  appearance: { theme: 'dark', time_zone: 'ny', date_format: 'dmy', time_format: '24', reduce_motion: false },
+};
+
+// The answers of a session with its preferences.
+export const sessionWithPreferences = (user: Me, preferences: Preferences = DEFAULT_PREFERENCES) => ({
+  ...session(user),
+  'GET /api/v1/me/preferences': { status: 200, body: preferences },
+});
+
+// The JSON body of the request the stub got for `method path`, the last one if there were several.
+export function sentBody(fetch: ReturnType<typeof stubApi>, request: string): unknown {
+  const [method, path] = request.split(' ');
+  const call = fetch.mock.calls.findLast(([url, init]) => url === path && (init?.method ?? 'GET') === method);
+  const body = call?.[1]?.body;
+  return typeof body === 'string' ? JSON.parse(body) : undefined;
+}

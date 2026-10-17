@@ -1,0 +1,115 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearch } from '@tanstack/react-router';
+import type { ComponentType } from 'react';
+
+import { ApiError, connectUrl, disconnectSignInMethod, meQueryOptions, type Provider } from '@/api';
+import { ACCENT_BUTTON, BUTTON_SIZES, OUTLINE_BUTTON } from '@/components/buttonStyles';
+import { KeyIcon } from '@/components/icons';
+import { Button } from '@/components/ui/button';
+import { useSignedInUser } from '@/features/account';
+import { GitHubMark, GoogleMark } from '@/features/signin';
+import { cn } from '@/lib/utils';
+import type { ConnectError } from '@/routes/settingsSections';
+
+import { ErrorNote, SettingsCard, SettingsLead } from './Card';
+
+type ProviderInfo = { provider: Provider; name: string; Mark: ComponentType<{ className?: string }> };
+
+const PROVIDERS: readonly ProviderInfo[] = [
+  { provider: 'github', name: 'GitHub', Mark: GitHubMark },
+  { provider: 'google', name: 'Google', Mark: GoogleMark },
+];
+
+// The API returns here after adding a method.
+const RETURN_PATH = '/settings/sign-in';
+
+const CONNECT_ERRORS: Record<ConnectError, string> = {
+  taken: 'That account already signs in to another CandleStack user.',
+  failed: 'Could not connect. Try again.',
+};
+
+// Removes a method; the user then has one fewer.
+function useDisconnect() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: disconnectSignInMethod,
+    onSuccess: (_answer, provider) =>
+      queryClient.setQueryData(
+        meQueryOptions().queryKey,
+        (me) => me && { ...me, providers: me.providers.filter((connected) => connected !== provider) },
+      ),
+  });
+}
+
+function disconnectError(error: Error | null): string | undefined {
+  if (error === null) return undefined;
+  const last = error instanceof ApiError && error.problem === 'last-sign-in-method';
+  return last ? 'Keep at least one way to sign in.' : error.message;
+}
+
+type RowProps = {
+  info: ProviderInfo;
+  connected: boolean;
+  // The user's only way in: it cannot be disconnected.
+  only: boolean;
+  busy: boolean;
+  onDisconnect: () => void;
+};
+
+// A provider: its mark on a tile, its name over whether it is connected, and what to do about it.
+function ProviderRow({ info: { provider, name, Mark }, connected, only, busy, onDisconnect }: RowProps) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border px-3 py-2.5">
+      <span className="grid size-[34px] flex-none place-items-center rounded-lg bg-muted">
+        <Mark className="size-[18px]" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <b>{name}</b>
+        <span className="text-xs text-muted-foreground">{connected ? 'Connected' : 'Not connected'}</span>
+      </span>
+      {connected ? (
+        <Button
+          type="button"
+          variant="outline"
+          className={cn(BUTTON_SIZES.sm, OUTLINE_BUTTON)}
+          disabled={only || busy}
+          title={only ? 'Your only way to sign in' : undefined}
+          onClick={onDisconnect}
+        >
+          Disconnect
+        </Button>
+      ) : (
+        <Button asChild className={cn(BUTTON_SIZES.sm, ACCENT_BUTTON)}>
+          <a href={connectUrl(provider, RETURN_PATH)}>Connect</a>
+        </Button>
+      )}
+    </div>
+  );
+}
+
+// GitHub and Google, each connected or not. Connect leaves for the provider and comes back here;
+// Disconnect removes it, except the last one.
+export function SignInSection() {
+  const user = useSignedInUser();
+  const { error: connectError } = useSearch({ from: '/_app/settings/$section' });
+  const disconnect = useDisconnect();
+  const error = disconnectError(disconnect.error) ?? (connectError && CONNECT_ERRORS[connectError]);
+  return (
+    <SettingsCard icon={KeyIcon} title="Sign-in">
+      <SettingsLead>Sign in with either. Keep at least one connected.</SettingsLead>
+      <div className="flex flex-col gap-2">
+        {PROVIDERS.map((info) => (
+          <ProviderRow
+            key={info.provider}
+            info={info}
+            connected={user.providers.includes(info.provider)}
+            only={user.providers.length === 1}
+            busy={disconnect.isPending}
+            onDisconnect={() => disconnect.mutate(info.provider)}
+          />
+        ))}
+      </div>
+      {error && <ErrorNote className="mt-2">{error}</ErrorNote>}
+    </SettingsCard>
+  );
+}

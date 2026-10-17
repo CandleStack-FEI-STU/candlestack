@@ -1,15 +1,11 @@
 import type { Market } from '@/api';
-
-// The viewer's own zone from the browser, e.g. 'Europe/Bratislava'.
-export function viewerTimeZone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-}
+import { NEW_YORK, viewerTimeZone } from '@/lib/dates';
 
 // Stocks trade on New York time (the session opens at 09:30 there all year). Crypto trades around
 // the clock with no home exchange, so it shows the viewer's own time. The API sends UTC epoch
 // seconds; without a zone the chart would show UTC.
 export function chartTimeZone(market: Market, viewer = viewerTimeZone()): string {
-  return market === 'stock' ? 'America/New_York' : viewer;
+  return market === 'stock' ? NEW_YORK : viewer;
 }
 
 // Under the chart, so nobody has to guess which clock the axis uses.
@@ -51,9 +47,4 @@ export function crosshairFormatter(timeZone: string) {
     minute: '2-digit',
     hourCycle: 'h23',
   });
-}
-
-// "Data since 27 Jul 2020" on the instrument header.
-export function formatDate(seconds: number, timeZone: string): string {
-  return formatter(timeZone, { year: 'numeric', month: 'short', day: 'numeric' })(seconds);
 }

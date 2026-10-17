@@ -24,7 +24,7 @@ const AAPL: InstrumentDetail = {
 
 describe('InstrumentHeader', () => {
   it('shows the 64 px icon before the name', () => {
-    const html = renderToStaticMarkup(<InstrumentHeader instrument={AAPL} />);
+    const html = renderToStaticMarkup(<InstrumentHeader instrument={AAPL} dateFormat="dmy" />);
     const icon = html.indexOf('<img ');
     expect(icon).toBeGreaterThan(-1);
     expect(html.slice(icon)).toMatch(/^<img [^>]*src="\/api\/v1\/data\/instruments\/stock%3AAAPL\/icon"/);
@@ -33,7 +33,7 @@ describe('InstrumentHeader', () => {
   });
 
   it('keeps the symbol for screen readers on a phone and wraps a long id or name', () => {
-    const html = renderToStaticMarkup(<InstrumentHeader instrument={AAPL} />);
+    const html = renderToStaticMarkup(<InstrumentHeader instrument={AAPL} dateFormat="dmy" />);
     // On a phone the symbol ends the id above the name: its fact is only hidden from the screen.
     const symbol = classes(html, /<div [^>]*><dt[^>]*>Symbol</);
     expect(symbol).toContain('sr-only');
@@ -42,5 +42,12 @@ describe('InstrumentHeader', () => {
     expect(classes(html, /<div [^>]*><p[^>]*>stock:AAPL</)).toContain('min-w-0');
     expect(classes(html, /<p [^>]*>stock:AAPL</)).toContain('break-all');
     expect(classes(html, /<h1 [^>]*>Apple Inc\.</)).toContain('break-words');
+  });
+
+  it("writes the first day in the user's date format, as the day it was in the market's zone", () => {
+    // 2020-07-28 02:00 UTC is still 27 July in New York.
+    const listed = { ...AAPL, available_from: Date.UTC(2020, 6, 28, 2) / 1000 };
+    expect(renderToStaticMarkup(<InstrumentHeader instrument={listed} dateFormat="dmy" />)).toContain('27 Jul 2020');
+    expect(renderToStaticMarkup(<InstrumentHeader instrument={listed} dateFormat="iso" />)).toContain('2020-07-27');
   });
 });

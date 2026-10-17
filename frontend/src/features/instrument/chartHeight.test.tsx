@@ -11,7 +11,7 @@ import { CandleChart } from './CandleChart';
 import { InstrumentCandles } from './InstrumentCandles';
 
 // The theme reads the page's <html>, which a server render has not.
-vi.mock('@/theme', () => ({ useTheme: () => ({ theme: 'dark', toggle: () => undefined }) }));
+vi.mock('@/theme', () => ({ useTheme: () => 'dark' }));
 
 const BTC: InstrumentDetail = {
   id: 'crypto:BTCUSDT',

@@ -19,6 +19,22 @@ export function Bar({ width, faint = false, tone }: BarProps) {
   );
 }
 
+// The Coming soon tag: the accent dot and the words in spaced mono capitals on a pill. The
+// className sizes and places it.
+export function ComingSoonTag({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-[9px] rounded-full border bg-card font-mono font-medium tracking-[0.07em] whitespace-nowrap text-foreground uppercase',
+        className,
+      )}
+    >
+      <AccentDot />
+      Coming soon
+    </span>
+  );
+}
+
 // A part that is not built yet: a faint sketch of what will be there, fading out downwards, and
 // the tag over it. Screen readers only hear the tag. On the home page and in the app's Coming
 // soon dialogs.
@@ -28,10 +44,7 @@ export function ComingSoon({ children }: { children: ReactNode }) {
       <div aria-hidden className="[mask-image:linear-gradient(180deg,#000_20%,transparent_105%)]">
         {children}
       </div>
-      <span className="absolute top-1/2 left-1/2 inline-flex -translate-1/2 items-center gap-[9px] rounded-full border bg-card px-4 py-2 font-mono text-[12.5px]/[normal] font-medium tracking-[0.07em] whitespace-nowrap text-foreground uppercase shadow-[0_8px_24px_rgb(0_0_0/0.08)] dark:shadow-[0_8px_24px_rgb(0_0_0/0.5)]">
-        <AccentDot />
-        Coming soon
-      </span>
+      <ComingSoonTag className="absolute top-1/2 left-1/2 -translate-1/2 px-4 py-2 text-[12.5px]/[normal] shadow-[0_8px_24px_rgb(0_0_0/0.08)] dark:shadow-[0_8px_24px_rgb(0_0_0/0.5)]" />
     </div>
   );
 }

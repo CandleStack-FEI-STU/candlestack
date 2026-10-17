@@ -1,6 +1,10 @@
-import { useCallback, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 
-export type Theme = 'dark' | 'light';
+import type { Theme } from '@/api';
+
+// The theme on the page: data-theme on <html>, kept in localStorage so the next visit starts with
+// it. Signed in, the account's theme (Settings, Appearance) wins and this is its cache, so the
+// page never flashes the other theme while the account's is on its way.
 
 // The same key is read by public/theme.js before the page paints.
 const STORAGE_KEY = 'candlestack-theme';
@@ -9,7 +13,9 @@ function current(): Theme {
   return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
 }
 
-function apply(theme: Theme) {
+const listeners = new Set<() => void>();
+
+export function applyTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme;
   try {
     localStorage.setItem(STORAGE_KEY, theme);
@@ -18,8 +24,6 @@ function apply(theme: Theme) {
   }
   listeners.forEach((listener) => listener());
 }
-
-const listeners = new Set<() => void>();
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
@@ -37,8 +41,6 @@ function subscribe(listener: () => void) {
   };
 }
 
-export function useTheme() {
-  const theme = useSyncExternalStore(subscribe, current);
-  const toggle = useCallback(() => apply(current() === 'dark' ? 'light' : 'dark'), []);
-  return { theme, toggle };
+export function useTheme(): Theme {
+  return useSyncExternalStore(subscribe, current);
 }

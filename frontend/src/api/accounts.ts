@@ -1,11 +1,12 @@
 import { queryOptions } from '@tanstack/react-query';
 
-import { ApiError, apiUrl, get, post } from './client';
+import { ApiError, apiUrl, del, get, patch, post } from './client';
 import type { components } from './schema';
 
 export type Me = components['schemas']['MeOut'];
 export type DeniedSignIn = components['schemas']['DeniedSignInOut'];
 export type Provider = components['schemas']['Provider'];
+type MeUpdate = components['schemas']['MeUpdate'];
 
 // GET /api/v1/me: the signed-in user, or null when this browser has no session. The API answers
 // that with 401 (problem not-signed-in), which is a state of the app, not an error.
@@ -50,13 +51,35 @@ export function signInUrl(provider: Provider, next?: string): string {
   return apiUrl(`/v1/auth/${provider}/start${query}`);
 }
 
-// POST /api/v1/auth/sign-out: ends this browser's session. A 401 says it had already ended:
-// signed out all the same.
-export async function signOut(): Promise<void> {
+// Where the browser goes to add a sign-in method (Settings, Sign-in): the same start with
+// intent=connect. The API returns to `next`, with ?error=taken when the provider's account
+// already signs in to another user, or ?error=failed.
+export function connectUrl(provider: Provider, next: string): string {
+  return apiUrl(`/v1/auth/${provider}/start?${new URLSearchParams({ intent: 'connect', next }).toString()}`);
+}
+
+// A 401 on ending a session says it had already ended: signed out all the same.
+async function endSession(request: () => Promise<void>): Promise<void> {
   try {
-    await post('/v1/auth/sign-out');
+    await request();
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) return;
     throw error;
   }
 }
+
+// POST /api/v1/auth/sign-out: ends this browser's session.
+export const signOut = () => endSession(() => post('/v1/auth/sign-out'));
+
+// POST /api/v1/auth/sign-out-everywhere: ends every session of the user, this one included.
+export const signOutEverywhere = () => endSession(() => post('/v1/auth/sign-out-everywhere'));
+
+// PATCH /api/v1/me: changes the display name; the API trims it and answers with the user.
+export const updateMe = (update: MeUpdate) => patch<Me>('/v1/me', update);
+
+// DELETE /api/v1/me: deletes the account with everything it owns and ends all its sessions.
+export const deleteMe = () => del('/v1/me');
+
+// DELETE /api/v1/me/sign-in-methods/{provider}. The account's last method cannot go: 409 with
+// the problem last-sign-in-method.
+export const disconnectSignInMethod = (provider: Provider) => del(`/v1/me/sign-in-methods/${provider}`);

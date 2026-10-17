@@ -1,8 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ARSEN, NOT_SIGNED_IN, session, stubApi } from '@/test/api';
+import { ARSEN, NOT_SIGNED_IN, sentBody, session, stubApi } from '@/test/api';
 
-import { getMe, signInUrl, signOut } from './accounts';
+import {
+  connectUrl,
+  deleteMe,
+  disconnectSignInMethod,
+  getMe,
+  signInUrl,
+  signOut,
+  signOutEverywhere,
+  updateMe,
+} from './accounts';
 import { ApiError } from './client';
 
 afterEach(() => {
@@ -54,5 +63,58 @@ describe('signOut', () => {
       stubApi({ 'POST /api/v1/auth/sign-out': { status, body: { detail: 'No.' } } });
       await expect(signOut()).rejects.toMatchObject({ status });
     }
+  });
+});
+
+describe('connectUrl', () => {
+  it('starts at the provider with intent=connect and where to come back', () => {
+    expect(connectUrl('google', '/settings/sign-in')).toBe(
+      '/api/v1/auth/google/start?intent=connect&next=%2Fsettings%2Fsign-in',
+    );
+  });
+});
+
+describe('signOutEverywhere', () => {
+  it('posts to its endpoint and reads 401 as signed out already', async () => {
+    const fetch = stubApi({ 'POST /api/v1/auth/sign-out-everywhere': { status: 204 } });
+    await expect(signOutEverywhere()).resolves.toBeUndefined();
+    expect(fetch).toHaveBeenCalledOnce();
+    stubApi({ 'POST /api/v1/auth/sign-out-everywhere': NOT_SIGNED_IN });
+    await expect(signOutEverywhere()).resolves.toBeUndefined();
+  });
+
+  it('passes any other failure on', async () => {
+    stubApi({ 'POST /api/v1/auth/sign-out-everywhere': { status: 503, body: { detail: 'No.' } } });
+    await expect(signOutEverywhere()).rejects.toMatchObject({ status: 503 });
+  });
+});
+
+describe('the account', () => {
+  it('changes the display name and returns the user', async () => {
+    const renamed = { ...ARSEN, display_name: 'Arsen L.' };
+    const fetch = stubApi({ 'PATCH /api/v1/me': { status: 200, body: renamed } });
+    await expect(updateMe({ display_name: 'Arsen L.' })).resolves.toEqual(renamed);
+    expect(sentBody(fetch, 'PATCH /api/v1/me')).toEqual({ display_name: 'Arsen L.' });
+  });
+
+  it('deletes the account', async () => {
+    const fetch = stubApi({ 'DELETE /api/v1/me': { status: 204 } });
+    await expect(deleteMe()).resolves.toBeUndefined();
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('removes a sign-in method, and passes the last one’s 409 on', async () => {
+    stubApi({ 'DELETE /api/v1/me/sign-in-methods/github': { status: 204 } });
+    await expect(disconnectSignInMethod('github')).resolves.toBeUndefined();
+    stubApi({
+      'DELETE /api/v1/me/sign-in-methods/google': {
+        status: 409,
+        body: { type: 'https://candlestack.tech/problems/last-sign-in-method', detail: 'Keep one.' },
+      },
+    });
+    await expect(disconnectSignInMethod('google')).rejects.toMatchObject({
+      status: 409,
+      problem: 'last-sign-in-method',
+    });
   });
 });

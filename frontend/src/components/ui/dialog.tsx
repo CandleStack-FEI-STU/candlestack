@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 
 // shadcn/ui's Dialog with the app design's modal (mockups/app, modalShell): 560 px wide and at
 // most the screen high less 16 px around it, a title row with the close button, a body that
-// scrolls. It fades and scales in from 10 px lower; the backdrop fades in.
+// scrolls, and the buttons in a footer under a line. It fades and scales in from 10 px lower; the backdrop fades in.
 
 function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />;
@@ -93,6 +93,21 @@ function DialogBody({ className, ...props }: React.ComponentProps<'div'>) {
   );
 }
 
+// The buttons under a line, at the right: Cancel, then what the dialog is for.
+function DialogFooter({ className, ...props }: React.ComponentProps<'div'>) {
+  return (
+    <div
+      data-slot="dialog-footer"
+      className={cn('flex items-center justify-end gap-2 border-t px-5 py-3', className)}
+      {...props}
+    />
+  );
+}
+
+function DialogClose({ ...props }: React.ComponentProps<typeof DialogPrimitive.Close>) {
+  return <DialogPrimitive.Close data-slot="dialog-close" {...props} />;
+}
+
 function DialogDescription({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Description>) {
   return (
     <DialogPrimitive.Description
@@ -103,4 +118,14 @@ function DialogDescription({ className, ...props }: React.ComponentProps<typeof 
   );
 }
 
-export { Dialog, DialogBody, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger };
+export {
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+};

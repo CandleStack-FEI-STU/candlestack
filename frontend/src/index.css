@@ -6,6 +6,17 @@
 /* Dark theme: data-theme="dark" on <html>, like on the website. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
+/* Less motion: the system's setting, or the account's Reduce motion (data-motion="reduce" on
+   <html>, src/motion.ts). motion-reduce: classes follow both. */
+@custom-variant motion-reduce {
+  @media (prefers-reduced-motion: reduce) {
+    @slot;
+  }
+  &:where([data-motion='reduce'], [data-motion='reduce'] *) {
+    @slot;
+  }
+}
+
 /*
  * All colors of the app, in one place.
  * The first group is the website palette (website/src/styles/global.css), kept 1:1.
@@ -131,6 +142,23 @@
   /* A link to a section (/#markets) stops below the 56 px sticky header, as in the design. */
   html {
     scroll-padding-top: 72px;
+  }
+  /* Less motion turns off every animation and transition, as in the design: what appears is
+     simply there. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+  [data-motion='reduce'],
+  [data-motion='reduce'] *,
+  [data-motion='reduce'] ::before,
+  [data-motion='reduce'] ::after {
+    animation: none !important;
+    transition: none !important;
   }
   body {
     @apply min-h-screen bg-background text-foreground font-sans antialiased;

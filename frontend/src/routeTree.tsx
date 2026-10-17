@@ -1,9 +1,10 @@
 import type { QueryClient } from '@tanstack/react-query';
-import { createRootRouteWithContext, createRoute, lazyRouteComponent } from '@tanstack/react-router';
+import { Outlet, createRootRouteWithContext, createRoute, lazyRouteComponent, redirect } from '@tanstack/react-router';
 
-import { deniedSignInQueryOptions, instrumentQueryOptions, meQueryOptions } from '@/api';
+import { deniedSignInQueryOptions, instrumentQueryOptions, meQueryOptions, preferencesQueryOptions } from '@/api';
 import { Layout } from '@/components/Layout';
 import { RouteError } from '@/components/RouteStates';
+import { AppearanceSync } from '@/features/preferences';
 import { HomePage } from '@/pages/HomePage';
 import { InstrumentsPage } from '@/pages/InstrumentsPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
@@ -11,6 +12,7 @@ import { SignInPage } from '@/pages/SignInPage';
 import { requireSignedIn, skipSignInWhenSignedIn } from '@/routes/accountGuards';
 import { validateInstrumentSearch } from '@/routes/instrumentSearch';
 import { validateInstrumentsSearch } from '@/routes/instrumentsSearch';
+import { FIRST_SECTION, isSettingsSection, showsPreferences, validateSettingsSearch } from '@/routes/settingsSections';
 import { validateSignInSearch } from '@/routes/signInSearch';
 
 // Every route gets the query client, so a route loader can fetch its data before it renders.
@@ -18,9 +20,16 @@ export type RouterContext = { queryClient: QueryClient };
 
 // Whether someone is signed in decides the public header's buttons, so it is known before the
 // first page shows. A failed answer is no reason to hold back a public page: the header then
-// offers Sign in, and the signed-in pages ask again.
+// offers Sign in, and the signed-in pages ask again. On every page, signed in, the account's theme
+// and Reduce motion apply.
 const rootRoute = createRootRouteWithContext<RouterContext>()({
   beforeLoad: ({ context }) => context.queryClient.prefetchQuery(meQueryOptions()),
+  component: () => (
+    <>
+      <AppearanceSync />
+      <Outlet />
+    </>
+  ),
   notFoundComponent: () => (
     <Layout>
       <NotFoundPage />
@@ -108,13 +117,36 @@ const modelsRoute = createRoute({
   component: lazyRouteComponent(() => import('@/pages/ModelsPage'), 'ModelsPage'),
 });
 
+const openSettingsSection = (section: string) =>
+  redirect({ to: '/settings/$section', params: { section }, replace: true });
+
+// /settings opens its first section.
 const settingsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/settings',
+  beforeLoad: () => {
+    throw openSettingsSection(FIRST_SECTION);
+  },
+});
+
+// /settings/appearance: one section at a time, its tab a link. An unknown section opens the first.
+// The sections with the account's preferences load them first; ?error= says how adding a sign-in
+// method ended.
+const settingsSectionRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/settings/$section',
+  validateSearch: validateSettingsSearch,
+  beforeLoad: ({ params }) => {
+    if (!isSettingsSection(params.section)) throw openSettingsSection(FIRST_SECTION);
+  },
+  loader: ({ context, params }) =>
+    isSettingsSection(params.section) && showsPreferences(params.section)
+      ? context.queryClient.ensureQueryData(preferencesQueryOptions())
+      : undefined,
   component: lazyRouteComponent(() => import('@/pages/SettingsPage'), 'SettingsPage'),
 });
 
 export const routeTree = rootRoute.addChildren([
   publicRoute.addChildren([homeRoute, instrumentsRoute, instrumentRoute, signInRoute]),
-  appRoute.addChildren([dashboardRoute, backtestsRoute, modelsRoute, settingsRoute]),
+  appRoute.addChildren([dashboardRoute, backtestsRoute, modelsRoute, settingsRoute, settingsSectionRoute]),
 ]);

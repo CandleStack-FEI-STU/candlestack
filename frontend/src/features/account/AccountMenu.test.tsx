@@ -39,7 +39,7 @@ describe('AccountMenu', () => {
     const { router } = await renderApp('/dashboard');
     const { user, menu } = await openMenu();
     await user.click(within(menu).getByRole('menuitem', { name: 'Settings' }));
-    expect(router.state.location.pathname).toBe('/settings');
+    expect(router.state.location.pathname).toBe('/settings/profile');
   });
 
   it('signs out: ends the session, forgets the user and goes to the home page', async () => {

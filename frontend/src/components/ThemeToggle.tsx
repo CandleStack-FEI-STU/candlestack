@@ -3,13 +3,13 @@ import { Sun } from 'lucide-react';
 import { GHOST_BUTTON } from '@/components/buttonStyles';
 import { MoonIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
+import { useThemeSetting } from '@/features/preferences';
 import { cn } from '@/lib/utils';
-import { useTheme } from '@/theme';
 
 // .btn.ghost.icon: a 34 px square with the ghost buttons' transparent border, as high as the
-// header's other buttons.
+// header's other buttons. Signed in, the choice is saved to the account too (Settings, Appearance).
 export function ThemeToggle() {
-  const { theme, toggle } = useTheme();
+  const { theme, setTheme } = useThemeSetting();
   const label = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
 
   return (
@@ -17,7 +17,7 @@ export function ThemeToggle() {
       variant="ghost"
       size="icon"
       className={cn('size-[34px]', GHOST_BUTTON)}
-      onClick={toggle}
+      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
       aria-label={label}
       title={label}
     >

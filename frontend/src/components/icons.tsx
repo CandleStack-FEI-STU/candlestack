@@ -1,7 +1,7 @@
 import type { SVGProps } from 'react';
 
 // The design's own line icons where lucide draws a different one (mockups/app: the sidebar, the
-// account menu, the theme toggle). The icons lucide draws the same way (the dashboard's grid, the
+// account menu, the theme toggle, the cards of Settings). The icons lucide draws the same way (the dashboard's grid, the
 // API docs' brackets, sign out's door, the plus, the sun) stay lucide's. Same frame as lucide's:
 // a 24 px grid, 2 px round strokes in the text colour, 24 px unless a class sizes it.
 
@@ -72,6 +72,96 @@ export function MoonIcon(props: IconProps) {
   return (
     <Icon {...props}>
       <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+    </Icon>
+  );
+}
+
+// Settings, Profile: a head over shoulders.
+export function UserIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c1-4 4-6 8-6s7 2 8 6" />
+    </Icon>
+  );
+}
+
+// Settings, Sign-in: a key.
+export function KeyIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="8" cy="14" r="4" />
+      <path d="M11 11l9-9M16 6l3 3M14 8l2 2" />
+    </Icon>
+  );
+}
+
+// Settings, Backtest defaults: three sliders.
+export function SlidersIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" />
+      <circle cx="16" cy="6" r="2" />
+      <circle cx="10" cy="12" r="2" />
+      <circle cx="18" cy="18" r="2" />
+    </Icon>
+  );
+}
+
+// Settings, Appearance: a circle, half of it filled.
+export function AppearanceIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor" />
+    </Icon>
+  );
+}
+
+// Settings, Data and storage: a database drum.
+export function DataIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <ellipse cx="12" cy="5" rx="8" ry="3" />
+      <path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5" />
+      <path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
+    </Icon>
+  );
+}
+
+// Settings, MCP server: a plug.
+export function PlugIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0z" />
+      <path d="M12 18v4" />
+    </Icon>
+  );
+}
+
+// Settings, Account: a warning triangle.
+export function WarnIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 3l10 18H2z" />
+      <path d="M12 10v5M12 18h.01" />
+    </Icon>
+  );
+}
+
+// The directions of a trade (Settings, Backtest defaults): up for long, down for short.
+export function ArrowUpIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 19V5M6 11l6-6 6 6" />
+    </Icon>
+  );
+}
+
+export function ArrowDownIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 5v14M6 13l6 6 6-6" />
     </Icon>
   );
 }

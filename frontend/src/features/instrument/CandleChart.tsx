@@ -125,7 +125,7 @@ function useCandleChart(market: Market, bars: readonly Bar[], onNearLeftEdge: ()
   const nearEdge = useRef(onNearLeftEdge);
   const [hovered, setHovered] = useState<number | null>(null);
   const [awayFromLatest, setAwayFromLatest] = useState(false);
-  const { theme } = useTheme();
+  const theme = useTheme();
 
   // loadOlder changes when a fetch ends or a page arrives. It skips while a page is loading, so
   // if the view still sits at the left edge, ask again now: a user who stopped there gets the

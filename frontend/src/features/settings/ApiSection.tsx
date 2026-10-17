@@ -1,0 +1,42 @@
+import { Code as CodeIcon } from 'lucide-react';
+
+import { ComingSoonTag } from '@/components/ComingSoon';
+import { PlugIcon } from '@/components/icons';
+
+import { Code, SettingsCard, SettingsLead, SettingsRow } from './Card';
+
+// The tag at the right of a card's title (.cs-tag.st-soon): smaller, flat.
+const SOON = <ComingSoonTag className="px-[11px] py-[5px] text-[11px]/[normal]" />;
+
+// API keys and the MCP server, both still to come. The public API works without a key: its docs
+// are on this host, so stage links to stage, and so is the server's address.
+export function ApiSection() {
+  return (
+    <>
+      <SettingsCard icon={CodeIcon} title="API keys" aside={SOON}>
+        <SettingsLead>
+          Run backtests and read results from your own scripts. A key acts as you, so you keep it secret.
+        </SettingsLead>
+        <SettingsRow label="Public API" hint="Instruments and candles, no key needed">
+          <a
+            href="/api/v1/docs"
+            target="_blank"
+            rel="noopener"
+            className="text-[13px] font-medium text-primary underline-offset-2 hover:underline"
+          >
+            API docs
+          </a>
+        </SettingsRow>
+      </SettingsCard>
+      <SettingsCard icon={PlugIcon} title="MCP server" aside={SOON}>
+        <SettingsLead>
+          Use CandleStack from Claude or ChatGPT. Ask about your backtests, start new ones and compare them in a chat.
+          You sign in with your CandleStack account.
+        </SettingsLead>
+        <SettingsRow label="Server URL">
+          <Code>{`${window.location.origin}/mcp`}</Code>
+        </SettingsRow>
+      </SettingsCard>
+    </>
+  );
+}

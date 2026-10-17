@@ -1,14 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  Tick,
-  chartTimeZone,
-  crosshairFormatter,
-  formatDate,
-  tickFormatter,
-  timeZoneNote,
-  viewerTimeZone,
-} from './time';
+import { viewerTimeZone } from '@/lib/dates';
+
+import { Tick, chartTimeZone, crosshairFormatter, tickFormatter, timeZoneNote } from './time';
 
 // 2024-06-03 13:30 UTC: the NYSE open in summer time; 2024-01-08 14:30 UTC: the open in winter.
 const SUMMER_OPEN = Date.UTC(2024, 5, 3, 13, 30) / 1000;
@@ -44,8 +38,7 @@ describe('chart time', () => {
     expect(ticks(SUMMER_OPEN, Tick.Day)).toBe('3 Jun');
   });
 
-  it('gives the crosshair and the header full dates', () => {
+  it('gives the crosshair the full date and time', () => {
     expect(crosshairFormatter('America/New_York')(SUMMER_OPEN)).toBe('3 Jun 2024, 09:30');
-    expect(formatDate(SUMMER_OPEN, 'UTC')).toBe('3 Jun 2024');
   });
 });
