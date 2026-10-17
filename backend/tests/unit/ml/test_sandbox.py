@@ -150,7 +150,7 @@ async def test_a_child_over_its_memory_limit_stops(
 ) -> None:
     # The child's own start and its limits, then 300 MB: more than its data limit.
     greedy = sandbox._CHILD.replace(
-        "from candlestack.ml.inspect import main\nsys.exit(main(sys.argv[2:]))\n",
+        "from candlestack.ml.inspect import main\nsys.exit(main(sys.argv[2:], limits=True))\n",
         "import resource\n"
         "from candlestack.ml.inspect import limit_resources\n"
         "limit_resources(resource, file_max=int(sys.argv[5]))\n"

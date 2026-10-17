@@ -509,11 +509,13 @@ def limit_resources(resource: Any, *, file_max: int) -> None:
         resource.setrlimit(limit, (value, value))
 
 
-def main(argv: Sequence[str]) -> int:
+def main(argv: Sequence[str], *, limits: bool) -> int:
     """The check's process: ``<file> <scratch> <file_max>``; writes one JSON object to
     stdout, ``{"facts": {...}}`` or ``{"failed": {"check": ..., "detail": ...}}``."""
     path, scratch, file_max = Path(argv[0]), Path(argv[1]), int(argv[2])
-    if sys.platform == "linux":
+    # Only the check's own process is limited (`limits`), never one that imports this module
+    # to call it, such as the tests.
+    if limits and sys.platform == "linux":
         import resource  # noqa: PLC0415 (Linux only)
 
         limit_resources(resource, file_max=file_max)

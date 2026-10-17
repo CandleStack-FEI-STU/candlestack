@@ -46,7 +46,7 @@ for name in ("candlestack", "candlestack.ml"):
     package.__path__ = [sys.argv[1] + "/" + name.replace(".", "/")]
     sys.modules[name] = package
 from candlestack.ml.inspect import main
-sys.exit(main(sys.argv[2:]))
+sys.exit(main(sys.argv[2:], limits=True))
 """
 # What the child gets of the environment: no keys or database URL of the app. One thread for
 # the numeric libraries, which would reserve memory per core otherwise.
