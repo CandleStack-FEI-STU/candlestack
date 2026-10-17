@@ -219,32 +219,45 @@ describe('the upload dialog', () => {
     expect(screen.queryByRole('dialog', { name: 'Upload model' })).toBeNull();
   });
 
-  it('aborts the upload when the dialog closes', async () => {
-    let signal: AbortSignal | null | undefined;
+  // Once the file is in, the API checks and keeps it whatever the page does: closing the dialog
+  // lets the upload come to its answer, and a model the API kept joins the page.
+  it('shows the model the API kept after the dialog closed during its checks', async () => {
+    let answer = (_value: { status: number; body: unknown }) => undefined as void;
+    let request: RequestInit | undefined;
     const { dialog, choose, user } = await openUpload({
       [UPLOAD]: (init) => {
-        signal = init?.signal;
-        return new Promise(() => {});
+        request = init;
+        return new Promise((resolve) => {
+          answer = resolve;
+        });
       },
     });
     choose(file('lstm-signals.keras'));
-    await vi.waitFor(() => expect(signal).toBeDefined());
-    expect(signal?.aborted).toBe(false);
+    await vi.waitFor(() => expect(request).toBeDefined());
     await user.click(dialog.getByRole('button', { name: 'Cancel' }));
-    expect(signal?.aborted).toBe(true);
+    await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(request?.signal?.aborted ?? false).toBe(false);
+    expect(screen.getByText('0 models · 0 MB of 100 MB used')).toBeDefined();
+
+    stubApi(modelsAnswer([LSTM]));
+    answer({ status: 201, body: LSTM });
+    expect(await screen.findByText('1 model · 12.4 MB of 100 MB used')).toBeDefined();
+    expect(screen.getAllByRole('article')).toHaveLength(1);
   });
 
-  it('asks for the models again after an abort: the API may have kept the file', async () => {
+  it('asks for the models again when an upload ends without the model: the API may have kept it', async () => {
+    let fail = () => undefined as void;
     const { fetch, dialog, choose, user } = await openUpload({
-      [UPLOAD]: (init) =>
+      [UPLOAD]: () =>
         new Promise((_resolve, reject) => {
-          init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+          fail = () => reject(new TypeError('Failed to fetch'));
         }),
     });
     choose(file('lstm-signals.keras'));
+    await user.click(dialog.getByRole('button', { name: 'Cancel' }));
     const listed = () => fetch.mock.calls.filter(([path]) => path === '/api/v1/models').length;
     const before = listed();
-    await user.click(dialog.getByRole('button', { name: 'Cancel' }));
+    fail();
     await vi.waitFor(() => expect(listed()).toBe(before + 1));
   });
 
