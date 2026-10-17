@@ -1,8 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, screen, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
-import { afterEach, describe, expect, it } from 'vitest';
-import { vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ARSEN, session, stubApi } from '@/test/api';
 import { renderApp } from '@/test/app';
@@ -94,6 +93,24 @@ describe('the sign-in page', () => {
     expect(screen.getByText('In beta, open to people on the beta list')).toBeDefined();
     expect(screen.getByText('We only get your name and email. No password is stored.')).toBeDefined();
     expect(document.title).toBe('Sign in · CandleStack');
+  });
+
+  it('leaves for the provider through the API, to come back to the page asked for', async () => {
+    for (const [name, provider, busy] of [
+      ['Continue with GitHub', 'github', 'Opening GitHub'],
+      ['Continue with Google', 'google', 'Opening Google'],
+    ] as const) {
+      stubApi(session(null));
+      // jsdom cannot leave the page: the stub records where the page sends the browser.
+      const assign = vi.fn();
+      vi.stubGlobal('location', { assign });
+      await renderApp('/signin?next=%2Fmodels');
+      await userEvent.setup().click(screen.getByRole('button', { name }));
+      expect(assign).toHaveBeenCalledExactlyOnceWith(`/api/v1/auth/${provider}/start?next=%2Fmodels`);
+      expect(screen.getByRole('button', { name: busy })).toHaveProperty('disabled', true);
+      cleanup();
+      vi.unstubAllGlobals();
+    }
   });
 
   it('leaves Sign in and Try Backtest out of the header', async () => {

@@ -1,7 +1,8 @@
 import { Link } from '@tanstack/react-router';
-import { Code, House, LogOut, Settings } from 'lucide-react';
+import { Code, LogOut } from 'lucide-react';
 
 import type { Me } from '@/api';
+import { HomeIcon, SettingsIcon } from '@/components/icons';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,13 +27,13 @@ function AccountMenuItems({ user }: { user: Me }) {
       </DropdownMenuLabel>
       <DropdownMenuItem asChild>
         <Link to="/settings">
-          <Settings />
+          <SettingsIcon />
           Settings
         </Link>
       </DropdownMenuItem>
       <DropdownMenuItem asChild>
         <Link to="/">
-          <House />
+          <HomeIcon />
           Home page
         </Link>
       </DropdownMenuItem>

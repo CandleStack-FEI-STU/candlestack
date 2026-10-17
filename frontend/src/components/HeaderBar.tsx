@@ -3,11 +3,6 @@ import type { ReactNode } from 'react';
 
 import { Logo } from '@/brand/Logo';
 
-// The mockups' 34 px header buttons, each with a 1 px border, and the accent one (Try Backtest,
-// New backtest), whose border stays as a rim around the hover color.
-export const HEADER_BUTTON = 'h-[34px] border border-transparent px-3.5';
-export const ACCENT_BUTTON = 'border-primary shadow-none hover:bg-[color-mix(in_srgb,var(--accent)_86%,var(--ink))]';
-
 type Props = { home: '/' | '/dashboard'; homeLabel: string; children: ReactNode };
 
 // The bar on top of both layouts: the logo, leading to the layout's start page, then the layout's

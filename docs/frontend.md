@@ -158,7 +158,9 @@ Sign-in is GitHub or Google only (#208), designed in the design repository: the 
   to `/signin?error=denied` or to `/signin?error=failed`.
 - `GET /api/v1/auth/denied` names the account the beta list just turned away.
 - `POST /api/v1/auth/sign-out` ends the session. The avatar menu's Sign out then sets the user
-  to `null` and goes to the home page.
+  to `null` and goes to the home page; a 401 (the session had already ended) counts the same.
+  Any other failure leaves the session open, so the user stays signed in on the page and can
+  sign out again from the menu.
 
 Routes (`src/routeTree.tsx`): the public pages sit in a pathless layout `_public` with the
 site's header, the signed-in pages in `_app` with the app header. A page's `useSearch` therefore
@@ -186,6 +188,10 @@ The avatar is the user's initials (`initials.ts`), never a provider picture; its
 (`src/features/account/AccountMenu.tsx`) is a shadcn/ui DropdownMenu with Settings, Home page,
 API docs and, in red, Sign out. New backtest opens `ComingSoonDialog`: a shadcn/ui Dialog with
 the home page's Coming soon card over a sketch, for every part of the app that is not built yet.
+Icons are lucide's where lucide draws the design's icon; the others (Backtests, Models,
+Settings, Home page, the moon) are drawn from the mockup in `src/components/icons.tsx`. The
+mockups' button looks (`.btn`, `.btn.ghost`, `.btn.pri`) are class constants on shadcn's Button
+in `src/components/buttonStyles.ts`.
 
 Motion comes from tw-animate-css on the Radix components, as in the design: dialogs fade and
 scale in from 10 px lower, the menu pops in from 4 px above, the sign-in card rises 8 px and a

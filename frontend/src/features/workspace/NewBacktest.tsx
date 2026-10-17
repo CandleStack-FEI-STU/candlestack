@@ -1,7 +1,7 @@
 import { Plus } from 'lucide-react';
 
 import { ComingSoonDialog } from '@/components/ComingSoonDialog';
-import { ACCENT_BUTTON, HEADER_BUTTON } from '@/components/HeaderBar';
+import { ACCENT_BUTTON, BUTTON_SIZES } from '@/components/buttonStyles';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -21,7 +21,7 @@ export function NewBacktest() {
         type="button"
         aria-label="New backtest"
         className={cn(
-          HEADER_BUTTON,
+          BUTTON_SIZES.default,
           ACCENT_BUTTON,
           'has-[>svg]:px-3.5 max-sm:w-[34px] max-sm:px-0 max-sm:has-[>svg]:px-0',
         )}

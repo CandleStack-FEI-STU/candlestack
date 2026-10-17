@@ -24,7 +24,19 @@ describe('ProviderButton', () => {
     expect(html).toContain('<span>Opening GitHub</span>');
     expect(html).toContain('disabled=""');
     expect(classes(html, /<button [^>]*>/)).toContain('disabled:opacity-100');
-    expect(html).toContain('animate-spin');
+    // The design's spinner: a 16 px ring open on the right, turning every 0.7 s, left of the text.
+    expect(classes(html, /<span aria-hidden="true"[^>]*>/)).toEqual(
+      expect.arrayContaining([
+        'absolute',
+        'left-[calc(50%-82px)]',
+        'size-4',
+        'animate-[spin_0.7s_linear_infinite]',
+        'rounded-full',
+        'border-2',
+        'border-current',
+        'border-r-transparent',
+      ]),
+    );
     // The mark keeps its place, so the text does not move.
     expect(html).toContain('<svg viewBox="0 0 24 24" aria-hidden="true" class="size-[18px] invisible">');
   });
@@ -34,7 +46,7 @@ describe('ProviderButton', () => {
     expect(html).toContain('<span>Continue with Google</span>');
     expect(html).toContain('disabled=""');
     expect(classes(html, /<button [^>]*>/)).not.toContain('disabled:opacity-100');
-    expect(html).not.toContain('animate-spin');
+    expect(html).not.toContain('animate-[spin');
   });
 
   it('stops the spinner for people who ask for less motion', () => {

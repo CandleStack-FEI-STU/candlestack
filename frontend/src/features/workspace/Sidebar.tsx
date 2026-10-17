@@ -1,11 +1,13 @@
 import { Link } from '@tanstack/react-router';
-import { Box, LayoutGrid, Settings, TrendingUp } from 'lucide-react';
+import { LayoutGrid } from 'lucide-react';
+
+import { BacktestsIcon, ModelsIcon, SettingsIcon } from '@/components/icons';
 
 const SECTIONS = [
   { to: '/dashboard', label: 'Dashboard', Icon: LayoutGrid },
-  { to: '/backtests', label: 'Backtests', Icon: TrendingUp },
-  { to: '/models', label: 'Models', Icon: Box },
-  { to: '/settings', label: 'Settings', Icon: Settings },
+  { to: '/backtests', label: 'Backtests', Icon: BacktestsIcon },
+  { to: '/models', label: 'Models', Icon: ModelsIcon },
+  { to: '/settings', label: 'Settings', Icon: SettingsIcon },
 ] as const;
 
 // Muted, ink on hover with a surface behind it; the open section ink and medium on a darker

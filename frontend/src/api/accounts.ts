@@ -45,7 +45,13 @@ export function signInUrl(provider: Provider, next?: string): string {
   return apiUrl(`/v1/auth/${provider}/start${query}`);
 }
 
-// POST /api/v1/auth/sign-out: ends this browser's session.
-export function signOut(): Promise<void> {
-  return post('/v1/auth/sign-out');
+// POST /api/v1/auth/sign-out: ends this browser's session. A 401 says it had already ended:
+// signed out all the same.
+export async function signOut(): Promise<void> {
+  try {
+    await post('/v1/auth/sign-out');
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) return;
+    throw error;
+  }
 }

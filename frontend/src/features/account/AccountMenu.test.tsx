@@ -4,7 +4,7 @@ import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { meQueryOptions } from '@/api';
-import { ARSEN, session, stubApi } from '@/test/api';
+import { ARSEN, NOT_SIGNED_IN, session, stubApi } from '@/test/api';
 import { renderApp } from '@/test/app';
 
 afterEach(() => {
@@ -54,6 +54,39 @@ describe('AccountMenu', () => {
     const header = within(screen.getByRole('banner'));
     expect(header.getByRole('link', { name: 'Sign in' })).toBeDefined();
     expect(header.queryByRole('button', { name: 'Account' })).toBeNull();
+  });
+
+  it('signs out also when the session had already ended', async () => {
+    stubApi({ ...session(ARSEN), 'POST /api/v1/auth/sign-out': NOT_SIGNED_IN });
+    const { router, queryClient } = await renderApp('/models');
+    const { user, menu } = await openMenu();
+    await user.click(within(menu).getByRole('menuitem', { name: 'Sign out' }));
+
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe('/'));
+    expect(queryClient.getQueryData(meQueryOptions().queryKey)).toBeNull();
+  });
+
+  it('keeps the user signed in on the page when the API cannot sign out, to try again', async () => {
+    const fetch = stubApi({
+      ...session(ARSEN),
+      'POST /api/v1/auth/sign-out': { status: 503, body: { detail: 'Down for a minute.' } },
+    });
+    const { router, queryClient } = await renderApp('/models');
+    const first = await openMenu();
+    await first.user.click(within(first.menu).getByRole('menuitem', { name: 'Sign out' }));
+
+    await vi.waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith('/api/v1/auth/sign-out', expect.objectContaining({ method: 'POST' })),
+    );
+    await vi.waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
+    expect(router.state.location.pathname).toBe('/models');
+    expect(queryClient.getQueryData(meQueryOptions().queryKey)).toEqual(ARSEN);
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Models');
+
+    stubApi({ ...session(ARSEN), 'POST /api/v1/auth/sign-out': { status: 204 } });
+    const again = await openMenu();
+    await again.user.click(within(again.menu).getByRole('menuitem', { name: 'Sign out' }));
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe('/'));
   });
 
   it('is in the public header too, beside Dashboard', async () => {

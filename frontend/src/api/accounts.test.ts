@@ -43,4 +43,16 @@ describe('signOut', () => {
     await expect(signOut()).resolves.toBeUndefined();
     expect(fetch).toHaveBeenCalledOnce();
   });
+
+  it('reads 401 as signed out already, not as an error', async () => {
+    stubApi({ 'POST /api/v1/auth/sign-out': NOT_SIGNED_IN });
+    await expect(signOut()).resolves.toBeUndefined();
+  });
+
+  it('passes any other failure on', async () => {
+    for (const status of [403, 503]) {
+      stubApi({ 'POST /api/v1/auth/sign-out': { status, body: { detail: 'No.' } } });
+      await expect(signOut()).rejects.toMatchObject({ status });
+    }
+  });
 });

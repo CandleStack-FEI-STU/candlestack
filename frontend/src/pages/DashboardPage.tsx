@@ -1,5 +1,5 @@
+import { PageTitle } from '@/components/PageTitle';
 import { useSignedInUser } from '@/features/account';
-import { WorkspaceTitle } from '@/features/workspace';
 import { usePageTitle } from '@/lib/usePageTitle';
 
 // The start page after signing in. The greeting has the full name and no count under it: the
@@ -8,5 +8,5 @@ import { usePageTitle } from '@/lib/usePageTitle';
 export function DashboardPage() {
   const user = useSignedInUser();
   usePageTitle('Dashboard');
-  return <WorkspaceTitle title={`Welcome, ${user.display_name}`} />;
+  return <PageTitle variant="workspace" title={`Welcome, ${user.display_name}`} />;
 }

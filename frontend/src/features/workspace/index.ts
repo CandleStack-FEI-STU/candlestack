@@ -1,3 +1,2 @@
-// The signed-in app around its pages: the layout with its header and sidebar, and the pages' title row.
+// The signed-in app around its pages: the layout with its header and sidebar.
 export { AppLayout } from './AppLayout';
-export { WorkspaceTitle } from './WorkspaceTitle';

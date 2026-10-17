@@ -2,12 +2,14 @@ import type { ReactNode } from 'react';
 
 import { LogoMark } from '@/brand/LogoMark';
 import { AccentDot } from '@/components/AccentDot';
+import { BUTTON_SIZES, GHOST_BUTTON, OUTLINE_BUTTON } from '@/components/buttonStyles';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 import { ProviderButton } from './ProviderButton';
 import { useProviderSignIn } from './useProviderSignIn';
 
-const TITLE = 'text-[22px]/7 font-semibold tracking-[-0.02em] text-balance';
+const TITLE = 'text-[22px]/7 font-semibold tracking-[-0.02em]';
 const LEAD = 'mt-1.5 text-muted-foreground';
 
 // The one card in the middle of the grid (mockups/home, #/signin): 400 px at most, the logo's
@@ -54,12 +56,12 @@ export function DeniedSignIn({ email, onUseAnotherAccount }: DeniedProps) {
         <Button
           type="button"
           variant="outline"
-          className="h-[34px] px-3.5 shadow-none dark:bg-background dark:hover:bg-accent"
+          className={cn(BUTTON_SIZES.default, OUTLINE_BUTTON)}
           onClick={onUseAnotherAccount}
         >
           Use another account
         </Button>
-        <Button asChild variant="ghost" className="h-[34px] border border-transparent px-3.5 dark:hover:bg-accent">
+        <Button asChild variant="ghost" className={cn(BUTTON_SIZES.default, GHOST_BUTTON)}>
           <a href="https://candlestack.tech" target="_blank" rel="noopener">
             Contact the team
           </a>
