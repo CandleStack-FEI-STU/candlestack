@@ -1,31 +1,20 @@
-"""Fixtures of the experiments integration tests: the app on a real Postgres (emptied before each
-test), and signed-in users made straight in the database with their models and backtests.
+"""Fixtures of the experiments integration tests: the app on a real Postgres, emptied before each
+test (tests/integration/conftest.py), and signed-in users with their models and backtests made
+straight in the database.
 
-Test modules cannot import this file, so the helpers they need hang on the ``Account`` the
-``ada`` and ``bob`` fixtures return.
+Test modules cannot import this file, so the helpers they need hang on the ``BacktestsUser``
+the ``ada`` and ``bob`` fixtures return.
 """
 
-import asyncio
-import hashlib
 import json
 import secrets
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any
 
 import httpx2
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.pool import NullPool
 
-from candlestack.core import Settings
-from candlestack.main import create_app
-
-ORIGIN = {"Origin": "http://testserver"}
 # When the backtests of the tests start: #N an hour after #N-1.
 EPOCH = datetime(2026, 10, 1, 12, tzinfo=UTC)
 SETUP = {
@@ -41,77 +30,20 @@ SETUP = {
 }
 
 
-async def _run_sql(url: str, statement: str, params: dict[str, Any]) -> list[Any]:
-    engine = create_async_engine(url, poolclass=NullPool)
-    try:
-        async with engine.begin() as connection:
-            result = await connection.execute(text(statement), params)
-            return list(result.all()) if result.returns_rows else []
-    finally:
-        await engine.dispose()
-
-
-@pytest.fixture
-def sql(database_url: str) -> Callable[..., list[Any]]:
-    """Runs one statement in the test database: ``sql("SELECT id FROM backtests")``, the rows."""
-    return lambda statement, **params: asyncio.run(_run_sql(database_url, statement, params))
-
-
 @pytest.fixture(autouse=True)
-def empty_tables(sql: Callable[..., list[Any]]) -> None:
-    sql("TRUNCATE users, identities, sessions, user_preferences, models, backtests")
+def _empty_tables(empty_tables: None) -> None:
+    """Every test starts without users."""
 
 
-@pytest.fixture
-def settings(database_url: str, redis_url: str, tmp_path: Path) -> Settings:
-    return Settings(
-        app_env="test",
-        database_url=database_url,
-        redis_url=redis_url,
-        model_storage_dir=tmp_path / "models",
-    )
+class BacktestsUser:
+    """A signed-in user (the shared ``Account``: ``id``, ``email``, ``sql``, ``request``), the
+    backtests API and rows made straight in the tables."""
 
+    def __init__(self, account: Any) -> None:
+        self._account = account
 
-@pytest.fixture
-def app(settings: Settings) -> FastAPI:
-    return create_app(settings)
-
-
-@pytest.fixture
-def client(app: FastAPI) -> Iterator[TestClient]:
-    with TestClient(app, raise_server_exceptions=False) as client:
-        yield client
-
-
-class Account:
-    """A signed-in user: a row in ``users`` and a session whose cookie each request carries."""
-
-    def __init__(self, client: TestClient, sql: Callable[..., list[Any]], user_id: str) -> None:
-        self.id = user_id
-        self.email = f"{user_id}@example.com"
-        self._client = client
-        self._sql = sql
-        self._token = secrets.token_urlsafe(32)
-        now = datetime.now(UTC)
-        sql(
-            "INSERT INTO users VALUES (:id, :name, :email, :now, :now)",
-            id=user_id,
-            name=user_id,
-            email=self.email,
-            now=now,
-        )
-        sql(
-            "INSERT INTO sessions VALUES (:hash, :id, :now, :now, :expires)",
-            hash=hashlib.sha256(self._token.encode()).digest(),
-            id=user_id,
-            now=now,
-            expires=now + timedelta(days=30),
-        )
-
-    def request(self, method: str, url: str, **kwargs: Any) -> httpx2.Response:
-        headers = {**ORIGIN, "Cookie": f"session={self._token}", **kwargs.pop("headers", {})}
-        self._client.cookies.clear()
-        return self._client.request(method, url, headers=headers, **kwargs)
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._account, name)
 
     def backtests(self, **params: Any) -> httpx2.Response:
         return self.request("GET", "/api/v1/backtests", params=params)
@@ -125,7 +57,7 @@ class Account:
     def model(self, name: str, framework: str = "keras") -> str:
         """Adds a model straight in the table (its file does not matter here); its ID."""
         model_id = "mdl_" + secrets.token_hex(5)
-        self._sql(
+        self.sql(
             "INSERT INTO models (id, user_id, name, framework, size_bytes, sha256, parameters, "
             "keras_version, created_at) VALUES (:id, :user_id, :name, :framework, 1000, :sha, 1, "
             "'3.15.1', now())",
@@ -159,7 +91,7 @@ class Account:
         backtest_id = f"bt_{self.id[4:8]}{number:06d}"
         failed = status == "failed"
         created = EPOCH + timedelta(hours=number)
-        self._sql(
+        self.sql(
             "INSERT INTO backtests (id, user_id, number, status, instruments, representation, "
             "model_id, model_name, model_framework, setup, total_return, buy_and_hold_return, "
             "sharpe, max_drawdown, win_rate, num_trades, equity, duration_s, engine_version, "
@@ -192,10 +124,10 @@ class Account:
 
 
 @pytest.fixture
-def ada(client: TestClient, sql: Callable[..., list[Any]]) -> Account:
-    return Account(client, sql, "usr_adaaaaaaaa")
+def ada(account: Callable[[str], Any]) -> BacktestsUser:
+    return BacktestsUser(account("usr_adaaaaaaaa"))
 
 
 @pytest.fixture
-def bob(client: TestClient, sql: Callable[..., list[Any]]) -> Account:
-    return Account(client, sql, "usr_bobbbbbbbb")
+def bob(account: Callable[[str], Any]) -> BacktestsUser:
+    return BacktestsUser(account("usr_bobbbbbbbb"))
