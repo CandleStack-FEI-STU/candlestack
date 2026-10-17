@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { viewerTimeZone, type DateStyle } from '@/lib/dates';
+import { marketTimeZone, viewerTimeZone, type DateStyle } from '@/lib/dates';
 
-import { Tick, crosshairFormatter, marketTimeZone, tickFormatter, timeZoneNote } from './time';
+import { Tick, crosshairFormatter, tickFormatter, timeZoneNote } from './time';
 
 // 2024-06-03 13:30 UTC: the NYSE open in summer time; 2024-01-08 14:30 UTC: the open in winter.
 const SUMMER_OPEN = Date.UTC(2024, 5, 3, 13, 30) / 1000;

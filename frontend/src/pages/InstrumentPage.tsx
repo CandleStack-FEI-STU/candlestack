@@ -2,9 +2,10 @@ import { useSuspenseQuery } from '@tanstack/react-query';
 import { useParams, useSearch } from '@tanstack/react-router';
 
 import { instrumentQueryOptions, instrumentTimeframe } from '@/api';
-import { InstrumentCandles, InstrumentHeader, TimeframeSwitch, marketTimeZone } from '@/features/instrument';
+import { InstrumentCandles, InstrumentHeader, TimeframeSwitch } from '@/features/instrument';
 import { BackToList } from '@/features/instruments';
 import { useDateStyle } from '@/features/preferences';
+import { marketTimeZone } from '@/lib/dates';
 import { usePageTitle } from '@/lib/usePageTitle';
 
 // /instrument/crypto:BTCUSDT?tf=1h. The route loader has already fetched the instrument.

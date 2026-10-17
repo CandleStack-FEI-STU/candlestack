@@ -1,4 +1,4 @@
-import type { Appearance, DateFormat, TimeFormat, TimeZone } from '@/api';
+import type { Appearance, DateFormat, Market, TimeFormat, TimeZone } from '@/api';
 
 // How the user wants dates and times written (Settings, Appearance), as the API stores it and
 // resolved to a zone. Every date the app shows goes through formatDate and formatTime, so a
@@ -9,6 +9,14 @@ export const NEW_YORK = 'America/New_York';
 // The viewer's own zone from the browser, e.g. 'Europe/Bratislava'.
 export function viewerTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+}
+
+// An instrument's zone for a visitor, who has no time zone setting (signed in, the setting
+// decides): the chart's and the list's. Stocks trade on New York time (the session opens at 09:30
+// there all year). Crypto trades around the clock with no home exchange, so it shows the viewer's
+// own time. The API sends UTC epoch seconds; without a zone the chart would show UTC.
+export function marketTimeZone(market: Market, viewer = viewerTimeZone()): string {
+  return market === 'stock' ? NEW_YORK : viewer;
 }
 
 // The zone of the time zone setting: New York (exchange time) or the browser's own.
@@ -86,6 +94,13 @@ export function formatDate(date: Date, { timeZone, dateFormat }: Pick<DateStyle,
 export function formatShortDay(date: Date, { timeZone }: Pick<DateStyle, 'timeZone'>): string {
   const { month, day } = calendarDay(date, timeZone);
   return `${Number(day)} ${monthName(month)}`;
+}
+
+// A month and its year, short for a column: Aug 2017, the month in `timeZone`, the same in every
+// date format.
+export function formatMonth(date: Date, { timeZone }: Pick<DateStyle, 'timeZone'>): string {
+  const { year, month } = calendarDay(date, timeZone);
+  return `${monthName(month)} ${year}`;
 }
 
 // Days since 1970 of a calendar day as calendarDay writes it, to count the days between two.
