@@ -198,10 +198,13 @@ flowchart LR
   the lookup layers, the control flow operations), and a `function` only when it is a public
   function of those modules (an activation, a loss, a metric). So `keras.utils.get_file`
   (CVE-2025-8747) and `keras.config.enable_unsafe_deserialization` (CVE-2025-9906) are
-  refused. What only shapes or reports training (the `compile_config`, the `*_regularizer` and
-  `*_constraint` objects) may also hold the user's own registered objects (`Custom>RankIC`),
-  which the worker replaces with stubs, but nothing else off the allowlist. The detail names
-  the layer. `weights` fails when the weights do not read as HDF5 (from a copy unpacked to the
+  refused. The `*_regularizer` and `*_constraint` objects, which only shape training, may also
+  be the user's own registered objects (`Custom>OrthogonalL2Regularizer`), which the worker
+  replaces with stubs, but nothing else off the allowlist. The model's own `compile_config`
+  (optimizer, loss, metrics) is not checked at all, as the worker removes it before loading:
+  models saved with another backend name its optimizer (`keras.src.backend.torch...`), and
+  users register their own metrics and metric functions there. The `compile_config` of a model
+  nested in the model is checked like the rest. The detail names the layer. `weights` fails when the weights do not read as HDF5 (from a copy unpacked to the
   incoming directory), hold a soft or external link or more than 100 000 objects, or the
   layers hold no weights: `parameters` counts the datasets under `layers`, not the optimizer's
   state. The input shape (one input) and the output shape (`Dense`, `Flatten` and layers that
@@ -209,9 +212,11 @@ flowchart LR
   `tests/fixtures/keras/make_allowlist.py` regenerates the allowlist from a Keras release.
 - **Loading an accepted file** (the worker, next milestone): the check is static, so the worker
   is the second line. It loads with a pinned Keras release that has the fixes of the advisories
-  above (3.15.1 or later, the one the allowlist was generated from),
-  `keras.saving.load_model(path, compile=False, safe_mode=True)`, so `compile_config` is never
-  deserialized; it walks `config.json` against the same allowlist again before loading, and
+  above (3.15.1 or later, the one the allowlist was generated from). It removes the model's
+  `compile_config` from `config.json` (a copy of the file) and loads it with
+  `keras.saving.load_model(path, compile=False, safe_mode=True)`, so nothing of the compile
+  settings, which the check does not look at, can ever be deserialized or run. It walks
+  `config.json` against the same allowlist again before loading, and
   passes `custom_objects` with a no-op stub for every user object under `*_regularizer` and
   `*_constraint` (a regularizer that adds no loss, a constraint that returns its input). It
   runs without network access and with the same kind of limits as the check.

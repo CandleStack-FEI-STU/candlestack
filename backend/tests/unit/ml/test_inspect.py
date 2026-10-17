@@ -469,7 +469,7 @@ def _as_regularizer(payload: Config) -> Callable[[Config], None]:
         "function-without-name",
     ],
 )
-@pytest.mark.parametrize("where", [_as_activation, _as_loss, _as_regularizer])
+@pytest.mark.parametrize("where", [_as_activation, _as_regularizer])
 def test_code_outside_the_allowlist_fails_opens_wherever_it_is(
     payload: Config, shown: str, where: Callable[..., Callable[[Config], None]], tmp_path, scratch
 ) -> None:
@@ -490,7 +490,7 @@ def test_a_tfsm_layer_among_the_layers_fails_opens(tmp_path: Path, scratch: Path
 def test_a_registered_object_is_stubbed_only_where_training_uses_it(tmp_path, scratch) -> None:
     custom = {"module": "metrics", "class_name": "RankIC", "registered_name": "Custom>RankIC"}
 
-    passes = check(with_config(tmp_path, _as_loss(custom)), scratch)
+    passes = check(with_config(tmp_path, _as_regularizer(custom)), scratch)
     detail = opens_fails(with_config(tmp_path, _as_activation(custom)), scratch)
 
     assert passes.parameters == 9325
@@ -524,8 +524,59 @@ def test_a_function_with_a_registered_name_fails_opens(tmp_path: Path, scratch: 
         "registered_name": "Custom>gelu",
     }
 
-    assert opens_fails(with_config(tmp_path, _as_loss(payload)), scratch).startswith(
-        "The model uses custom code (gelu)"
+    assert opens_fails(with_config(tmp_path, _as_activation(payload)), scratch).startswith(
+        'The layer "dense" uses custom code (gelu)'
+    )
+
+
+# What the supervisor's models hold in their compile settings: an optimizer saved with the
+# torch backend, and a metric function of the user's own.
+TORCH_ADAM = {
+    "module": "keras.src.backend.torch.optimizers.torch_adam",
+    "class_name": "Adam",
+    "config": {"name": "adam", "learning_rate": 0.001},
+    "registered_name": "Adam",
+}
+SIGN_ACCURACY = {
+    "module": "builtins",
+    "class_name": "function",
+    "config": "Custom>sign_accuracy",
+    "registered_name": "function",
+}
+
+
+def test_the_compile_settings_of_the_supervisors_models_pass(tmp_path, scratch) -> None:
+    def edit(config: Config) -> None:
+        config["compile_config"].update(
+            optimizer=TORCH_ADAM,
+            loss={"module": "keras.losses", "class_name": "Huber", "config": {}},
+            metrics=[
+                "mse",
+                SIGN_ACCURACY,
+                {"module": "metrics", "class_name": "RankIC", "registered_name": "Custom>RankIC"},
+            ],
+        )
+
+    assert check(with_config(tmp_path, edit), scratch).parameters == 9325
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [GET_FILE, UNSAFE, TFSM_LAYER, DESERIALIZE, OFF_THE_LIST, {"class_name": "__lambda__"}],
+    ids=["get-file", "unsafe-deserialization", "tfsm-layer", "deserialize", "off-list", "lambda"],
+)
+def test_the_compile_settings_are_not_checked(payload: Config, tmp_path, scratch) -> None:
+    # The worker removes them before it loads the file, so nothing in them runs.
+    assert check(with_config(tmp_path, _as_loss(payload)), scratch).parameters == 9325
+
+
+def test_compile_settings_of_a_model_inside_the_model_are_checked(tmp_path, scratch) -> None:
+    # Only the model's own compile settings are removed before loading.
+    def edit(config: Config) -> None:
+        layer(config, "dense")["compile_config"] = {"loss": GET_FILE}
+
+    assert opens_fails(with_config(tmp_path, edit), scratch).startswith(
+        'The layer "dense" uses custom code (get_file)'
     )
 
 

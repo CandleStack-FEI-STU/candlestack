@@ -8,10 +8,12 @@ imports Keras: it reads the JSON and the HDF5 metadata only, and accepts only wh
 be safe. Two checks, in order:
 
 - ``opens``: a well-formed zip of a Functional or Sequential model whose every serialized
-  object is a built-in Keras class or function of the allowlist (``allowlist.py``). What only
-  shapes or reports training (``compile_config``, ``*_regularizer`` and ``*_constraint``) may
-  also hold the user's own registered objects, which the worker replaces with stubs; never a
-  Keras object off the allowlist or an unknown function.
+  object is a built-in Keras class or function of the allowlist (``allowlist.py``). The
+  ``*_regularizer`` and ``*_constraint`` objects, which only shape training, may also be the
+  user's own registered objects, which the worker replaces with stubs; never a Keras object off
+  the allowlist or an unknown function. The model's ``compile_config`` (optimizer, loss,
+  metrics) is not checked at all: the worker removes it before it loads the file, so nothing
+  in it runs.
 - ``weights``: the weights file reads as HDF5 and holds weights of the layers (not only the
   optimizer's state).
 
@@ -54,9 +56,10 @@ _PARAMETERS_MAX = 2**63 - 1
 _KERAS_VERSION_MAX = 32
 
 _MODEL_CLASSES = frozenset({"keras.src.models.functional.Functional", "keras.Sequential"})
-# Keys whose objects only shape or report training: the user's registered objects are stubbed
-# there by the worker.
-_TRAINING_ONLY = "compile_config"
+# The model's compile settings, which the worker removes before it loads the file.
+_COMPILE_CONFIG = "compile_config"
+# Keys whose objects only shape training: the user's registered objects are stubbed there by
+# the worker.
 _TRAINING_ONLY_SUFFIXES = ("_regularizer", "_constraint")
 # Values Keras serializes as objects of its own, without a module.
 _INTERNAL = frozenset(
@@ -270,7 +273,8 @@ def _check_architecture(config: dict[str, Any]) -> None:
             "cannot be checked without running its code. Build the model with keras.Model "
             "(inputs, outputs) or keras.Sequential and upload it again."
         )
-    if (detail := _custom_code(config)) is not None:
+    loaded = {key: value for key, value in config.items() if key != _COMPILE_CONFIG}
+    if (detail := _custom_code(loaded)) is not None:
         raise _opens(detail)
 
 
@@ -279,8 +283,7 @@ def _custom_code(config: dict[str, Any]) -> str | None:
     allowlist, None without any.
 
     Walks the JSON with a stack of its own: a deeply nested file cannot exhaust Python's.
-    Each entry is a node, the layer it belongs to and whether it only shapes or reports
-    training.
+    Each entry is a node, the layer it belongs to and whether it only shapes training.
     """
     stack: list[tuple[Any, str | None, bool]] = [(config, None, False)]
     while stack:
@@ -300,9 +303,7 @@ def _custom_code(config: dict[str, Any]) -> str | None:
                 "Rebuild the model with the built-in Keras layers only and upload it again."
             )
         for key, value in reversed(node.items()):
-            skipped = (
-                training_only or key == _TRAINING_ONLY or key.endswith(_TRAINING_ONLY_SUFFIXES)
-            )
+            skipped = training_only or key.endswith(_TRAINING_ONLY_SUFFIXES)
             if key == "layers" and isinstance(value, list):
                 stack.extend(
                     (item, _shown(_layer_name(item)) or layer, skipped) for item in value[::-1]
