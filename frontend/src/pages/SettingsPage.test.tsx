@@ -138,6 +138,9 @@ describe('Settings', () => {
     const docs = keys.getByRole('link', { name: 'API docs' });
     expect(docs.getAttribute('href')).toBe('/api/v1/docs');
     expect(docs.getAttribute('target')).toBe('_blank');
+    // An <a> of the mockup keeps the browser's underline: the link looks like one without a hover.
+    expect(docs.classList).toContain('underline');
+    expect(docs.classList).toContain('text-primary');
     const mcp = within(screen.getByRole('region', { name: 'MCP server' }));
     expect(mcp.getByText('Coming soon')).toBeDefined();
     expect(mcp.getByText(`${window.location.origin}/mcp`)).toBeDefined();
