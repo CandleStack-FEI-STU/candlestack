@@ -51,6 +51,7 @@ from candlestack.ml.schemas import (
 from candlestack.ml.storage import ModelStorage
 from candlestack.ml.store import ModelStore
 from candlestack.ml.uploads import UploadLocks
+from candlestack.ml.usage import UNUSED, ModelUsageStats
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +117,7 @@ def _split(name: str) -> tuple[str, str]:
     return name[: -len(KERAS_SUFFIX)], name[-len(KERAS_SUFFIX) :]
 
 
-def _out(model: Model) -> ModelOut:
+def _out(model: Model, usage: ModelUsageStats = UNUSED) -> ModelOut:
     return ModelOut(
         id=model.id,
         name=model.name,
@@ -126,9 +127,8 @@ def _out(model: Model) -> ModelOut:
         input_shape=model.input_shape,
         output_shape=model.output_shape,
         starred=model.starred,
-        # Backtests come with the next milestone.
-        backtest_count=0,
-        best_sharpe=None,
+        backtest_count=usage.backtest_count,
+        best_sharpe=usage.best_sharpe,
         created_at=model.created_at,
     )
 
@@ -182,8 +182,9 @@ class ModelsService:
     async def models(self, user_id: str) -> ModelsOut:
         """The user's models, oldest first, and the storage they take."""
         models = await self._store.models(user_id)
+        usage = await self._store.backtest_usage(user_id, [model.id for model in models])
         return ModelsOut(
-            models=[_out(model) for model in models],
+            models=[_out(model, usage.get(model.id, UNUSED)) for model in models],
             usage=StorageUsage(
                 used_bytes=sum(model.size_bytes for model in models),
                 quota_bytes=QUOTA_BYTES,
@@ -327,8 +328,9 @@ class ModelsService:
             model.name = name
         if update.starred is not None:
             model.starred = update.starred
+        usage = await self._store.backtest_usage(user_id, [model.id])
         await self._store.commit()
-        return _out(model)
+        return _out(model, usage.get(model.id, UNUSED))
 
     async def delete(self, user_id: str, model_id: str) -> None:
         """Deletes the user's model, then its file; a file that cannot be removed stays as an

@@ -9,8 +9,9 @@ from pathlib import Path
 
 import pytest
 from redis import Redis
+from sqlalchemy import text
 
-from candlestack.ml import LocalModelStorage
+from candlestack.ml import LocalModelStorage, ModelUsageStats
 from candlestack.ml.schemas import FILE_MAX_BYTES, QUOTA_BYTES
 from candlestack.ml.store import ModelStore
 
@@ -453,6 +454,63 @@ def test_a_file_that_cannot_be_removed_stays_an_orphan(ada, sql, monkeypatch, ca
         caplog.text
     )
     assert "/data/models" not in caplog.text
+
+
+# --- Usage by backtests ----------------------------------------------------------------------
+
+
+class FakeUsage:
+    """Counts backtests of the models it is told about and records what it was asked."""
+
+    def __init__(self, stats: dict[str, ModelUsageStats]) -> None:
+        self.stats = stats
+        self.calls: list[tuple[str, list[str]]] = []
+
+    async def __call__(self, db, user_id, model_ids):
+        assert await db.scalar(text("SELECT 1")) == 1  # the request's session
+        self.calls.append((user_id, list(model_ids)))
+        return {key: value for key, value in self.stats.items() if key in model_ids}
+
+
+def test_the_list_asks_the_usage_once_for_every_model(app, ada) -> None:
+    used = ada.upload(keras_file("functional")).json()
+    unused = ada.upload(keras_file("sequential"), name="sequential.keras").json()
+    usage = FakeUsage({used["id"]: ModelUsageStats(3, 1.12)})
+    app.state.model_usage = usage
+
+    models = ada.models().json()["models"]
+
+    assert [(model["backtest_count"], model["best_sharpe"]) for model in models] == [
+        (3, 1.12),
+        (0, None),
+    ]
+    assert usage.calls == [(ada.id, [used["id"], unused["id"]])]
+
+
+def test_no_models_ask_no_usage(app, ada) -> None:
+    usage = FakeUsage({})
+    app.state.model_usage = usage
+
+    assert ada.models().json()["models"] == []
+    assert usage.calls == []
+
+
+def test_a_change_keeps_the_usage(app, ada) -> None:
+    model = ada.upload(keras_file("functional")).json()
+    app.state.model_usage = FakeUsage({model["id"]: ModelUsageStats(2, None)})
+
+    response = ada.update(model["id"], starred=True)
+
+    assert response.json()["backtest_count"] == 2
+    assert response.json()["best_sharpe"] is None
+
+
+def test_without_backtests_every_model_is_unused(ada) -> None:
+    ada.upload(keras_file("functional"))
+
+    [model] = ada.models().json()["models"]
+
+    assert (model["backtest_count"], model["best_sharpe"]) == (0, None)
 
 
 # --- Deleting the account --------------------------------------------------------------------

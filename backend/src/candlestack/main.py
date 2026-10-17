@@ -39,6 +39,7 @@ from candlestack.ml import (
     ModelStorage,
     keep_incoming_swept,
     models_router,
+    no_usage,
 )
 
 logger = logging.getLogger(__name__)
@@ -166,6 +167,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # and what they return after the commit).
     deletion_hooks: tuple[AccountDeletionHook, ...] = (ModelsAccountDeletion(model_storage),)
     app.state.account_deletion_hooks = deletion_hooks
+    app.state.model_usage = no_usage
     app.add_middleware(RequestContextMiddleware)
     install_error_handlers(app)
     app.include_router(health_router)

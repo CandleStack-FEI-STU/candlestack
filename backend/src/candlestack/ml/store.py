@@ -1,15 +1,19 @@
 """The models table in Postgres: the queries the service needs, in the request's session.
 Nothing here commits; the service does, once a change is complete."""
 
+from collections.abc import Mapping, Sequence
+
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from candlestack.ml.models import Model
+from candlestack.ml.usage import ModelUsage, ModelUsageStats, no_usage
 
 
 class ModelStore:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, backtests: ModelUsage = no_usage) -> None:
         self._db = db
+        self._backtests = backtests
 
     def add(self, model: Model) -> None:
         self._db.add(model)
@@ -41,6 +45,12 @@ class ModelStore:
         return await self._db.scalar(
             select(Model).where(Model.id == model_id, Model.user_id == user_id)
         )
+
+    async def backtest_usage(
+        self, user_id: str, model_ids: Sequence[str]
+    ) -> Mapping[str, ModelUsageStats]:
+        """How much the backtests used the user's models with the IDs."""
+        return await self._backtests(self._db, user_id, model_ids) if model_ids else {}
 
     async def usage(self, user_id: str) -> tuple[int, int]:
         """The bytes the user's models take, and how many they are."""
