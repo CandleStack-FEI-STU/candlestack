@@ -1,5 +1,6 @@
-"""Fixtures of the accounts integration tests: the app on a real Postgres (emptied before each
-test) and a real Redis (flushed before each test), with GitHub and Google mocked by respx.
+"""Fixtures of the accounts integration tests: the app on a real Postgres, emptied before each
+test (tests/integration/conftest.py), and a real Redis (flushed before each test), with GitHub
+and Google mocked by respx.
 
 Test modules cannot import this file, so the helpers they need hang on the ``providers``
 fixture (``Providers``) and on ``Browser``, a TestClient that signs in like a browser.
@@ -15,12 +16,8 @@ import httpx2
 import pytest
 import respx
 from authlib.oauth2.rfc7636 import create_s256_code_challenge
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.pool import NullPool
 
 from candlestack.accounts.oauth import GITHUB_API_URL, GOOGLE_USERINFO_URL
 from candlestack.core import Settings, create_redis
@@ -31,16 +28,6 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 ORIGIN = {"Origin": "http://testserver"}
 # What a browser sends with a navigation from a page of the app, e.g. the Connect link.
 LINK = {"Sec-Fetch-Site": "same-origin"}
-
-
-async def _run_sql(url: str, statement: str) -> list[Any]:
-    engine = create_async_engine(url, poolclass=NullPool)
-    try:
-        async with engine.begin() as connection:
-            result = await connection.execute(text(statement))
-            return list(result.all()) if result.returns_rows else []
-    finally:
-        await engine.dispose()
 
 
 async def _flush(url: str) -> None:
@@ -61,12 +48,6 @@ async def _auth_keys(url: str) -> list[str]:
 
 
 @pytest.fixture
-def sql(database_url: str) -> Callable[[str], list[Any]]:
-    """Runs one statement in the test database: ``sql("SELECT id FROM users")``, the rows."""
-    return lambda statement: asyncio.run(_run_sql(database_url, statement))
-
-
-@pytest.fixture
 def forget_pending(redis_url: str) -> Callable[[], None]:
     """Empties Redis, as if every pending sign-in and denial had expired."""
     return lambda: asyncio.run(_flush(redis_url))
@@ -79,28 +60,22 @@ def auth_keys(redis_url: str) -> Callable[[], list[str]]:
 
 
 @pytest.fixture(autouse=True)
-def empty_stores(sql: Callable[[str], list[Any]], forget_pending: Callable[[], None]) -> None:
-    sql("TRUNCATE users, identities, sessions, user_preferences, models")
+def empty_stores(empty_tables: None, forget_pending: Callable[[], None]) -> None:
     forget_pending()
 
 
 @pytest.fixture
-def settings(database_url: str, redis_url: str) -> Settings:
-    return Settings(
-        app_env="test",
-        database_url=database_url,
-        redis_url=redis_url,
-        oauth_github_client_id="gh-client",
-        oauth_github_client_secret="gh-secret",
-        oauth_google_client_id="google-client",
-        oauth_google_client_secret="google-secret",
-        beta_allowlist=frozenset({"ada@example.com"}),
+def settings(settings: Settings) -> Settings:
+    """The shared settings with GitHub and Google configured and Ada on the beta list."""
+    return settings.model_copy(
+        update={
+            "oauth_github_client_id": "gh-client",
+            "oauth_github_client_secret": SecretStr("gh-secret"),
+            "oauth_google_client_id": "google-client",
+            "oauth_google_client_secret": SecretStr("google-secret"),
+            "beta_allowlist": frozenset({"ada@example.com"}),
+        }
     )
-
-
-@pytest.fixture
-def app(settings: Settings) -> FastAPI:
-    return create_app(settings)
 
 
 class Providers:
@@ -234,12 +209,6 @@ class Browser:
 
     def me(self) -> httpx2.Response:
         return self.get("/api/v1/me")
-
-
-@pytest.fixture
-def client(app: FastAPI) -> Iterator[TestClient]:
-    with TestClient(app) as client:
-        yield client
 
 
 @pytest.fixture

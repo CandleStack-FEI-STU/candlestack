@@ -1,12 +1,13 @@
 # Architecture
 
 The CandleStack backend is one Python service: a FastAPI application that serves the HTTP API
-under `/api`. In this milestone it has four modules: `core` (configuration, logging, errors,
+under `/api`. In this milestone it has five modules: `core` (configuration, logging, errors,
 Redis, Postgres and HTTP clients, CSRF protection, health, Sentry), `data` (market data:
 instrument catalog and candles from Binance and Alpaca, see [data.md](data.md)), `accounts`
-(users, GitHub and Google sign-in, sessions, the beta list, Settings) and `ml` (the models
-users upload: the upload and its checks, the files, the list). Postgres stores what users
-create, accounts, sessions, settings and the models so far, and a volume the files of the
+(users, GitHub and Google sign-in, sessions, the beta list, Settings), `ml` (the models
+users upload: the upload and its checks, the files, the list) and `experiments` (the stored
+backtests: the Backtests page and the Dashboard). Postgres stores what users create,
+accounts, sessions, settings, the models and the backtests so far, and a volume the files of the
 models; market data is not stored: the sources are the truth and Redis is a cache that can be
 lost at any time. The backtest is being built next to them
 (`signals`, `engine`, `metrics` and the `candlestack-bt` command in `cli`, see
@@ -29,7 +30,7 @@ flowchart LR
             caddy -->|"/api/*"| backend["backend<br/>FastAPI on granian :8000"]
             caddy -->|"everything else"| frontend["frontend<br/>static page, Caddy :8080"]
             backend --> redis[("redis<br/>cache only")]
-            backend --> postgres[("postgres<br/>users, sessions, settings, models")]
+            backend --> postgres[("postgres<br/>users, sessions, settings, models, backtests")]
             backend --> models[("models volume<br/>uploaded model files")]
             modelsbackup["models-backup<br/>nightly archive"] -.->|"read-only"| models
         end
@@ -72,6 +73,9 @@ flowchart LR
 | `POST /api/v1/models?name=<file name>` | uploads a model: the body is the file (`application/octet-stream`); checked before it is kept ([Models](#models)); a name the user has already gets a number (`lstm (2).keras`); one upload at a time per user, 100 models at most |
 | `PATCH /api/v1/models/{model_id}` | renames a model (the extension stays; `409 model-name-taken`) or stars and unstars it |
 | `DELETE /api/v1/models/{model_id}` | deletes a model and its file |
+| `GET /api/v1/backtests` | a page of 10 of the user's backtests: search `q` (number, symbol or model name), `show` (`all`, `starred`, `failed`), `model` (a model's name), `sort` and `order`, `page`; with the total, the pages and what the filter panel shows (the counts of all, starred and failed backtests, the models used) ([Backtests](#backtests)) |
+| `PATCH /api/v1/backtests/{backtest_id}` | stars or unstars a backtest |
+| `GET /api/v1/dashboard` | everything the Dashboard shows in one response: the counts, the 6 newest backtests, the 5 best finished ones by Sharpe ratio, return, drawdown and win rate, the 4 best starred ones |
 | `GET /api/v1/docs` | API reference (Scalar); public on prod |
 | `GET /api/v1/openapi.json` | OpenAPI schema; snapshot committed as [openapi.json](openapi.json) |
 
@@ -96,7 +100,8 @@ flowchart LR
   and `upload-timeout` (408: the file did not arrive within 2 minutes), and uses `not-found`
   (404: no model of the user with the ID, another user's included) and `not-signed-in` (401:
   also the account was deleted while its file uploaded). Each `type` URI opens a page on the
-  website that says what the problem means and what the client should do.
+  website that says what the problem means and what the client should do. The experiments
+  module adds none: it uses `not-found` (404: no backtest of the user with the ID).
 - Every response carries `X-Request-ID` and `Server-Timing: app;dur=<ms>` (the app's time
   until the response started), so response times can be measured from outside.
 - Logs: one JSON object per line on stdout (`ts`, `level`, `logger`, `msg`); the access line
@@ -144,8 +149,8 @@ flowchart LR
   is merged into the stored document in one statement (`||`), so changes sent at the same time
   all stay.
 - **Deleting an account**: `DELETE /api/v1/me` deletes the user's row in one transaction; the
-  foreign keys cascade to identities, sessions and preferences. A module that keeps more data
-  of a user (models, backtests) deletes it through an `AccountDeletionHook`
+  foreign keys cascade to identities, sessions, preferences and backtests. A module that keeps
+  more data of a user, such as files (models), deletes it through an `AccountDeletionHook`
   (`async (user_id, db) -> AfterDeletion | None`), which `candlestack.main` puts on
   `app.state.account_deletion_hooks`, in two phases. The hooks run in the deletion's
   transaction before the user's row goes and delete the module's rows; one that raises rolls
@@ -243,6 +248,63 @@ flowchart LR
 - Deleting a model deletes its row, then its file; a file that cannot be removed is a warning
   and stays as an orphan. Another user's model is a 404, never a 403. Every refused upload is
   logged at INFO with the user's ID and the problem's slug, never the file's name.
+- **Usage**: each model of the list says how many backtests used it (`backtest_count`, failed
+  ones included) and the best Sharpe ratio of its finished ones (`best_sharpe`). The backtests
+  are `experiments`', which imports `ml`, so `ml` asks a `ModelUsage`
+  (`async (db, user_id, model_ids) -> {model_id: (count, best Sharpe)}`) that
+  `candlestack.main` puts on `app.state.model_usage`: `experiments.model_usage`, one grouped
+  query for the whole list. Without one (`ml.no_usage`) no model was used.
+
+## Backtests
+
+- **Table** `backtests`, one row per run of a user: the user's own number (`#N`: 1, 2, 3 per
+  user, unique with the user, given under an advisory lock of the user), the status
+  (`finished` or `failed`; `running` comes with the backtest builder, the check constraint
+  allows it already), the instruments in the order chosen (JSONB: market as the market data
+  API names it, `stock` or `crypto`, and symbol), the representation (`renko`, `kagi`,
+  `windows`), the model, the setup (JSONB, the fields of Settings > Backtest defaults), the
+  results (total and buy-and-hold return, Sharpe ratio, max drawdown, win rate, trades, how
+  long the run took, the engine version), a short equity series, the error of a failed one,
+  the star, and when it started and finished. Results are null for a failed backtest.
+- **The equity series** (`equity`: `{strategy, benchmark}`, JSONB) draws the small lines of the
+  Dashboard's starred backtests: the cumulative return of the strategy and of buy and hold as
+  fractions (0 at the start), at most 60 points each, at the same evenly spaced times over the
+  test period. `Backtest.set_equity` checks it on the way in (as many points in both, 2 to 60,
+  finite numbers); the list neither searches nor sorts by it. It is null for a failed backtest
+  and for one stored without it. The seed command draws it as the mockup does (a random walk
+  seeded by the run's number in the mockup, ending exactly at the run's returns), so every run
+  of the command draws the same lines.
+- **Results are fractions** (0.246 is 24.6 %), in the table and the API, as `metrics.stats`
+  gives them; the app formats them. The max drawdown is stored as the fall it is, negative
+  (`metrics.stats` gives it positive): -0.197.
+- **The model** is a foreign key that becomes null when the model is deleted, plus the model's
+  name and framework when the backtest ran. A backtest shows the model's current name while the
+  model exists (a rename shows in its backtests) and the name it ran with once it is gone (the
+  backtest stays, with its results).
+- **The list** (`GET /api/v1/backtests`) searches the number (`#12` or `12`), the symbols and
+  the model's shown name as substrings in any case (`%` and `_` match themselves), filters by
+  show and by a model's name (exact, in any case) and sorts: `default` newest first, or by
+  number, model, return, Sharpe ratio, drawdown, trades or `when` (as number), `asc` or
+  `desc`. Backtests without the sorted value (failed ones) are last in both directions, ties
+  newest first. 10 a page; a page past the last is empty, with the real `pages`. The counts
+  (all, starred, failed) and the models used (by count, then name) ignore the search and the
+  filters: they are the filter panel's. The models used are one per name in any case, as the
+  model filter compares them (spelled as and with the framework of the newest backtest of the
+  name), so each count is what its filter returns.
+- A stored setup and equity series are read without the limits of a new backtest
+  (`BacktestSetupIn`, `EquitySeriesIn`, which check them on the way in), so a limit made
+  tighter later never fails the list.
+- **The Dashboard** (`GET /api/v1/dashboard`) is one response: the counts, the 6 newest
+  backtests (failed ones too), the 5 best finished ones by Sharpe ratio, return, drawdown
+  (the smallest fall first) and win rate, and the 4 starred ones with the best Sharpe ratio
+  (those without one last) with the total starred. When `running` comes with the builder, the
+  newest backtests must leave out the running ones.
+- Users cannot make backtests yet: the builder comes later and will fill the same table. Until
+  then, `python -m candlestack.experiments.seed --email <email>` gives one account the 15
+  backtests of the mockup on stage or local ([infra/README.md](../infra/README.md#test-backtests));
+  it refuses `APP_ENV` `prod`, marks its rows (`seeded`) and replaces only those when run again.
+- A user's backtests go with the account by the foreign key's cascade (no deletion hook: no
+  files). Another user's backtest is a 404.
 
 ## Modules
 
@@ -259,7 +321,7 @@ A module is a subpackage of `candlestack` under `backend/src/candlestack/`.
 | `engine` | started | the backtest loop: candles and signals in, trades and an equity series out; `ENGINE_VERSION` names its rules ([engine.md](engine.md)) |
 | `metrics` | started | unified metrics and charts of one run |
 | `cli` | started | the `candlestack-bt` command: backtests from files on the command line |
-| `experiments` | later | assemble `preprocessing`, `ml`, `signals`, `engine` and `metrics` into runs, store and compare them |
+| `experiments` | now | the stored backtests: the list of the Backtests page, stars, the Dashboard, the models' usage, the seed command; later assembling `preprocessing`, `ml`, `signals`, `engine` and `metrics` into runs |
 | `admin` | later | team-only administration (roles, audit) under `/admin` |
 
 Folders for later modules are created when their work starts, not before; `started` marks
@@ -267,8 +329,10 @@ the ones whose folder exists while their code is being written.
 
 ## Import rules
 
-- Dependencies point one way: `experiments` -> `preprocessing` -> `data` -> `core`, and
-  `ml` -> `accounts` -> `core`. `core` imports no other module.
+- Dependencies point one way: `experiments` -> `ml` -> `accounts` | `data` -> `core`, later
+  with `preprocessing` between `experiments` and `data`. `core` imports no other module. For
+  now `experiments` imports only `ml`, `accounts` and `core`: not `data` and not the backtest
+  modules, as it runs no backtest yet.
 - The backtest modules `signals`, `engine` and `metrics` stand alone: they import no other
   module of the project, not each other, and no server library (`fastapi`, `starlette`,
   `scalar_fastapi`, `granian`, `redis`, `httpx`, `sentry_sdk`, `pydantic_settings`,
@@ -417,6 +481,11 @@ to check that an error reaches Sentry. The Sentry settings are recorded in
 | Preferences as one JSONB document per section of Settings, read through Pydantic models with defaults | a new setting needs no migration of the rows; the models validate both what is saved and what is read |
 | Account deletion through hooks that other modules register in `main.py` | `accounts` stays at the bottom of the import graph, yet the account's rows in other modules go with it in one transaction; data outside Postgres (model files) is the hook's to keep consistent with a rollback |
 | An upload is checked statically (the zip, its JSON and the HDF5 metadata) in a limited child process, never loaded; only what an allowlist generated from Keras names passes | loading a Keras file can run code from it (a `Lambda` layer is pickled Python, a `function` object any Keras function), and the API process must run no user's code and carry no framework; an allowlist fails closed on what a new Keras release or an attacker adds, where a list of what is known to be bad would not; the parsers of zip and HDF5 meet hostile files, so they run where a crash or a leak costs only a failed check |
+| A backtest keeps its model's name and framework of when it ran next to a foreign key that a deleted model sets to null; it shows the model's current name while the model exists | a rename shows in the backtests that used the model, and deleting the model keeps its backtests with their results and a name to show |
+| Results in the API as fractions (0.246), the drawdown negative | the numbers `metrics` computes, unrounded; the app formats them for the reader |
+| The Dashboard in one request | one round trip and one loading state for the page's six panels; each is a small query on the user's index |
+| `ml` gets the models' backtest counts through a `ModelUsage` that `main.py` wires | `ml` stays below `experiments` in the import graph, and the models list still costs one extra query, not one per model |
+| Test backtests only from a seed command, refused on prod, that replaces only its own rows | new accounts start empty and prod never gets test data, yet stage and local show the pages with data until the backtest builder exists |
 | Model files on a local Docker volume behind a `ModelStorage` interface, served only through the API, archived every night for 7 days | no object storage to run or pay for while the files are few and small; Cloudflare R2 can replace the volume without touching the service |
 | Quotas: 50 MB per file, 100 MB and 100 models per user, one upload at a time (Redis), 2 minutes to send it; checked before the file is read (`Content-Length`) and again under a lock of the user | the VM's disk is small and shared by prod and stage; the lock in Redis keeps one user from filling the disk with uploads side by side, the second check stops two uploads from both passing |
 | A dev sign-in for `APP_ENV` `local` and `test` only, fixed in code, not a setting | signed-in pages can be built and tested without OAuth keys; no setting can turn it on in stage or prod |

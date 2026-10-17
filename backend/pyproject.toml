@@ -172,9 +172,14 @@ root_package = "candlestack"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Modules depend downwards only: ml -> accounts and data -> core"
+name = "Modules depend downwards only: experiments -> ml -> accounts and data -> core"
 type = "layers"
-layers = ["candlestack.ml", "candlestack.accounts | candlestack.data", "candlestack.core"]
+layers = [
+    "candlestack.experiments",
+    "candlestack.ml",
+    "candlestack.accounts | candlestack.data",
+    "candlestack.core",
+]
 
 [[tool.importlinter.contracts]]
 name = "Other modules import core only through its package root"
@@ -193,6 +198,12 @@ name = "Other modules import ml only through its package root"
 type = "protected"
 protected_modules = ["candlestack.ml.*"]
 allowed_importers = ["candlestack.ml"]
+
+[[tool.importlinter.contracts]]
+name = "Other modules import experiments only through its package root"
+type = "protected"
+protected_modules = ["candlestack.experiments.*"]
+allowed_importers = ["candlestack.experiments"]
 
 [[tool.importlinter.contracts]]
 name = "Other modules import data only through its package root"
@@ -222,8 +233,8 @@ allowed_importers = ["candlestack.metrics"]
 name = "Only core uses the Sentry SDK"
 type = "forbidden"
 source_modules = [
-    "candlestack.accounts", "candlestack.cli", "candlestack.data", "candlestack.main",
-    "candlestack.ml", "candlestack.openapi",
+    "candlestack.accounts", "candlestack.cli", "candlestack.data", "candlestack.experiments",
+    "candlestack.main", "candlestack.ml", "candlestack.openapi",
 ]
 forbidden_modules = ["sentry_sdk"]
 # They reach Sentry through core (logging, setup_sentry), never by importing it themselves.
@@ -238,7 +249,7 @@ type = "forbidden"
 source_modules = ["candlestack.engine", "candlestack.signals", "candlestack.metrics"]
 forbidden_modules = [
     "candlestack.accounts", "candlestack.core", "candlestack.data", "candlestack.cli",
-    "candlestack.main", "candlestack.ml",
+    "candlestack.experiments", "candlestack.main", "candlestack.ml",
     "candlestack.openapi", "fastapi", "starlette", "scalar_fastapi", "granian", "redis",
     "httpx", "sentry_sdk", "pydantic_settings", "sqlalchemy", "asyncpg", "alembic", "authlib",
 ]
@@ -254,8 +265,8 @@ modules = ["candlestack.engine", "candlestack.signals", "candlestack.metrics"]
 name = "Nothing imports the CLI"
 type = "forbidden"
 source_modules = [
-    "candlestack.accounts", "candlestack.core", "candlestack.data", "candlestack.main",
-    "candlestack.ml", "candlestack.openapi",
+    "candlestack.accounts", "candlestack.core", "candlestack.data", "candlestack.experiments",
+    "candlestack.main", "candlestack.ml", "candlestack.openapi",
 ]
 forbidden_modules = ["candlestack.cli"]
 
@@ -292,8 +303,8 @@ layers = [
 
 # Inside ml, the same: routes, their dependencies, the service, then the queries, the file
 # storage, the upload locks and the runner of the upload check, the check itself (which runs in
-# a child process with the allowlist alone), then the table, the errors and the allowlist, and
-# the bodies at the bottom.
+# a child process with the allowlist alone), then the table, the errors, the allowlist and what
+# the backtests' usage of a model looks like, and the bodies at the bottom.
 [[tool.importlinter.contracts]]
 name = "Inside ml: HTTP -> dependencies -> service -> store, storage and check -> models"
 type = "layers"
@@ -304,8 +315,33 @@ layers = [
     "service",
     "store | storage | uploads | sandbox",
     "inspect",
-    "models | errors | allowlist",
+    "models | errors | allowlist | usage",
     "schemas",
+]
+
+# Inside experiments, the same: routes and the seed command, the routes' dependencies, the
+# service, the queries, then the table and the errors, and the bodies at the bottom.
+[[tool.importlinter.contracts]]
+name = "Inside experiments: HTTP and seed -> dependencies -> service -> store -> models"
+type = "layers"
+containers = ["candlestack.experiments"]
+layers = [
+    "api | seed",
+    "dependencies",
+    "service",
+    "store",
+    "models | errors",
+    "schemas",
+]
+
+# Experiments stores and lists backtests for now: it reads the users and their models, not
+# market data, and runs no backtest yet, so it imports neither data nor the backtest modules.
+[[tool.importlinter.contracts]]
+name = "Experiments imports only ml, accounts and core for now"
+type = "forbidden"
+source_modules = ["candlestack.experiments"]
+forbidden_modules = [
+    "candlestack.data", "candlestack.engine", "candlestack.signals", "candlestack.metrics",
 ]
 
 # The API checks an uploaded model by reading its file, never by loading it: a load could run
@@ -313,7 +349,7 @@ layers = [
 [[tool.importlinter.contracts]]
 name = "The API never imports a deep learning framework"
 type = "forbidden"
-source_modules = ["candlestack.ml", "candlestack.main"]
+source_modules = ["candlestack.experiments", "candlestack.ml", "candlestack.main"]
 forbidden_modules = ["keras", "tensorflow", "torch", "jax"]
 
 # What the sources share lives in sources.base.

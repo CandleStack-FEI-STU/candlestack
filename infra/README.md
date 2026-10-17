@@ -154,6 +154,24 @@ version changes.
 stage and https://ops.candlestack.tech (the team status page) are behind Cloudflare Access: members of the `CandleStack-FEI-STU` GitHub organization sign in with GitHub. prod is
 public. Any new subdomain is team-only by default (Access application `*.candlestack.tech`).
 
+### Test backtests
+
+New accounts start without backtests, and users cannot make any yet. So that the Backtests
+page and the Dashboard have something to show, the tech lead's account on stage gets the 15
+backtests of the app's mockup from a command in the backend image. The account must exist (sign
+in once first). On the VM (SSM shell):
+
+```sh
+sudo docker exec stage-backend-1 python -m candlestack.experiments.seed --email <email>
+```
+
+It prints how many it added and their numbers. Running it again replaces only the backtests it
+added before (they are marked `seeded`), never the account's other backtests, whose numbers it
+continues after. With `APP_ENV` `prod` it refuses to run (exit code 1): prod never gets test
+data. Locally, with the Postgres of `compose.yaml` running and migrated, from `backend/`:
+`uv run python -m candlestack.experiments.seed --email <email>` (or `docker compose exec backend
+python -m candlestack.experiments.seed --email <email>` from the repository root).
+
 ## Monitoring
 
 https://ops.candlestack.tech is a Cloudflare Worker in its own repository,

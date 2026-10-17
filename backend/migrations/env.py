@@ -10,6 +10,7 @@ from sqlalchemy.pool import NullPool
 
 # Each module with tables declares them on Base.metadata when it is imported.
 import candlestack.accounts
+import candlestack.experiments
 import candlestack.ml  # noqa: F401
 from candlestack.core import Base, get_settings, setup_logging
 

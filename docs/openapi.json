@@ -89,6 +89,39 @@
         "title": "AppearanceUpdate",
         "type": "object"
       },
+      "BacktestCounts": {
+        "description": "The user's backtests in all, starred and failed.",
+        "properties": {
+          "all": {
+            "examples": [
+              15
+            ],
+            "title": "All",
+            "type": "integer"
+          },
+          "failed": {
+            "examples": [
+              2
+            ],
+            "title": "Failed",
+            "type": "integer"
+          },
+          "starred": {
+            "examples": [
+              5
+            ],
+            "title": "Starred",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "all",
+          "starred",
+          "failed"
+        ],
+        "title": "BacktestCounts",
+        "type": "object"
+      },
       "BacktestDefaults": {
         "description": "How new backtests start (Settings, Backtest defaults).",
         "properties": {
@@ -224,6 +257,338 @@
         "title": "BacktestDefaultsIn",
         "type": "object"
       },
+      "BacktestInstrument": {
+        "properties": {
+          "market": {
+            "$ref": "#/components/schemas/InstrumentMarket"
+          },
+          "symbol": {
+            "description": "Symbol as the market data API names it",
+            "examples": [
+              "AAPL"
+            ],
+            "title": "Symbol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "market",
+          "symbol"
+        ],
+        "title": "BacktestInstrument",
+        "type": "object"
+      },
+      "BacktestOut": {
+        "description": "A backtest of the user. Returns and rates are fractions: 0.246 is 24.6 %. The results are\nnull for a backtest that did not finish.",
+        "properties": {
+          "buy_and_hold_return": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Return of buying and holding the instruments over the period, a fraction",
+            "examples": [
+              0.682
+            ],
+            "title": "Buy And Hold Return"
+          },
+          "created_at": {
+            "description": "When the backtest started (UTC)",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "duration_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How long the run took, in seconds",
+            "examples": [
+              162.0
+            ],
+            "title": "Duration S"
+          },
+          "equity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EquitySeries"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A short equity series of the strategy and of buy and hold, for a small chart; null for a backtest that did not finish or has none"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What went wrong and what to do, for a failed backtest; else null",
+            "examples": [
+              null
+            ],
+            "title": "Error"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it finished or failed (UTC); null while it runs",
+            "title": "Finished At"
+          },
+          "id": {
+            "description": "Public ID of the backtest",
+            "examples": [
+              "bt_7f3k2m9qx4"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "instruments": {
+            "description": "The instruments, in the order chosen",
+            "items": {
+              "$ref": "#/components/schemas/BacktestInstrument"
+            },
+            "title": "Instruments",
+            "type": "array"
+          },
+          "max_drawdown": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Largest fall from a peak of the equity, a negative fraction (or 0)",
+            "examples": [
+              -0.197
+            ],
+            "title": "Max Drawdown"
+          },
+          "model": {
+            "$ref": "#/components/schemas/UsedModel"
+          },
+          "num_trades": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Number of trades",
+            "examples": [
+              1712
+            ],
+            "title": "Num Trades"
+          },
+          "number": {
+            "description": "The user's own number of the backtest, shown as #N",
+            "minimum": 1.0,
+            "title": "Number",
+            "type": "integer"
+          },
+          "representation": {
+            "$ref": "#/components/schemas/Representation"
+          },
+          "setup": {
+            "$ref": "#/components/schemas/BacktestSetup"
+          },
+          "sharpe": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sharpe ratio, per year",
+            "examples": [
+              0.79
+            ],
+            "title": "Sharpe"
+          },
+          "starred": {
+            "description": "The user starred the backtest",
+            "title": "Starred",
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BacktestStatus"
+          },
+          "total_return": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Return of the strategy over the period, a fraction",
+            "examples": [
+              0.246
+            ],
+            "title": "Total Return"
+          },
+          "win_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Share of the trades that made money, a fraction",
+            "examples": [
+              0.512
+            ],
+            "title": "Win Rate"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "status",
+          "instruments",
+          "representation",
+          "model",
+          "setup",
+          "total_return",
+          "buy_and_hold_return",
+          "sharpe",
+          "max_drawdown",
+          "win_rate",
+          "num_trades",
+          "equity",
+          "duration_s",
+          "error",
+          "starred",
+          "created_at",
+          "finished_at"
+        ],
+        "title": "BacktestOut",
+        "type": "object"
+      },
+      "BacktestSetup": {
+        "description": "The settings a backtest ran with: the fields of Settings, Backtest defaults.",
+        "properties": {
+          "benchmark": {
+            "$ref": "#/components/schemas/SetupBenchmark"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/SetupDirection"
+          },
+          "fees_pct": {
+            "description": "Fees in percent per side",
+            "title": "Fees Pct",
+            "type": "number"
+          },
+          "period_end": {
+            "description": "Last day of the test",
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "description": "First day of the test",
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "slippage_pct": {
+            "description": "Slippage in percent",
+            "title": "Slippage Pct",
+            "type": "number"
+          },
+          "stop_loss_pct": {
+            "description": "Exit when a trade loses this many percent",
+            "title": "Stop Loss Pct",
+            "type": "integer"
+          },
+          "threshold": {
+            "description": "Signal strength to trade",
+            "title": "Threshold",
+            "type": "number"
+          },
+          "timeframe": {
+            "$ref": "#/components/schemas/SetupTimeframe"
+          }
+        },
+        "required": [
+          "timeframe",
+          "period_start",
+          "period_end",
+          "direction",
+          "threshold",
+          "stop_loss_pct",
+          "fees_pct",
+          "slippage_pct",
+          "benchmark"
+        ],
+        "title": "BacktestSetup",
+        "type": "object"
+      },
+      "BacktestShow": {
+        "description": "Which backtests the list shows: all, the starred or the failed ones.",
+        "enum": [
+          "all",
+          "starred",
+          "failed"
+        ],
+        "title": "BacktestShow",
+        "type": "string"
+      },
+      "BacktestSort": {
+        "description": "What the list is sorted by. `default` is newest first (`order` does not apply); `when`\nsorts like `number`. Backtests without the value (failed ones) come last either way, and\nties go by number, newest first.",
+        "enum": [
+          "default",
+          "number",
+          "model",
+          "return",
+          "sharpe",
+          "max_drawdown",
+          "trades",
+          "when"
+        ],
+        "title": "BacktestSort",
+        "type": "string"
+      },
+      "BacktestStatus": {
+        "description": "`finished` (it has results) or `failed` (it has an error); `running` comes with the\nbacktest builder.",
+        "enum": [
+          "running",
+          "finished",
+          "failed"
+        ],
+        "title": "BacktestStatus",
+        "type": "string"
+      },
       "BacktestTimeframe": {
         "description": "Timeframes a new backtest can start with (Settings, Backtest defaults).",
         "enum": [
@@ -235,6 +600,79 @@
         "title": "BacktestTimeframe",
         "type": "string"
       },
+      "BacktestUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "starred": {
+            "description": "Star or unstar the backtest",
+            "title": "Starred",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "starred"
+        ],
+        "title": "BacktestUpdate",
+        "type": "object"
+      },
+      "BacktestsPage": {
+        "properties": {
+          "backtests": {
+            "description": "The page, at most 10 backtests",
+            "items": {
+              "$ref": "#/components/schemas/BacktestOut"
+            },
+            "title": "Backtests",
+            "type": "array"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/BacktestCounts",
+            "description": "All the user's backtests, whatever the filters"
+          },
+          "models": {
+            "description": "Every model the user's backtests used, whatever the filters, the most used first, then by name",
+            "items": {
+              "$ref": "#/components/schemas/ModelCount"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "page": {
+            "description": "The page, from 1",
+            "examples": [
+              1
+            ],
+            "title": "Page",
+            "type": "integer"
+          },
+          "pages": {
+            "description": "Pages of the backtests that match, at least 1",
+            "examples": [
+              2
+            ],
+            "title": "Pages",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Backtests that match the filters",
+            "examples": [
+              15
+            ],
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "backtests",
+          "total",
+          "page",
+          "pages",
+          "counts",
+          "models"
+        ],
+        "title": "BacktestsPage",
+        "type": "object"
+      },
       "Benchmark": {
         "description": "What each backtest is measured against: buy and hold of its own instruments, or an ETF.",
         "enum": [
@@ -245,6 +683,47 @@
         ],
         "title": "Benchmark",
         "type": "string"
+      },
+      "BestBacktests": {
+        "description": "The 5 best finished backtests by each result, the best first (for `max_drawdown` the\nsmallest fall).",
+        "properties": {
+          "max_drawdown": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestOut"
+            },
+            "title": "Max Drawdown",
+            "type": "array"
+          },
+          "sharpe": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestOut"
+            },
+            "title": "Sharpe",
+            "type": "array"
+          },
+          "total_return": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestOut"
+            },
+            "title": "Total Return",
+            "type": "array"
+          },
+          "win_rate": {
+            "items": {
+              "$ref": "#/components/schemas/BacktestOut"
+            },
+            "title": "Win Rate",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sharpe",
+          "total_return",
+          "max_drawdown",
+          "win_rate"
+        ],
+        "title": "BestBacktests",
+        "type": "object"
       },
       "CandlesMeta": {
         "properties": {
@@ -475,6 +954,36 @@
         "title": "CandlesOut",
         "type": "object"
       },
+      "DashboardOut": {
+        "description": "Everything the Dashboard shows, in one response.",
+        "properties": {
+          "best": {
+            "$ref": "#/components/schemas/BestBacktests"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/BacktestCounts"
+          },
+          "last": {
+            "description": "The 6 newest backtests, failed ones included",
+            "items": {
+              "$ref": "#/components/schemas/BacktestOut"
+            },
+            "title": "Last",
+            "type": "array"
+          },
+          "starred": {
+            "$ref": "#/components/schemas/StarredBacktests"
+          }
+        },
+        "required": [
+          "counts",
+          "last",
+          "best",
+          "starred"
+        ],
+        "title": "DashboardOut",
+        "type": "object"
+      },
       "DateFormat": {
         "description": "`dmy` 12 Oct 2024, `iso` 2024-10-12, `dot` 12.10.2024.",
         "enum": [
@@ -514,6 +1023,49 @@
         ],
         "title": "Direction",
         "type": "string"
+      },
+      "EquitySeries": {
+        "description": "The equity of the strategy and of buy and hold over the test period, for a small chart:\ncumulative returns as fractions (0 at the start; 0.246 is 24.6 %), sampled at evenly spaced\ntimes from the first day to the last, the same times in both.",
+        "properties": {
+          "benchmark": {
+            "description": "Cumulative return of buying and holding the instruments, as many points",
+            "examples": [
+              [
+                0.0,
+                0.12,
+                0.35,
+                0.682
+              ]
+            ],
+            "items": {
+              "type": "number"
+            },
+            "title": "Benchmark",
+            "type": "array"
+          },
+          "strategy": {
+            "description": "Cumulative return of the strategy, 2 to 60 points",
+            "examples": [
+              [
+                0.0,
+                0.031,
+                0.118,
+                0.246
+              ]
+            ],
+            "items": {
+              "type": "number"
+            },
+            "title": "Strategy",
+            "type": "array"
+          }
+        },
+        "required": [
+          "strategy",
+          "benchmark"
+        ],
+        "title": "EquitySeries",
+        "type": "object"
       },
       "Exchange": {
         "description": "Where the instruments of the catalog trade: for stocks the listing exchanges Alpaca\nreports for tradable US equities without OTC (docs/data.md, \"Alpaca\"), for crypto pairs\nBinance.",
@@ -973,6 +1525,15 @@
         "title": "InstrumentItemOut",
         "type": "object"
       },
+      "InstrumentMarket": {
+        "description": "The market of an instrument, as the market data API names it.",
+        "enum": [
+          "crypto",
+          "stock"
+        ],
+        "title": "InstrumentMarket",
+        "type": "string"
+      },
       "InstrumentSearchOut": {
         "properties": {
           "count": {
@@ -1134,6 +1695,40 @@
           "display_name"
         ],
         "title": "MeUpdate",
+        "type": "object"
+      },
+      "ModelCount": {
+        "description": "A model the user's backtests used, by the name they show for it.",
+        "properties": {
+          "count": {
+            "description": "Backtests that used it",
+            "examples": [
+              9
+            ],
+            "title": "Count",
+            "type": "integer"
+          },
+          "framework": {
+            "examples": [
+              "keras"
+            ],
+            "title": "Framework",
+            "type": "string"
+          },
+          "name": {
+            "examples": [
+              "blesk-novol-8.keras"
+            ],
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "framework",
+          "count"
+        ],
+        "title": "ModelCount",
         "type": "object"
       },
       "ModelOut": {
@@ -1392,6 +1987,46 @@
         "title": "Provider",
         "type": "string"
       },
+      "Representation": {
+        "description": "What the model reads: Renko bricks, a Kagi line or time windows of candles.",
+        "enum": [
+          "renko",
+          "kagi",
+          "windows"
+        ],
+        "title": "Representation",
+        "type": "string"
+      },
+      "SetupBenchmark": {
+        "description": "What a backtest is measured against: buy and hold of its own instruments, or an ETF.",
+        "enum": [
+          "bh",
+          "SPY",
+          "QQQ",
+          "DIA"
+        ],
+        "title": "SetupBenchmark",
+        "type": "string"
+      },
+      "SetupDirection": {
+        "enum": [
+          "long",
+          "both"
+        ],
+        "title": "SetupDirection",
+        "type": "string"
+      },
+      "SetupTimeframe": {
+        "description": "Timeframes a backtest runs on (those of Settings, Backtest defaults).",
+        "enum": [
+          "5m",
+          "30m",
+          "1h",
+          "1d"
+        ],
+        "title": "SetupTimeframe",
+        "type": "string"
+      },
       "SignInIntent": {
         "enum": [
           "sign-in",
@@ -1437,6 +2072,14 @@
         ],
         "title": "SignInMethodOut",
         "type": "object"
+      },
+      "SortOrder": {
+        "enum": [
+          "asc",
+          "desc"
+        ],
+        "title": "SortOrder",
+        "type": "string"
       },
       "SourceHealthOut": {
         "properties": {
@@ -1520,6 +2163,32 @@
         "title": "SourcesHealthOut",
         "type": "object"
       },
+      "StarredBacktests": {
+        "properties": {
+          "backtests": {
+            "description": "The 4 starred backtests with the best Sharpe ratio, those without one last",
+            "items": {
+              "$ref": "#/components/schemas/BacktestOut"
+            },
+            "title": "Backtests",
+            "type": "array"
+          },
+          "total": {
+            "description": "All the starred backtests",
+            "examples": [
+              5
+            ],
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "backtests",
+          "total"
+        ],
+        "title": "StarredBacktests",
+        "type": "object"
+      },
       "StorageUsage": {
         "properties": {
           "file_max_bytes": {
@@ -1594,6 +2263,49 @@
         ],
         "title": "Timeframe",
         "type": "string"
+      },
+      "UsedModel": {
+        "description": "The model a backtest used.",
+        "properties": {
+          "framework": {
+            "description": "Framework of the model file when the backtest ran",
+            "examples": [
+              "keras"
+            ],
+            "title": "Framework",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Public ID of the model; null once the model was deleted",
+            "examples": [
+              "mdl_7f3k2m9qx4"
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "description": "The model's current name, or the name it had when the backtest ran once it was deleted",
+            "examples": [
+              "blesk-novol-8.keras"
+            ],
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "framework"
+        ],
+        "title": "UsedModel",
+        "type": "object"
       }
     }
   },
@@ -1824,6 +2536,255 @@
         "summary": "Start Sign In",
         "tags": [
           "accounts"
+        ]
+      }
+    },
+    "/api/v1/backtests": {
+      "get": {
+        "description": "A page of the user's backtests that match the search and the filters, and what the\nfilter panel shows: the counts of all, starred and failed backtests and every model the\nbacktests used. A page past the last one is empty.",
+        "operationId": "list_backtests_api_v1_backtests_get",
+        "parameters": [
+          {
+            "description": "Search: part of the number (`#12` or `12`), of an instrument's symbol or of the model's name, in any case",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "description": "Search: part of the number (`#12` or `12`), of an instrument's symbol or of the model's name, in any case",
+              "examples": [
+                "aapl"
+              ],
+              "maxLength": 100,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "description": "All, the starred or the failed backtests",
+            "in": "query",
+            "name": "show",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/BacktestShow",
+              "default": "all",
+              "description": "All, the starred or the failed backtests"
+            }
+          },
+          {
+            "description": "Only the backtests of the model with this name, in any case",
+            "in": "query",
+            "name": "model",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only the backtests of the model with this name, in any case",
+              "examples": [
+                "blesk-novol-8.keras"
+              ],
+              "title": "Model"
+            }
+          },
+          {
+            "description": "What to sort by",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/BacktestSort",
+              "default": "default",
+              "description": "What to sort by"
+            }
+          },
+          {
+            "description": "Direction of the sort",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SortOrder",
+              "default": "desc",
+              "description": "Direction of the sort"
+            }
+          },
+          {
+            "description": "The page, from 1, of 10 backtests",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "description": "The page, from 1, of 10 backtests",
+              "maximum": 100000,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestsPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not signed in (`not-signed-in`)."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "List Backtests",
+        "tags": [
+          "backtests"
+        ]
+      }
+    },
+    "/api/v1/backtests/{backtest_id}": {
+      "patch": {
+        "description": "Stars or unstars the backtest.",
+        "operationId": "update_backtest_api_v1_backtests__backtest_id__patch",
+        "parameters": [
+          {
+            "description": "Public ID of the backtest",
+            "in": "path",
+            "name": "backtest_id",
+            "required": true,
+            "schema": {
+              "description": "Public ID of the backtest",
+              "examples": [
+                "bt_7f3k2m9qx4"
+              ],
+              "title": "Backtest Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BacktestUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not signed in (`not-signed-in`)."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request does not come from the app's own pages (`cross-origin-request`)."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The user has no backtest with this ID (`not-found`)."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Update Backtest",
+        "tags": [
+          "backtests"
+        ]
+      }
+    },
+    "/api/v1/dashboard": {
+      "get": {
+        "description": "Everything the Dashboard shows: the counts of the user's backtests, the newest ones,\nthe best finished ones by Sharpe ratio, return, drawdown and win rate, and the best\nstarred ones.",
+        "operationId": "dashboard_api_v1_dashboard_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not signed in (`not-signed-in`)."
+          }
+        },
+        "summary": "Dashboard",
+        "tags": [
+          "backtests"
         ]
       }
     },
