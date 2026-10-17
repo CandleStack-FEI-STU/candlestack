@@ -7,7 +7,7 @@ sample.
 The ops Worker (github.com/CandleStack-FEI-STU/ops) fetches the snapshot every minute through
 Cloudflare Access and keeps all history, so the status page stays up when this server is
 down. The agent stores nothing and holds no secrets. Its JSON is a contract with that repo
-(schema 1, README "Agent contract"): change both together.
+(schema 2, README "Agent contract"): change both together.
 
 Standard library only, so the image stays small and there is nothing to update.
 """
@@ -26,7 +26,7 @@ from pathlib import Path
 INTERVAL = int(os.environ.get("INTERVAL", "60"))
 DOCKER_URL = os.environ.get("DOCKER_URL", "http://socket-proxy:2375")
 VM_LABEL = os.environ.get("VM_LABEL", "")
-SCHEMA = 1
+SCHEMA = 2
 # Environments first, then the services that run them.
 ORDER = {"prod": 0, "stage": 1, "edge": 2, "agent": 3}
 
@@ -130,8 +130,6 @@ def sample():
         "sampled_at": int(time.time()),
         "host": host_metrics(),
         "containers": sorted(containers, key=sort_key),
-        # Schema 1 requires the list (ops checks it); the server runs no previews any more.
-        "previews": [],
     }
 
 
