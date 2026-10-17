@@ -6,15 +6,15 @@ import { CandleChart } from './CandleChart';
 
 // The chart draws on a canvas, which jsdom has not: a stand-in keeps what the chart was told.
 const options = vi.hoisted(() => [] as { localization?: { timeFormatter?: (time: number) => string } }[]);
+const timeScale = vi.hoisted(() => ({
+  subscribeVisibleLogicalRangeChange: vi.fn(),
+  getVisibleLogicalRange: () => null,
+  setVisibleLogicalRange: vi.fn(),
+  scrollToRealTime: vi.fn(),
+}));
 
 vi.mock('lightweight-charts', () => {
   const series = () => ({ applyOptions: vi.fn(), setData: vi.fn(), priceScale: () => ({ applyOptions: vi.fn() }) });
-  const timeScale = {
-    subscribeVisibleLogicalRangeChange: vi.fn(),
-    getVisibleLogicalRange: () => null,
-    setVisibleLogicalRange: vi.fn(),
-    scrollToRealTime: vi.fn(),
-  };
   return {
     CandlestickSeries: 'Candlestick',
     HistogramSeries: 'Histogram',
@@ -32,11 +32,13 @@ vi.mock('lightweight-charts', () => {
 afterEach(() => {
   cleanup();
   options.length = 0;
+  timeScale.setVisibleLogicalRange.mockClear();
 });
 
 // 2024-06-03 13:30 UTC, the NYSE open in summer time.
 const SUMMER_OPEN = Date.UTC(2024, 5, 3, 13, 30) / 1000;
 const BARS = [{ time: SUMMER_OPEN, open: 1, high: 2, low: 0.5, close: 1.5, volume: 10 }];
+const STYLE = { timeZone: 'UTC', dateFormat: 'dmy', timeFormat: '24' } as const;
 
 // What the crosshair shows now: the last time formatter the chart was given.
 function crosshairText(): string | undefined {
@@ -61,5 +63,25 @@ describe('the candle chart', () => {
 
     rerender(chart('Europe/Bratislava', 'iso', '12'));
     expect(crosshairText()).toBe('2024-06-03, 3:30 PM');
+  });
+
+  it('opens on the newest 120 candles, as the mockup does', () => {
+    const DAY = 86_400;
+    const days = (count: number) =>
+      Array.from({ length: count }, (_, i) => ({ time: i * DAY, open: 1, high: 2, low: 0.5, close: 1.5, volume: 10 }));
+    const chart = (bars: ReturnType<typeof days>) => (
+      <CandleChart bars={bars} market="crypto" dateStyle={STYLE} onNearLeftEdge={() => undefined} />
+    );
+
+    const { rerender } = render(chart(days(500)));
+    expect(timeScale.setVisibleLogicalRange.mock.calls).toEqual([[{ from: 379.5, to: 499.5 }]]);
+    // New candles later leave the view where the user has it.
+    rerender(chart(days(501)));
+    expect(timeScale.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
+    cleanup();
+
+    // Fewer fill the chart at the default spacing.
+    render(chart(days(50)));
+    expect(timeScale.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
   });
 });
