@@ -319,6 +319,26 @@ describe('Rename model', () => {
   });
 });
 
+describe('the dialogs of a model', () => {
+  it('give the focus back to the button that opened them when they close', async () => {
+    stubApi({ ...session(ARSEN), ...modelsAnswer([TSMIXER, LSTM]) });
+    await renderApp('/models');
+    await screen.findByText('2 models · 17.2 MB of 100 MB used');
+    const user = userEvent.setup();
+    for (const [name, dialog] of [
+      ['Rename my-tsmixer.keras', 'Rename model'],
+      ['Delete my-tsmixer.keras', 'Delete my-tsmixer.keras?'],
+    ] as const) {
+      const opener = () => tile('my-tsmixer.keras').getByRole('button', { name });
+      await user.click(opener());
+      await screen.findByRole('dialog', { name: dialog });
+      await user.keyboard('{Escape}');
+      await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(document.activeElement).toBe(opener());
+    }
+  });
+});
+
 describe('Delete model', () => {
   async function openDelete(item = TSMIXER) {
     stubApi({ ...session(ARSEN), ...modelsAnswer([TSMIXER, LSTM, DRAFT]) });

@@ -31,12 +31,49 @@ function DialogOverlay({ className, ...props }: React.ComponentProps<typeof Dial
   );
 }
 
-function DialogContent({ className, children, ...props }: React.ComponentProps<typeof DialogPrimitive.Content>) {
+// Tells `onMount` the element with the focus as the dialog's content mounts: a layout effect, so
+// before anything inside (the Rename dialog's field, say) takes the focus.
+function NoteOpener({ onMount }: { onMount: (element: HTMLElement) => void }) {
+  React.useLayoutEffect(() => {
+    if (document.activeElement instanceof HTMLElement) onMount(document.activeElement);
+  }, [onMount]);
+  return null;
+}
+
+// Radix gives the focus back to the dialog's DialogTrigger on closing. Most dialogs of the app
+// are opened by a button of their own (a row of a list, a quick action) without one, and the
+// focus would fall to the page: it goes back to the element that had it when the dialog opened,
+// while that is still on the page. Only the first element noted per opening counts, as React's
+// strict mode mounts the content twice.
+function useFocusReturn(onCloseAutoFocus?: (event: Event) => void) {
+  const opener = React.useRef<HTMLElement | null>(null);
+  const noteOpener = React.useCallback((element: HTMLElement) => {
+    opener.current ??= element;
+  }, []);
+  const returnFocus = (event: Event) => {
+    onCloseAutoFocus?.(event);
+    const element = opener.current;
+    opener.current = null;
+    if (event.defaultPrevented || !element?.isConnected) return;
+    event.preventDefault();
+    element.focus();
+  };
+  return { noteOpener, returnFocus };
+}
+
+function DialogContent({
+  className,
+  children,
+  onCloseAutoFocus,
+  ...props
+}: React.ComponentProps<typeof DialogPrimitive.Content>) {
+  const { noteOpener, returnFocus } = useFocusReturn(onCloseAutoFocus);
   return (
     <DialogPrimitive.Portal data-slot="dialog-portal">
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
+        onCloseAutoFocus={returnFocus}
         className={cn(
           'fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100vh-32px)] w-[min(560px,calc(100%-32px))] -translate-1/2 flex-col rounded-xl border bg-background text-sm/[1.5] shadow-[0_20px_50px_var(--shadow)] outline-none supports-[height:100dvh]:max-h-[calc(100dvh-32px)]',
           'duration-220 ease-[cubic-bezier(0.2,0.8,0.2,1)] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-97 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-97 data-[state=open]:slide-in-from-bottom-[10px] motion-reduce:animate-none',
@@ -44,6 +81,7 @@ function DialogContent({ className, children, ...props }: React.ComponentProps<t
         )}
         {...props}
       >
+        <NoteOpener onMount={noteOpener} />
         {children}
       </DialogPrimitive.Content>
     </DialogPrimitive.Portal>

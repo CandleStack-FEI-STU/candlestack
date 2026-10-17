@@ -333,6 +333,29 @@ describe('the Backtests page', () => {
     expect(within(dialog).getByText('Coming soon')).toBeDefined();
   });
 
+  it.each([
+    ['Escape', (user: ReturnType<typeof userEvent.setup>) => user.keyboard('{Escape}')],
+    [
+      'its close button',
+      (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole('button', { name: 'Close' })),
+    ],
+    [
+      'a click beside it',
+      (user: ReturnType<typeof userEvent.setup>) =>
+        user.click(document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]')!),
+    ],
+  ])('gives the focus back to the row that opened a backtest, closed with %s', async (_, close) => {
+    stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer(PAGE) });
+    await renderApp('/backtests');
+    const user = userEvent.setup();
+    const opener = await screen.findByRole('button', { name: 'Backtest #10' });
+    await user.click(opener);
+    await screen.findByRole('dialog', { name: 'Backtest #10' });
+    await close(user);
+    await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Backtest #10' }));
+  });
+
   it('pages through the backtests', async () => {
     stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer({ ...PAGE, pages: 2, total: 13 }) });
     await renderApp('/backtests');
