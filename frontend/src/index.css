@@ -37,6 +37,9 @@
   --icon-ring: rgb(20 20 20 / 0.09);
   --icon-fallback: #57534e;
 
+  /* The shadow under what floats over the page: menus, dialogs, the sign-in card (#208). */
+  --shadow: rgb(0 0 0 / 0.08);
+
   --radius: 0.5rem;
   color-scheme: light;
 }
@@ -59,6 +62,8 @@
 
   /* Solid: a translucent white would leave a light rim around the white tile. */
   --icon-ring: #33383d;
+
+  --shadow: rgb(0 0 0 / 0.5);
 
   color-scheme: dark;
 }

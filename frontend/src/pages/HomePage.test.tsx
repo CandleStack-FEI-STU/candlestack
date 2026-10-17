@@ -46,14 +46,10 @@ describe('HomePage', () => {
     expect(section(html, 'markets')).toContain('>Browse instruments</a>');
   });
 
-  it('shows Try Backtest as a button that does nothing yet, not a link', async () => {
+  it('leads Try Backtest to the sign-in page', async () => {
     const html = await render();
     expect(html.match(/>Try Backtest</g)).toHaveLength(1);
-    // Its attributes without the classes, whose disabled: styles are not the attribute.
-    const button = (/<button [^>]*>Try Backtest<\/button>/.exec(html)?.[0] ?? '').replace(/class="[^"]*"/, '');
-    expect(button).toContain('type="button"');
-    expect(button).not.toContain('disabled');
-    expect(html).not.toContain('<form');
+    expect(html).toMatch(/<a [^>]*href="\/signin"[^>]*>Try Backtest<\/a>/);
   });
 
   it('marks compare and experiments as coming soon, over sketches screen readers skip', async () => {

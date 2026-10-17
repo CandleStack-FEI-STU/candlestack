@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError, get, parseRetryAfter } from './client';
+import { ApiError, get, parseRetryAfter, post } from './client';
 
-function answer(status: number, body: string, headers: Record<string, string> = {}) {
+function answer(status: number, body: string | null, headers: Record<string, string> = {}) {
   vi.stubGlobal(
     'fetch',
     vi.fn(() => Promise.resolve(new Response(body, { status, headers }))),
@@ -79,6 +79,31 @@ describe('get', () => {
     const error = await errorOf(get('/health'));
     expect(error.status).toBe(200);
     expect(error.message).toMatch(/cannot read/);
+  });
+});
+
+describe('post', () => {
+  it('sends a POST and resolves on 204 No Content', async () => {
+    answer(204, null);
+    await expect(post('/v1/auth/sign-out')).resolves.toBeUndefined();
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/auth/sign-out',
+      expect.objectContaining({ method: 'POST', headers: { Accept: 'application/json' } }),
+    );
+  });
+
+  it('maps an error answer to an ApiError like get', async () => {
+    answer(401, '{"type":"https://candlestack.tech/problems/not-signed-in","detail":"Sign in first."}');
+    const error = await errorOf(post('/v1/auth/sign-out'));
+    expect(error).toMatchObject({ status: 401, message: 'Sign in first.', problem: 'not-signed-in' });
+  });
+
+  it('throws an ApiError with status 0 when there is no answer', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))),
+    );
+    expect((await errorOf(post('/v1/auth/sign-out'))).status).toBe(0);
   });
 });
 

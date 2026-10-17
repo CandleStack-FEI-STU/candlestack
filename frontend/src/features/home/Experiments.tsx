@@ -1,4 +1,5 @@
-import { Bar, ComingSoon } from './ComingSoon';
+import { Bar, ComingSoon } from '@/components/ComingSoon';
+
 import { Section, SectionIntro } from './Section';
 
 // The sketch of the catalog: three experiment cards, each with a title, a line, an equity curve

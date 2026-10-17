@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   RouterProvider,
   createMemoryHistory,
@@ -8,20 +9,35 @@ import {
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
+import { meQueryOptions, type Me } from '@/api';
 import { Header } from '@/components/Header';
+import { ARSEN } from '@/test/api';
 import { classes } from '@/test/markup';
 
 // The theme reads the page's <html>, which a server render has not.
 vi.mock('@/theme', () => ({ useTheme: () => ({ theme: 'dark', toggle: () => undefined }) }));
 
-// The header over the app's three pages, on the given URL, loaded first.
-async function render(url: string): Promise<string> {
+// The header over the public pages, on the given URL, loaded first, for a visitor signed out
+// (null) or in.
+async function render(url: string, me: Me | null = null): Promise<string> {
   const rootRoute = createRootRoute({ component: Header });
   const page = (path: string) => createRoute({ getParentRoute: () => rootRoute, path });
-  const routeTree = rootRoute.addChildren([page('/'), page('/instruments'), page('/instrument/$id')]);
+  const routeTree = rootRoute.addChildren([
+    page('/'),
+    page('/instruments'),
+    page('/instrument/$id'),
+    page('/signin'),
+    page('/dashboard'),
+  ]);
   const router = createRouter({ routeTree, history: createMemoryHistory({ initialEntries: [url] }) });
   await router.load();
-  return renderToString(<RouterProvider router={router} />);
+  const queryClient = new QueryClient();
+  queryClient.setQueryData(meQueryOptions().queryKey, me);
+  return renderToString(
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
 }
 
 const navItem = (html: string, name: string) => classes(html, new RegExp(`<a [^>]*>${name}</a>`));
@@ -49,17 +65,37 @@ describe('Header', () => {
     expect(tag).toContain('rel="noopener"');
   });
 
-  it('has Sign in and Try Backtest as plain buttons, Sign in hidden below md', async () => {
+  it('leads Sign in and Try Backtest to the sign-in page, Sign in hidden below md', async () => {
     const html = await render('/');
-    expect(html).toMatch(/<button [^>]*type="button"[^>]*>Sign in<\/button>/);
-    expect(html).toMatch(/<button [^>]*type="button"[^>]*>Try Backtest<\/button>/);
-    expect(classes(html, /<button [^>]*>Sign in/)).toContain('max-md:hidden');
+    expect(html).toMatch(/<a [^>]*href="\/signin"[^>]*>Sign in<\/a>/);
+    expect(html).toMatch(/<a [^>]*href="\/signin"[^>]*>Try Backtest<\/a>/);
+    expect(classes(html, /<a [^>]*>Sign in/)).toContain('max-md:hidden');
   });
 
   it('hovers Sign in with the full surface in the dark theme too', async () => {
-    const signIn = classes(await render('/'), /<button [^>]*>Sign in/);
+    const signIn = classes(await render('/'), /<a [^>]*>Sign in/);
     expect(signIn).toContain('dark:hover:bg-accent');
     expect(signIn).not.toContain('dark:hover:bg-accent/50');
+  });
+
+  it('has the theme toggle as a 34 px ghost square, as high as the buttons beside it', async () => {
+    const toggle = classes(await render('/'), /<button [^>]*aria-label="Switch to light theme"[^>]*>/);
+    expect(toggle).toEqual(expect.arrayContaining(['size-[34px]', 'border', 'border-transparent']));
+    expect(toggle).not.toContain('size-9');
+  });
+
+  it('leaves both out on the sign-in page itself', async () => {
+    const html = await render('/signin');
+    expect(html).not.toContain('>Sign in</a>');
+    expect(html).not.toContain('>Try Backtest</a>');
+  });
+
+  it('shows Dashboard and the avatar instead to a signed-in user', async () => {
+    const html = await render('/instruments', ARSEN);
+    expect(html).toMatch(/<a [^>]*href="\/dashboard"[^>]*>Dashboard<\/a>/);
+    expect(html).toMatch(/<button [^>]*aria-label="Account"[^>]*><span [^>]*>AL<\/span><\/button>/);
+    expect(html).not.toContain('>Sign in</a>');
+    expect(html).not.toContain('>Try Backtest</a>');
   });
 
   it('has no search box', async () => {

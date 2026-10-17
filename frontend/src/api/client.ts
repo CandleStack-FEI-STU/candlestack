@@ -68,18 +68,38 @@ export function apiUrl(path: string): string {
   return BASE + path;
 }
 
-export async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
+// Sends a request and turns a failure into an ApiError: no answer at all (status 0) or an error
+// status with its problem. An abort passes through unchanged.
+async function send(path: string, init: RequestInit): Promise<Response> {
   let res: Response;
   try {
-    res = await fetch(apiUrl(path), { signal, headers: { Accept: 'application/json' } });
+    res = await fetch(apiUrl(path), init);
   } catch (error) {
-    if (signal?.aborted) throw error;
+    if (init.signal?.aborted) throw error;
     throw new ApiError(0, 'Cannot reach the server. Check your connection.');
   }
+  if (!res.ok) {
+    const json = await readJson(res);
+    throw errorFromResponse(res, json.ok ? json.body : null);
+  }
+  return res;
+}
 
+// The JSON body of a 2xx. One that is not JSON (an HTML page on an /api path, say) is not data
+// the page can use.
+async function readBody<T>(res: Response): Promise<T> {
   const json = await readJson(res);
-  if (!res.ok) throw errorFromResponse(res, json.ok ? json.body : null);
-  // A 2xx that is not JSON (an HTML page on an /api path, say) is not data the page can use.
   if (!json.ok) throw new ApiError(res.status, 'The server sent an answer the app cannot read.');
   return json.body as T;
+}
+
+export async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const res = await send(path, { signal, headers: { Accept: 'application/json' } });
+  return readBody<T>(res);
+}
+
+// A command the API answers without a body (204), e.g. signing out. Its errors are ApiErrors
+// like those of get.
+export async function post(path: string): Promise<void> {
+  await send(path, { method: 'POST', headers: { Accept: 'application/json' } });
 }

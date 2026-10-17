@@ -29,7 +29,7 @@ API_TARGET=http://localhost:8000 npm run dev
 | --- | --- |
 | `npm run dev` | dev server with hot reload |
 | `npm run build` | type-check and build into `dist/` |
-| `npm test` | unit tests (Vitest) |
+| `npm test` | unit tests and page tests (Vitest; the page tests in jsdom) |
 | `npm run lint` | oxlint (type-aware), Prettier check and knip (unused files, exports and dependencies) |
 | `npm run format` | format every file with Prettier |
 | `npm run api:types` | regenerate `src/api/schema.d.ts` from `docs/openapi.json` after an API change |

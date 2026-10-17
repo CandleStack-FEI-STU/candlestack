@@ -1,4 +1,5 @@
 // The public face of src/api: pages and components import from '@/api' only.
+export { deniedSignInQueryOptions, meQueryOptions, signInUrl, signOut, type Me, type Provider } from './accounts';
 export { candleBridgeQueryOptions, candlePageQueryOptions, type Candles } from './candles';
 export { ApiError } from './client';
 export { EXCHANGES, exchangeLabel, exchangeMarket, type Exchange } from './exchanges';

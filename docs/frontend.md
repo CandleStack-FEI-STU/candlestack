@@ -135,11 +135,73 @@ gets `from: 'home'` in its history state (`router.tsx`), so its back link says "
 to `/`; otherwise it says "Instruments" and returns to the list's last search (`BackToList.tsx`).
 
 The header links Product (`/`), Instruments and the API docs of the same host, so stage links
-to stage. Sign in and Try Backtest do nothing until the builder is designed. Below `sm` the nav
-goes, and Sign in below `md`: with the nav, the row needs about 675 px.
+to stage. Sign in and Try Backtest (also the hero's) lead to the sign-in page; signed in, the
+header shows Dashboard and the avatar with its menu instead ([Sign-in](#sign-in)). Below `sm` the
+nav goes, and Sign in below `md`: with the nav, the row needs about 675 px.
 
 The 40 px grid behind the pages is stronger than the website's (0.09 light, 0.075 dark). The
 footer, the cards and the list's table are solid on it, so it never shows through them.
+
+## Sign-in
+
+Sign-in is GitHub or Google only (#208), designed in the design repository: the sign-in page in
+`mockups/home` (`#/signin`), the signed-in app in `mockups/app`. The API side is in
+`docs/architecture.md`; the frontend builds on four endpoints (`src/api/accounts.ts`):
+
+- `GET /api/v1/me` gives the user; its 401 (`not-signed-in`) means signed out, which the app
+  keeps as `null`, not as an error. One cache entry (`['account', 'me']`) serves the header, the
+  guards and the pages. The root route asks before the first page shows, so the header never
+  flips; it stays fresh until the app changes it (a sign-in is a full page load, signing out
+  sets it to `null`).
+- Signing in is a full page navigation to `/api/v1/auth/{github|google}/start?next=<path>`. The
+  API sends the browser to the provider, and from there back to `next` (default `/dashboard`),
+  to `/signin?error=denied` or to `/signin?error=failed`.
+- `GET /api/v1/auth/denied` names the account the beta list just turned away.
+- `POST /api/v1/auth/sign-out` ends the session. The avatar menu's Sign out then sets the user
+  to `null` and goes to the home page; a 401 (the session had already ended) counts the same.
+  Any other failure leaves the session open, so the user stays signed in on the page and can
+  sign out again from the menu.
+
+Routes (`src/routeTree.tsx`): the public pages sit in a pathless layout `_public` with the
+site's header, the signed-in pages in `_app` with the app header. A page's `useSearch` therefore
+names the layout: `useSearch({ from: '/_public/instruments' })`.
+
+- `/signin?next=&error=` shows the start (GitHub, Google, the beta note) or, after
+  `error=denied`, who was turned away with Use another account (back to the start, `next`
+  kept) and Contact the team. A clicked button stays busy ("Opening GitHub", a spinner) while
+  the browser leaves; Back from the provider offers the buttons again. An open session skips
+  the page and goes to `next` or `/dashboard`.
+- `/dashboard`, `/backtests`, `/models` and `/settings` sit behind a guard
+  (`src/routes/accountGuards.ts`): signed out, it redirects to `/signin?next=<the page asked
+  for>`. The app code loads on demand, like the instrument page.
+- `next` is only ever a path of this app (`appPath` in `src/routes/signInSearch.ts`): anything
+  that leaves the origin (`https://…`, `//…`, `/\…`), `/signin` itself and `/api/…` are dropped,
+  so signing in is no open redirect. The validator sets every key it drops to `undefined`: the
+  router keeps search params a route leaves out, and would hand the raw value on otherwise.
+- An unknown address shows the public "Page not found", also under `/dashboard/…`
+  (`notFoundMode: 'root'`).
+
+The app shell (`src/features/workspace/`) follows `mockups/app`: the app header (logo to the
+dashboard, no nav, New backtest, the theme toggle, the avatar), a 200 px sidebar (Dashboard,
+Backtests, Models, Settings, then the note that market data is delayed 15 min; up to 980 px
+above the page as a row that scrolls sideways without a scrollbar, the note left out) and the
+footer.
+The avatar is the user's initials (`initials.ts`), never a provider picture; its menu
+(`src/features/account/AccountMenu.tsx`) is a shadcn/ui DropdownMenu with Settings, Home page,
+API docs and, in red, Sign out. New backtest opens `ComingSoonDialog`: a shadcn/ui Dialog with
+the home page's Coming soon card over a sketch, for every part of the app that is not built yet.
+Icons are lucide's where lucide draws the design's icon; the others (Backtests, Models,
+Settings, Home page, the moon) are drawn from the mockup in `src/components/icons.tsx`. The
+mockups' button looks (`.btn`, `.btn.ghost`, `.btn.pri`) are class constants on shadcn's Button
+in `src/components/buttonStyles.ts`.
+
+Motion comes from tw-animate-css on the Radix components, as in the design: dialogs fade and
+scale in from 10 px lower, the menu pops in from 4 px above, the sign-in card rises 8 px and a
+newly opened page fades up 6 px. `motion-reduce:` turns each off.
+
+Tests of whole pages run in jsdom (`// @vitest-environment jsdom`) with Testing Library:
+`src/test/app.tsx` renders the app's routes on a memory history and `src/test/api.ts` answers
+fetch by method and path.
 
 ## Instrument icons
 
@@ -259,7 +321,8 @@ all in the URL (`/instruments?market=stock&exchange=NYSE`, `/instruments?exchang
 
 | Library | License |
 | --- | --- |
-| React, Vite, Tailwind, shadcn/ui, TanStack Query, TanStack Router, openapi-typescript | MIT |
+| React, Vite, Tailwind, shadcn/ui, Radix UI, tw-animate-css, TanStack Query, TanStack Router, openapi-typescript | MIT |
+| Testing Library, jsdom (tests only) | MIT |
 | TypeScript, Lightweight Charts | Apache 2.0 |
 | Geist font | SIL Open Font License 1.1 |
 

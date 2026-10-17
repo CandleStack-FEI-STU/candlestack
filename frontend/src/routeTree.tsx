@@ -1,0 +1,120 @@
+import type { QueryClient } from '@tanstack/react-query';
+import { createRootRouteWithContext, createRoute, lazyRouteComponent } from '@tanstack/react-router';
+
+import { deniedSignInQueryOptions, instrumentQueryOptions, meQueryOptions } from '@/api';
+import { Layout } from '@/components/Layout';
+import { RouteError } from '@/components/RouteStates';
+import { HomePage } from '@/pages/HomePage';
+import { InstrumentsPage } from '@/pages/InstrumentsPage';
+import { NotFoundPage } from '@/pages/NotFoundPage';
+import { SignInPage } from '@/pages/SignInPage';
+import { requireSignedIn, skipSignInWhenSignedIn } from '@/routes/accountGuards';
+import { validateInstrumentSearch } from '@/routes/instrumentSearch';
+import { validateInstrumentsSearch } from '@/routes/instrumentsSearch';
+import { validateSignInSearch } from '@/routes/signInSearch';
+
+// Every route gets the query client, so a route loader can fetch its data before it renders.
+export type RouterContext = { queryClient: QueryClient };
+
+// Whether someone is signed in decides the public header's buttons, so it is known before the
+// first page shows. A failed answer is no reason to hold back a public page: the header then
+// offers Sign in, and the signed-in pages ask again.
+const rootRoute = createRootRouteWithContext<RouterContext>()({
+  beforeLoad: ({ context }) => context.queryClient.prefetchQuery(meQueryOptions()),
+  notFoundComponent: () => (
+    <Layout>
+      <NotFoundPage />
+    </Layout>
+  ),
+});
+
+// The public pages, under the site's header (Layout.tsx).
+const publicRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  id: '_public',
+  component: Layout,
+});
+
+// The public start page.
+const homeRoute = createRoute({
+  getParentRoute: () => publicRoute,
+  path: '/',
+  component: HomePage,
+});
+
+// /instruments?q=btc&market=crypto&page=2; broken values are dropped in validateSearch.
+const instrumentsRoute = createRoute({
+  getParentRoute: () => publicRoute,
+  path: '/instruments',
+  validateSearch: validateInstrumentsSearch,
+  component: InstrumentsPage,
+});
+
+// /instrument/crypto:BTCUSDT?tf=1h; the search params are checked once, in validateSearch.
+// The page is loaded on demand, so the chart library stays out of the main bundle; the loader
+// fetches the instrument meanwhile, into the same cache entry the page reads.
+const instrumentRoute = createRoute({
+  getParentRoute: () => publicRoute,
+  path: '/instrument/$id',
+  validateSearch: validateInstrumentSearch,
+  loader: ({ context, params }) => context.queryClient.ensureQueryData(instrumentQueryOptions(params.id)),
+  component: lazyRouteComponent(() => import('@/pages/InstrumentPage'), 'InstrumentPage'),
+});
+
+// /signin?next=/backtests&error=denied. An open session skips it. After a denied sign-in the
+// loader fetches who was turned away; when that fails, the page shows its buttons instead.
+const signInRoute = createRoute({
+  getParentRoute: () => publicRoute,
+  path: '/signin',
+  validateSearch: validateSignInSearch,
+  beforeLoad: ({ context, search }) => skipSignInWhenSignedIn({ queryClient: context.queryClient, search }),
+  loaderDeps: ({ search }) => ({ error: search.error }),
+  loader: ({ context, deps }) =>
+    deps.error === 'denied' ? context.queryClient.prefetchQuery(deniedSignInQueryOptions()) : undefined,
+  component: SignInPage,
+});
+
+// The signed-in pages, under the app header beside the sidebar. Signed out, the guard sends the
+// browser to the sign-in page, which returns to the page asked for. When the API cannot say
+// who is signed in, the error shows under the site's header: the app's needs the user. Loaded on
+// demand like the instrument page: a visitor of the public pages never downloads the app.
+const appRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  id: '_app',
+  beforeLoad: ({ context, location }) => requireSignedIn({ queryClient: context.queryClient, location }),
+  errorComponent: (props) => (
+    <Layout>
+      <RouteError {...props} />
+    </Layout>
+  ),
+  component: lazyRouteComponent(() => import('@/features/workspace'), 'AppLayout'),
+});
+
+const dashboardRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/dashboard',
+  component: lazyRouteComponent(() => import('@/pages/DashboardPage'), 'DashboardPage'),
+});
+
+const backtestsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/backtests',
+  component: lazyRouteComponent(() => import('@/pages/BacktestsPage'), 'BacktestsPage'),
+});
+
+const modelsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/models',
+  component: lazyRouteComponent(() => import('@/pages/ModelsPage'), 'ModelsPage'),
+});
+
+const settingsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/settings',
+  component: lazyRouteComponent(() => import('@/pages/SettingsPage'), 'SettingsPage'),
+});
+
+export const routeTree = rootRoute.addChildren([
+  publicRoute.addChildren([homeRoute, instrumentsRoute, instrumentRoute, signInRoute]),
+  appRoute.addChildren([dashboardRoute, backtestsRoute, modelsRoute, settingsRoute]),
+]);
