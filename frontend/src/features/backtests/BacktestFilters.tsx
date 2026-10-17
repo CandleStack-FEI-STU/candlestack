@@ -34,7 +34,9 @@ export function BacktestFilters({ search, page }: Props) {
       }
       note={(option) => option.count}
       align="start"
-      className="w-[min(412px,calc(100vw-2rem))] p-3"
+      sideOffset={6}
+      openBorder="data-[state=open]:border-[color-mix(in_srgb,var(--accent)_55%,var(--rule))]"
+      className="w-[min(412px,calc(100vw-2rem))] p-3 shadow-[0_10px_28px_var(--shadow)]"
     >
       {(render) => (
         <div className="grid grid-cols-[128px_minmax(0,1fr)] gap-4">

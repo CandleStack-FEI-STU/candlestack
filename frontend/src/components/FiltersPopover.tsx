@@ -78,10 +78,15 @@ export function FilterSection({ title, area, children }: { title: string; area?:
   );
 }
 
-type TriggerProps = { summary: string; onOpen: () => void; ref: RefObject<HTMLButtonElement | null> };
+type TriggerProps = {
+  summary: string;
+  openBorder: string;
+  onOpen: () => void;
+  ref: RefObject<HTMLButtonElement | null>;
+};
 
 // The button: the summary between the filter icon and the chevron. ArrowDown opens it too.
-function Trigger({ summary, onOpen, ref }: TriggerProps) {
+function Trigger({ summary, openBorder, onOpen, ref }: TriggerProps) {
   return (
     <PopoverTrigger
       ref={ref}
@@ -91,7 +96,7 @@ function Trigger({ summary, onOpen, ref }: TriggerProps) {
         event.preventDefault();
         onOpen();
       }}
-      className={cn(DROPDOWN_TRIGGER, 'w-[200px] shrink-0 data-[state=open]:border-ring')}
+      className={cn(DROPDOWN_TRIGGER, 'w-[200px] shrink-0', openBorder)}
     >
       <SlidersHorizontal aria-hidden className="size-4 shrink-0" />
       <span className="min-w-0 flex-1 truncate text-foreground">{summary}</span>
@@ -196,6 +201,10 @@ type Props<T extends Entry> = Rules<T> & {
   note?: (option: T) => ReactNode;
   // Which edge of the button the panel lines up with.
   align: 'start' | 'end';
+  // How far below the button the panel opens, in px.
+  sideOffset: number;
+  // The button's border while the panel is open, as its design colours it.
+  openBorder: string;
   // The panel's size and padding.
   className: string;
   // The sections, each given the entries it shows through `render`.
@@ -211,6 +220,8 @@ export function FiltersPopover<T extends Entry>({
   label,
   note,
   align,
+  sideOffset,
+  openBorder,
   className,
   children,
   ...rules
@@ -221,11 +232,12 @@ export function FiltersPopover<T extends Entry>({
   const { open, setOpen, trigger } = state;
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <Trigger ref={trigger} summary={summary} onOpen={() => setOpen(true)} />
+      <Trigger ref={trigger} summary={summary} openBorder={openBorder} onOpen={() => setOpen(true)} />
       <PopoverContent
         {...content}
         aria-label="Filters"
         align={align}
+        sideOffset={sideOffset}
         collisionPadding={16}
         className={cn('rounded-lg text-sm', className)}
       >

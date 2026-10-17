@@ -87,6 +87,8 @@ export function Filters({ market, exchange, sort }: Props) {
       label={(option) => option.label}
       note={(option) => option.section === 'exchange' && option.reason}
       align="end"
+      sideOffset={4}
+      openBorder="data-[state=open]:border-ring"
       className="max-h-[480px] w-[calc(100vw-2rem)] overflow-y-auto p-2 sm:w-[412px] sm:p-3"
     >
       {(render) => <Sections options={options} render={render} />}
