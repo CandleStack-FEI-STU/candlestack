@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import { Footer } from '@/components/Footer';
 import { Header } from '@/components/Header';
+import { PHONE_SIDES_16 } from '@/components/pageInsets';
 import { cn } from '@/lib/utils';
 
 // Every page: a header on top, the page itself in a centered column below, the footer at the
@@ -26,7 +27,8 @@ export function PageFrame({
       {header}
       <main
         className={cn(
-          'mx-auto flex w-full max-w-[75rem] flex-1 flex-col pt-7 pr-[max(24px,env(safe-area-inset-right,0px))] pb-10 pl-[max(24px,env(safe-area-inset-left,0px))] max-sm:pr-[max(16px,env(safe-area-inset-right,0px))] max-sm:pl-[max(16px,env(safe-area-inset-left,0px))]',
+          'mx-auto flex w-full max-w-[75rem] flex-1 flex-col pt-7 pr-[max(24px,env(safe-area-inset-right,0px))] pb-10 pl-[max(24px,env(safe-area-inset-left,0px))]',
+          PHONE_SIDES_16,
           app && 'max-sm:pt-5 max-sm:pb-7',
         )}
       >

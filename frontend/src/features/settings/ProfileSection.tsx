@@ -9,6 +9,7 @@ import { UserIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, useSignedInUser } from '@/features/account';
+import { NAME_REFUSED } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 
 import { Code, SettingsFooter, SettingsRow } from './rows';
@@ -30,7 +31,7 @@ function useDisplayNameForm(saved: string) {
     event.preventDefault();
     if (trimmed !== '' && trimmed !== saved && !save.isPending) save.mutate(trimmed);
   };
-  const error = save.error ? errorMessage(save.error, 'This name cannot be used. Try another one.') : undefined;
+  const error = save.error ? errorMessage(save.error, NAME_REFUSED) : undefined;
   return { name, setName, empty: trimmed === '', saving: save.isPending, submit, error };
 }
 

@@ -166,17 +166,6 @@ describe('postFile', () => {
     const error = await errorOf(postFile('/v1/models?name=a.keras', new Blob([])));
     expect(error).toMatchObject({ status: 409, problem: 'storage-full', body: problem });
   });
-
-  it('passes an abort through unchanged', async () => {
-    const controller = new AbortController();
-    controller.abort();
-    const abort = new DOMException('Aborted', 'AbortError');
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => Promise.reject(abort)),
-    );
-    await expect(postFile('/v1/models?name=a.keras', new Blob([]), controller.signal)).rejects.toBe(abort);
-  });
 });
 
 describe('errorMessage', () => {

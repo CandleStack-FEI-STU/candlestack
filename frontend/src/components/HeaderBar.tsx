@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 
 import { Logo } from '@/brand/Logo';
+import { PHONE_SIDES_16 } from '@/components/pageInsets';
 import { cn } from '@/lib/utils';
 
 type Props = { home: '/' | '/dashboard'; homeLabel: string; app?: boolean; children: ReactNode };
@@ -18,7 +19,7 @@ export function HeaderBar({ home, homeLabel, app = false, children }: Props) {
       className={cn(
         'sticky top-[env(safe-area-inset-top,0px)] z-30 border-b bg-background/88 pr-[max(24px,env(safe-area-inset-right,0px))] pl-[max(24px,env(safe-area-inset-left,0px))] backdrop-blur-sm',
         app
-          ? 'max-sm:pr-[max(16px,env(safe-area-inset-right,0px))] max-sm:pl-[max(16px,env(safe-area-inset-left,0px))]'
+          ? PHONE_SIDES_16
           : 'max-sm:pr-[max(12px,env(safe-area-inset-right,0px))] max-sm:pl-[max(12px,env(safe-area-inset-left,0px))]',
       )}
     >

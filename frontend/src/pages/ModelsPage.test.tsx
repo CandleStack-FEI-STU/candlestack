@@ -211,7 +211,6 @@ describe('Rename model', () => {
   it('edits the name without its extension, focused and selected', async () => {
     const { dialog, input, save } = await openRename();
     expect(input.value).toBe('my-tsmixer');
-    expect(input.maxLength).toBe(60);
     expect(document.activeElement).toBe(input);
     expect([input.selectionStart, input.selectionEnd]).toEqual([0, 'my-tsmixer'.length]);
     expect(dialog.getByText('Name')).toBeDefined();
@@ -270,6 +269,7 @@ describe('Rename model', () => {
     ['a backslash', 'lstm\\v2', 'Names cannot contain / or \\.'],
     ['a tab', 'lstm\tv2', 'Names cannot contain invisible characters such as tabs.'],
     ['a zero-width space', 'lstm\u200bv2', 'Names cannot contain invisible characters such as tabs.'],
+    ['61 characters', 'a'.repeat(61), 'Names can be up to 60 characters.'],
   ])('says at once that a name with %s cannot be used, with Save off and no request', async (_, name, text) => {
     const { user, dialog, input, save } = await openRename();
     const fetch = stubApi(modelsAnswer([TSMIXER, LSTM]));

@@ -261,6 +261,23 @@ describe('the upload dialog', () => {
     await vi.waitFor(() => expect(listed()).toBe(before + 1));
   });
 
+  it.each([
+    ['a server error', { status: 503, body: { detail: 'Down.' } }, 1],
+    ['a refusal of the file', problem(413, 'model-too-large', 'Too large.'), 0],
+    ['a failed check', problem(422, 'model-check-failed', 'No weights.', { check: 'weights' }), 0],
+    ['a full storage', problem(409, 'storage-full', 'Full.'), 0],
+  ])('after %s asks for the models again only when the API may have kept the file', async (_, answer, again) => {
+    const { fetch, dialog, choose } = await openUpload({ [UPLOAD]: answer });
+    const listed = () => fetch.mock.calls.filter(([path]) => path === '/api/v1/models').length;
+    await vi.waitFor(() => expect(listed()).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const before = listed();
+    choose(file('lstm-signals.keras'));
+    await dialog.findByRole('button', { name: 'Choose another file' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(listed()).toBe(before + again);
+  });
+
   it('says a file over the limit is too large without sending it', async () => {
     const { fetch, dialog, choose } = await openUpload();
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/v1/models', expect.anything()));

@@ -141,6 +141,9 @@ describe('Settings', () => {
     // An <a> of the mockup keeps the browser's underline: the link looks like one without a hover.
     expect(docs.classList).toContain('underline');
     expect(docs.classList).toContain('text-primary');
+    // As the mockup's .link: the browser's offset at rest, 2 px under the pointer.
+    expect(docs.classList).toContain('hover:underline-offset-2');
+    expect(docs.classList).not.toContain('underline-offset-2');
     const mcp = within(screen.getByRole('region', { name: 'MCP server' }));
     expect(mcp.getByText('Coming soon')).toBeDefined();
     expect(mcp.getByText(`${window.location.origin}/mcp`)).toBeDefined();

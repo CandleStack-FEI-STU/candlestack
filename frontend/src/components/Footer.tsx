@@ -1,3 +1,4 @@
+import { PHONE_SIDES_16 } from '@/components/pageInsets';
 import { cn } from '@/lib/utils';
 
 // Where to read more about CandleStack. A new tab, so following one does not lose the page.
@@ -23,8 +24,7 @@ export function Footer({ app = false }: { app?: boolean }) {
       <div
         className={cn(
           'mx-auto flex max-w-[75rem] flex-wrap gap-x-5 gap-y-1 py-4 pr-[max(24px,env(safe-area-inset-right,0px))] pl-[max(24px,env(safe-area-inset-left,0px))] text-xs leading-normal text-muted-foreground',
-          app &&
-            'max-sm:pr-[max(16px,env(safe-area-inset-right,0px))] max-sm:pl-[max(16px,env(safe-area-inset-left,0px))]',
+          app && PHONE_SIDES_16,
         )}
       >
         <span>CandleStack</span>

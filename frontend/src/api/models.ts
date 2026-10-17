@@ -20,9 +20,9 @@ export function modelsQueryOptions() {
 
 // POST /api/v1/models?name=...: the file itself is the body. The API checks it before it keeps
 // it; a failed check is an ApiError with the problem model-check-failed and `check` in its body.
-export function uploadModel(file: File, signal?: AbortSignal): Promise<Model> {
+export function uploadModel(file: File): Promise<Model> {
   const query = new URLSearchParams({ name: file.name }).toString();
-  return postFile<Model>(`/v1/models?${query}`, file, signal);
+  return postFile<Model>(`/v1/models?${query}`, file);
 }
 
 // PATCH /api/v1/models/{id}: renames (the name without its extension) or stars the model.

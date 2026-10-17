@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 
-import { ApiError, type Model } from '@/api';
+import { ApiError, errorMessage, type Model } from '@/api';
 import { CancelButton, PrimaryButton } from '@/components/DialogButtons';
 import { Hint } from '@/components/Hint';
 import {
@@ -12,29 +12,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { NAME_REFUSED } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 
 import { splitExtension } from './format';
+import { nameOf, nameProblem } from './names';
 import { isGone, useRenameModel } from './useModels';
 
-// As the API takes it: 1 to 60 characters before the extension.
-const NAME_MAX = 60;
-
-// What the API refuses in a name (ModelUpdate in backend/src/candlestack/ml/schemas.py), said
-// before Save instead of after a round trip: slashes, and control and format characters (Unicode
-// Cc and Cf: tabs, zero-width spaces, direction marks). The field itself stops at 60 characters.
-function nameProblem(name: string): string | undefined {
-  if (/[/\\]/.test(name)) return 'Names cannot contain / or \\.';
-  if (/[\p{Cc}\p{Cf}]/u.test(name)) return 'Names cannot contain invisible characters such as tabs.';
-  return undefined;
-}
-
 function errorText(error: Error): string {
-  if (!(error instanceof ApiError)) return error.message;
-  if (error.problem === 'model-name-taken') return 'You already have a model with this name.';
-  // Any other refusal of the name: the API's words name its fields and rules.
-  if (error.status === 422) return 'This name cannot be used. Try another one.';
-  return error.message;
+  if (error instanceof ApiError && error.problem === 'model-name-taken')
+    return 'You already have a model with this name.';
+  return errorMessage(error, NAME_REFUSED);
 }
 
 type FieldProps = { value: string; extension: string; onChange: (value: string) => void };
@@ -55,7 +43,6 @@ function NameField({ value, extension, onChange }: FieldProps) {
           ref={input}
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          maxLength={NAME_MAX}
           aria-label="Model name"
           className="h-[34px] w-full min-w-0 bg-transparent px-2.5 text-sm outline-none"
         />
@@ -75,7 +62,7 @@ function RenameForm({ model, onDone }: FormProps) {
   const [stem, extension] = splitExtension(model.name);
   const [text, setText] = useState(stem);
   const rename = useRenameModel();
-  const name = text.trim();
+  const name = nameOf(text);
   const problem = nameProblem(name) ?? (rename.error ? errorText(rename.error) : undefined);
   const canSave = name !== '' && name !== stem && nameProblem(name) === undefined && !rename.isPending;
 
