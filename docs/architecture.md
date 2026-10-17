@@ -69,7 +69,7 @@ flowchart LR
 | `PUT /api/v1/me/preferences/backtest-defaults` | replaces the backtest defaults: every field, no other (`period_start` before `period_end`), else 422 |
 | `PATCH /api/v1/me/preferences/appearance` | changes the appearance settings it is given; an unknown field is a 422 |
 | `GET /api/v1/models` | the user's uploaded models, oldest first, and the storage they take (`used_bytes`, `quota_bytes`, `file_max_bytes`) |
-| `POST /api/v1/models?name=<file name>` | uploads a model: the body is the file (`application/octet-stream`); checked before it is kept ([Models](#models)); a name the user has already gets a number (`lstm (2).keras`) |
+| `POST /api/v1/models?name=<file name>` | uploads a model: the body is the file (`application/octet-stream`); checked before it is kept ([Models](#models)); a name the user has already gets a number (`lstm (2).keras`); one upload at a time per user, 100 models at most |
 | `PATCH /api/v1/models/{model_id}` | renames a model (the extension stays; `409 model-name-taken`) or stars and unstars it |
 | `DELETE /api/v1/models/{model_id}` | deletes a model and its file |
 | `GET /api/v1/docs` | API reference (Scalar); public on prod |
@@ -90,9 +90,12 @@ flowchart LR
   file over 50 MB), `storage-full` (409: the file does not fit into the user's 100 MB, with
   `used_bytes` and `quota_bytes`), `unsupported-model-format` (415: not `.keras`, "coming
   soon"), `model-check-failed` (422: a check failed, `check` names it, `opens` or `weights`)
-  and `model-name-taken` (409: renaming to a name the user has), and uses `not-found` (404:
-  no model of the user with the ID, another user's included). Each `type` URI opens a page on the website
-  that says what the problem means and what the client should do.
+  `model-name-taken` (409: renaming to a name the user has), `too-many-models` (409: the user
+  has 100 models, with `limit`), `upload-in-progress` (409: another upload of the user runs)
+  and `upload-timeout` (408: the file did not arrive within 2 minutes), and uses `not-found`
+  (404: no model of the user with the ID, another user's included) and `not-signed-in` (401:
+  also the account was deleted while its file uploaded). Each `type` URI opens a page on the
+  website that says what the problem means and what the client should do.
 - Every response carries `X-Request-ID` and `Server-Timing: app;dur=<ms>` (the app's time
   until the response started), so response times can be measured from outside.
 - Logs: one JSON object per line on stdout (`ts`, `level`, `logger`, `msg`); the access line
@@ -158,40 +161,74 @@ flowchart LR
 ## Models
 
 - **Upload**: `POST /api/v1/models?name=<file name>` with the file as the body, so the server
-  streams it to disk instead of holding a multipart form in memory (the backend has 320 MB).
+  streams it to disk instead of holding a multipart form in memory (the backend has 384 MB).
   Only Keras files (`.keras`) for now: another extension is a 415 before anything is read. A
-  `Content-Length` over 50 MB is a 413, and one that does not fit into the user's storage a
-  409, at once; without one, the stream stops at 50 MB. The file goes to an incoming file of
-  the storage while it is counted and hashed (SHA-256, which later backtests name the model
-  by), then is checked in a worker thread. A file that passed is kept in one transaction under
-  an advisory lock of the user (`pg_advisory_xact_lock`), so two uploads at once cannot both
-  pass the quota or take one name: the quota again, a free name (`lstm (2).keras`, compared in
-  any case, like the unique index on `(user_id, lower(name))`), the row, the file moved to its
-  place, the commit (the file goes again when it fails). The incoming files go whatever
-  happens; the ones a crash left are removed when the backend starts.
+  `Content-Length` over 50 MB is a 413 at once. A user uploads one file at a time: a lock in
+  Redis (`SET NX EX 300`, released when the upload ends) turns a second upload away with
+  `409 upload-in-progress`, so nobody fills the disk with uploads side by side. Then, still
+  before reading anything, a user with 100 models gets `409 too-many-models`, and a file that
+  does not fit `409 storage-full`: by its `Content-Length`, or without one when the storage is
+  full. The file goes to an incoming file of the storage while it is counted and hashed
+  (SHA-256, which later backtests name the model by); the stream stops at 50 MB (413) or after
+  2 minutes (`408 upload-timeout`). Then it is checked (below). A file that passed is kept in
+  one transaction under an advisory lock of the user (`pg_advisory_xact_lock`), so two uploads
+  cannot both pass the quota or take one name: the model count and the quota again, a free name
+  (`lstm (2).keras`, the names it may become read in one query and compared in any case, like
+  the unique index on `(user_id, lower(name))`), the row, the file moved to its place, the
+  commit (the file goes again when it fails, also when the request was cancelled). An account
+  deleted meanwhile (its deletion takes the same lock) fails the insert: `401 not-signed-in`,
+  nothing is kept. The incoming files go whatever happens; the ones a crash left are removed
+  when the backend starts and every 10 minutes while it runs.
 - **The check** (`ml/inspect.py`) reads the file and never loads it: a `.keras` file is a zip of
   `config.json` (the architecture), `metadata.json` (the Keras version) and
-  `model.weights.h5` (the weights), and loading it could run code from it. `opens` fails for a
-  file that is no zip, holds a path outside it or other files than those three and `assets/`,
-  unpacks to more than 200 MB (or a `config.json` over 5 MB), has no Keras version, is no
-  Functional or Sequential Keras model, or holds custom code: a `Lambda` layer, an object of
-  another package than Keras or one the user registered (`Custom>Scale`). What only shapes or
-  reports training is ignored: the `compile_config` (optimizer, loss, metrics) and the
-  `*_regularizer` and `*_constraint` objects, which the worker will load with a stub. `weights`
-  fails when the weights do not read as HDF5 (h5py, from a copy unpacked to the incoming
-  directory) or the layers hold none: `parameters` counts the datasets under `layers`, not the
-  optimizer's state. The input shape (one input) and the output shape (`Dense`, `Flatten` and
-  layers that keep their input's shape) are read from the config when it says them plainly,
-  else null.
+  `model.weights.h5` (the weights), and loading it could run code from it. It runs in a child
+  process (`ml/sandbox.py`), one at a time, killed after 20 s; on Linux it limits itself to
+  256 MB of data, 15 s of CPU and files of 100 MB. A crafted file that crashes or exhausts the
+  parsers (zipfile, json, h5py and the HDF5 C library) takes down only the child and fails the
+  check; the API process never imports h5py. `opens` fails for a zip whose index declares more
+  than 1000 entries, is larger than 1 MB or is zip64 (read from the end record before zipfile
+  reads the index), a file that is no zip, holds a path outside it or other files than those
+  three and `assets/`, unpacks to more than 200 MB (the weights to more than 100 MB, a
+  `config.json` to more than 1 MB), has no Keras version or is no Functional or Sequential
+  model. Every serialized object of the architecture must be on the allowlist
+  (`ml/allowlist.py`): the built-in classes of Keras 3.15.1 (layers, operations of
+  `keras.ops`, initializers, regularizers, constraints, dtype policies, optimizers and their
+  schedules, losses, metrics) without the ones that load files, run code given to them or wrap
+  another framework's (`Lambda`, `TFSMLayer`, `TorchModuleWrapper`, `JaxLayer`, `FlaxLayer`,
+  the lookup layers, the control flow operations), and a `function` only when it is a public
+  function of those modules (an activation, a loss, a metric). So `keras.utils.get_file`
+  (CVE-2025-8747) and `keras.config.enable_unsafe_deserialization` (CVE-2025-9906) are
+  refused. What only shapes or reports training (the `compile_config`, the `*_regularizer` and
+  `*_constraint` objects) may also hold the user's own registered objects (`Custom>RankIC`),
+  which the worker replaces with stubs, but nothing else off the allowlist. The detail names
+  the layer. `weights` fails when the weights do not read as HDF5 (from a copy unpacked to the
+  incoming directory), hold a soft or external link or more than 100 000 objects, or the
+  layers hold no weights: `parameters` counts the datasets under `layers`, not the optimizer's
+  state. The input shape (one input) and the output shape (`Dense`, `Flatten` and layers that
+  keep their input's shape) are read from the config when it says them plainly, else null.
+  `tests/fixtures/keras/make_allowlist.py` regenerates the allowlist from a Keras release.
+- **Loading an accepted file** (the worker, next milestone): the check is static, so the worker
+  is the second line. It loads with a pinned Keras release that has the fixes of the advisories
+  above (3.15.1 or later, the one the allowlist was generated from),
+  `keras.saving.load_model(path, compile=False, safe_mode=True)`, so `compile_config` is never
+  deserialized; it walks `config.json` against the same allowlist again before loading, and
+  passes `custom_objects` with a no-op stub for every user object under `*_regularizer` and
+  `*_constraint` (a regularizer that adds no loss, a constraint that returns its input). It
+  runs without network access and with the same kind of limits as the check.
 - **Files**: `ModelStorage` (`ml/storage.py`) is what the service uses: save a finished incoming
   file, delete one, delete a user's, sweep what crashed uploads left. `LocalModelStorage` keeps
   them in `MODEL_STORAGE_DIR` as `<user_id>/<model_id>.keras` and the uploads in progress as
   `.incoming/<random>.part`, on one filesystem, so a move is an atomic rename. On the VM that is
   the volume `models`, archived every night ([infra/README.md](../infra/README.md#backups)). The
   files are served only through the API.
-- **Limits**: 50 MB per file, 100 MB per user (binary megabytes, as the app shows them).
+- **Limits**: 50 MB per file, 100 MB and 100 models per user (binary megabytes, as the app
+  shows them), one upload at a time, 2 minutes to send a file.
+- **Names**: an uploaded file keeps its base name without control and format characters
+  (Unicode Cc and Cf: a bidirectional override could make `gpj.exe` read as `exe.jpg`), the part
+  before the extension cut to 60 characters; Rename refuses them with a 422.
 - Deleting a model deletes its row, then its file; a file that cannot be removed is a warning
-  and stays as an orphan. Another user's model is a 404, never a 403.
+  and stays as an orphan. Another user's model is a 404, never a 403. Every refused upload is
+  logged at INFO with the user's ID and the problem's slug, never the file's name.
 
 ## Modules
 
@@ -226,8 +263,8 @@ the ones whose folder exists while their code is being written.
   `experiments` later.
 - No module imports `cli`: it is the entry point of the `candlestack-bt` command
   (`[project.scripts]` in `backend/pyproject.toml`).
-- The API part of `ml` reads the uploaded files (zip, JSON, the HDF5 metadata with h5py) and
-  never imports a deep learning framework, so the API process never loads one and never runs
+- The API part of `ml` reads the uploaded files (zip, JSON, the HDF5 metadata with h5py, in
+  the check's child process) and never imports a deep learning framework, so the API process never loads one and never runs
   code from a file. An import-linter `forbidden` contract enforces it: sources `candlestack.ml`
   and `candlestack.main`, forbidden `keras`, `tensorflow`, `torch` and `jax`
   (`include_external_packages = true`). Running models comes later, in a worker: only its
@@ -256,7 +293,7 @@ the ones whose folder exists while their code is being written.
 | Cache | Redis with `redis[hiredis]` asyncio | one store for cache blobs, locks and rate-limit counters |
 | Database | Postgres 18, SQLAlchemy 2 (asyncio) on asyncpg, Alembic migrations in `backend/migrations` | relational data with constraints; typed models; versioned schema changes that run before each deploy's backend starts |
 | Sign-in | Authlib (OAuth 2.0 messages, PKCE) over the app's httpx client | a maintained implementation of the protocol; the requests stay on the client the tests mock with respx |
-| Model files | h5py | reads the weights' metadata of an uploaded Keras file (the number of weights) without Keras |
+| Model files | h5py | reads the weights' metadata of an uploaded Keras file (the number of weights) without Keras, in the check's child process only |
 | HTTP client | httpx (async), timeouts always set | async calls to the sources; mocked in tests with respx |
 | API docs | scalar-fastapi at `/api/v1/docs` | readable reference with request examples; Swagger and ReDoc disabled |
 | Time zones | stdlib `zoneinfo` + `tzdata` | DST-correct New York sessions even in slim images without system tz data |
@@ -324,7 +361,8 @@ What the backend sends to Sentry (only prod and stage have a DSN), set up in
 - Every event carries `environment` (`prod`, `stage`), `release` (`APP_VERSION`) and
   `request_id`: the `X-Request-ID` a user reports finds the error.
 - Nothing personal or secret: no IP addresses, cookies, request bodies, Cloudflare Access
-  logins or emails; the Alpaca keys, the DSN, the database URL and the OAuth client secrets,
+  logins or emails, no parameters of SQL statements in database errors (`hide_parameters`); the
+  Alpaca keys, the DSN, the database URL and the OAuth client secrets,
   codes, verifiers, states and tokens are filtered, in the query of a request too; Redis keys
   hold the sign-in's state and the denial's id only as SHA-256; only our own frames keep their
   local variables, without the ASGI scope. The logs of a sign-in name the provider and why it
@@ -364,9 +402,9 @@ to check that an error reaches Sentry. The Sentry settings are recorded in
 | Changes on behalf of the user require the app's own origin (`core.require_same_origin`), the OAuth round trip a state bound to the browser (Redis and a cookie) and PKCE | every host under candlestack.tech is the same site to the browser, so SameSite cookies alone do not stop a page on another of them; the state stops login CSRF; PKCE stops a stolen code |
 | Preferences as one JSONB document per section of Settings, read through Pydantic models with defaults | a new setting needs no migration of the rows; the models validate both what is saved and what is read |
 | Account deletion through hooks that other modules register in `main.py` | `accounts` stays at the bottom of the import graph, yet the account's rows in other modules go with it in one transaction; data outside Postgres (model files) is the hook's to keep consistent with a rollback |
-| An upload is checked statically (the zip, its JSON and the HDF5 metadata), never loaded; custom code is refused | loading a Keras file can run code from it (a `Lambda` layer is pickled Python), and the API process must run no user's code and carry no framework; what a load would need code for is refused with the layer named, what only trains (regularizers, constraints, metrics, losses) is ignored |
+| An upload is checked statically (the zip, its JSON and the HDF5 metadata) in a limited child process, never loaded; only what an allowlist generated from Keras names passes | loading a Keras file can run code from it (a `Lambda` layer is pickled Python, a `function` object any Keras function), and the API process must run no user's code and carry no framework; an allowlist fails closed on what a new Keras release or an attacker adds, where a list of what is known to be bad would not; the parsers of zip and HDF5 meet hostile files, so they run where a crash or a leak costs only a failed check |
 | Model files on a local Docker volume behind a `ModelStorage` interface, served only through the API, archived every night for 7 days | no object storage to run or pay for while the files are few and small; Cloudflare R2 can replace the volume without touching the service |
-| Quotas: 50 MB per file, 100 MB per user, checked before the file is read (`Content-Length`) and again under a lock of the user | the VM's disk is small and shared by prod and stage; the second check stops two uploads at once from both passing |
+| Quotas: 50 MB per file, 100 MB and 100 models per user, one upload at a time (Redis), 2 minutes to send it; checked before the file is read (`Content-Length`) and again under a lock of the user | the VM's disk is small and shared by prod and stage; the lock in Redis keeps one user from filling the disk with uploads side by side, the second check stops two uploads from both passing |
 | A dev sign-in for `APP_ENV` `local` and `test` only, fixed in code, not a setting | signed-in pages can be built and tested without OAuth keys; no setting can turn it on in stage or prod |
 | One source per market, never mixed in one series: Binance spot for crypto, Alpaca SIP for US stocks (15 minutes delayed) | consistent data; both are free |
 | Full history fetched lazily on request, catalog cached 24 h and refreshed in the background | no ingestion pipeline and no scheduler to run |
