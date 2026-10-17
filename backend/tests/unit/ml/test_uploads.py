@@ -17,13 +17,16 @@ pytestmark = pytest.mark.anyio
 
 
 class FakeRedis:
-    def __init__(self, *, release_fails: bool = False) -> None:
+    def __init__(self, *, release_fails: bool = False, down: bool = False) -> None:
+        self._down = down
         self.values: dict[str, str] = {}
         self.expiries: dict[str, int] = {}
         self._release_fails = release_fails
 
     async def set(self, key: str, value: str, *, nx: bool, ex: int) -> bool:
         assert nx
+        if self._down:
+            raise RedisConnectionError("Connection refused")
         if key in self.values:
             return False
         self.values[key] = value
@@ -81,5 +84,20 @@ async def test_a_lock_that_cannot_be_released_expires(caplog: pytest.LogCaptureF
             pass
 
     assert "The upload lock of user usr_7f3k2m9qx4 was not released (ConnectionError)" in (
+        caplog.text
+    )
+
+
+async def test_without_redis_the_upload_runs_without_its_lock(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    ran = []
+
+    with caplog.at_level(logging.WARNING):
+        async with locks(FakeRedis(down=True)).hold("usr_7f3k2m9qx4"):
+            ran.append(True)
+
+    assert ran == [True]
+    assert "The upload of user usr_7f3k2m9qx4 runs without its lock (ConnectionError)" in (
         caplog.text
     )

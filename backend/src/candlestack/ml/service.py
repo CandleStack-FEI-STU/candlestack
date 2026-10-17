@@ -11,7 +11,7 @@ the commit fails. The incoming files are removed whatever happens.
 
 import hashlib
 import logging
-from collections.abc import AsyncIterable
+from collections.abc import AsyncIterable, Collection
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
@@ -63,6 +63,9 @@ RECEIVE_TIMEOUT = 120.0
 _LABEL_MAX = len(f" ({MODELS_MAX + 1})")
 # Postgres' error of a foreign key that points to nothing: the user's row is gone.
 _FOREIGN_KEY_VIOLATION = "23503"
+# Postgres' error of a row that a unique index refuses, and the index of the user's names.
+_UNIQUE_VIOLATION = "23505"
+_NAME_INDEX = "uq_models_user_id_name"
 _EMPTY = "The file is empty. Choose the model's .keras file and upload it again."
 
 
@@ -96,11 +99,14 @@ def numbered(name: str, number: int) -> str:
     return stem[: NAME_MAX - len(label)].rstrip() + label + suffix
 
 
-def free_name(name: str, taken: list[str]) -> str:
-    """`name`, or with the first number that makes it none of `taken`, in any case."""
-    lowered = {other.lower() for other in taken}
+def free_name(name: str, lowered: str, taken: Collection[str]) -> str:
+    """`name`, or with the first number that makes it none of `taken`, in any case. `lowered`
+    is `name` and `taken` are the names the user has, lowercased by Postgres, which compares
+    them so in its unique index; Python's lowercasing differs for some letters (``İ``).
+    Postgres lowercases letter by letter, so numbering the lowercased name is lowercasing the
+    numbered one."""
     number = 1
-    while numbered(name, number).lower() in lowered:
+    while numbered(lowered, number) in taken:
         number += 1
     return numbered(name, number)
 
@@ -205,6 +211,7 @@ class ModelsService:
             UploadTimeout: The file did not arrive in time.
             ModelCheckFailed: The file failed a check.
             AccountGone: The account was deleted meanwhile.
+            ModelNameTaken: Postgres compares the name it got as one the user has.
         """
         name = upload_name(file_name)
         if declared_size is not None and declared_size > FILE_MAX_BYTES:
@@ -255,6 +262,7 @@ class ModelsService:
             TooManyModels: The user has as many models as a user may keep.
             StorageFull: The file does not fit into the user's storage.
             AccountGone: The account was deleted meanwhile.
+            ModelNameTaken: Postgres compares the name it got as one the user has.
         """
         await self._store.lock_user(user_id)
         _check_room(*await self._store.usage(user_id), size)
@@ -276,8 +284,13 @@ class ModelsService:
         try:
             await self._store.flush()
         except IntegrityError as error:
-            if getattr(error.orig, "sqlstate", None) == _FOREIGN_KEY_VIOLATION:
+            state = getattr(error.orig, "sqlstate", None)
+            if state == _FOREIGN_KEY_VIOLATION:
                 raise AccountGone from None
+            # A name the numbering took for free that Postgres compares as taken: a lowercasing
+            # that is not letter by letter (an ICU collation) could do it.
+            if state == _UNIQUE_VIOLATION and _NAME_INDEX in str(error.orig):
+                raise ModelNameTaken(model.name) from None
             raise
         await self._storage.save(incoming, user_id, model.id)
         try:
@@ -293,7 +306,7 @@ class ModelsService:
         names it may become are looked up at once."""
         stem = _split(name)[0]
         taken = await self._store.names_starting(user_id, stem[: NAME_MAX - _LABEL_MAX].rstrip())
-        return free_name(name, taken)
+        return free_name(name, await self._store.lowered(name), set(taken))
 
     async def update(self, user_id: str, model_id: str, update: ModelUpdate) -> ModelOut:
         """Renames the user's model (its extension stays) or stars or unstars it; what

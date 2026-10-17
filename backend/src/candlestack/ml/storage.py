@@ -126,4 +126,7 @@ async def keep_incoming_swept(storage: ModelStorage) -> None:
     that keeps running does not keep their files either."""
     while True:
         await anyio.sleep(SWEEP_EVERY.total_seconds())
-        await storage.sweep()
+        try:
+            await storage.sweep()
+        except OSError as error:  # the directory cannot be read now: the next sweep tries again
+            logger.warning("The incoming model files were not swept (%s)", type(error).__name__)

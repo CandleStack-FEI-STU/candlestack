@@ -174,6 +174,18 @@ def _account_gone(_error: Exception) -> ProblemError:
     )
 
 
+def _name_taken(error: Exception) -> ProblemError:
+    assert isinstance(error, ModelNameTaken)
+    return ProblemError(
+        409,
+        "model-name-taken",
+        "Model name taken",
+        f"You already have a model named {error.name}. Rename that model or this file and "
+        "upload it again.",
+        headers=NO_STORE,  # it names a model of the user
+    )
+
+
 # The problems of a refused upload, by the service's error.
 _UPLOAD_PROBLEMS: dict[type[Exception], Callable[[Exception], ProblemError]] = {
     UnsupportedModelFormat: _unsupported,
@@ -184,6 +196,7 @@ _UPLOAD_PROBLEMS: dict[type[Exception], Callable[[Exception], ProblemError]] = {
     UploadTimeout: _timeout,
     ModelCheckFailed: _check_failed,
     AccountGone: _account_gone,
+    ModelNameTaken: _name_taken,
 }
 
 
@@ -220,8 +233,9 @@ async def list_models(
             409,
             "The file does not fit into the user's storage (`storage-full`; `used_bytes` and "
             "`quota_bytes` say how much is taken), the user has 100 models already "
-            "(`too-many-models`; `limit`), or another upload of the user is in progress "
-            "(`upload-in-progress`).",
+            "(`too-many-models`; `limit`), another upload of the user is in progress "
+            "(`upload-in-progress`), or, rarely, the numbered name the file got is one the user "
+            "has in another case (`model-name-taken`).",
         ),
         **_problem(413, "The file is larger than 50 MB (`model-too-large`)."),
         **_problem(

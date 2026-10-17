@@ -55,13 +55,18 @@ def test_a_numbered_name_stays_within_what_rename_takes() -> None:
     ("taken", "name"),
     [
         ([], "lstm.keras"),
-        (["LSTM.keras"], "lstm (2).keras"),
+        (["lstm.keras"], "lstm (2).keras"),
         (["lstm.keras", "lstm (2).keras", "lstm (4).keras"], "lstm (3).keras"),
         (["lstm (2).keras", "lstm v2.keras"], "lstm.keras"),
     ],
 )
 def test_the_free_name(taken: list[str], name: str) -> None:
-    assert free_name("lstm.keras", taken) == name
+    assert free_name("lstm.keras", "lstm.keras", set(taken)) == name
+
+
+def test_the_free_name_compares_as_postgres_lowercases() -> None:
+    # Python lowercases "İ" to two letters; Postgres (C collation) leaves it as it is.
+    assert free_name("İnci.KERAS", "İnci.keras", {"İnci.keras"}) == "İnci (2).KERAS"
 
 
 def test_rename_strips_the_name() -> None:

@@ -721,7 +721,7 @@ def test_the_check_process_limits_itself_on_linux(
     limits: list[tuple[str, tuple[int, int]]] = []
 
     class FakeResource:
-        RLIMIT_DATA, RLIMIT_CPU, RLIMIT_FSIZE = "data", "cpu", "fsize"
+        RLIMIT_DATA, RLIMIT_CPU, RLIMIT_FSIZE, RLIMIT_CORE = "data", "cpu", "fsize", "core"
 
         @staticmethod
         def setrlimit(limit: str, values: tuple[int, int]) -> None:
@@ -733,9 +733,10 @@ def test_the_check_process_limits_itself_on_linux(
     inspect.main([str(fixture("functional")), str(scratch), "1000"])
 
     assert limits == [
-        ("data", (256 * 1024 * 1024, 256 * 1024 * 1024)),
+        ("data", (192 * 1024 * 1024, 192 * 1024 * 1024)),
         ("cpu", (15, 15)),
         ("fsize", (2000, 2000)),
+        ("core", (0, 0)),
     ]
     assert "failed" in capsys.readouterr().out  # 1000 bytes is no room for a model
 

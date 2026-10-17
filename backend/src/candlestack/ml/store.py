@@ -53,11 +53,18 @@ class ModelStore:
         ).one()
         return int(row[0]), int(row[1])
 
+    async def lowered(self, text: str) -> str:
+        """`text` lowercased as Postgres does it, as the unique index of the names does."""
+        lowered = await self._db.scalar(select(func.lower(text)))
+        assert lowered is not None  # lower() of a string is a string
+        return lowered
+
     async def names_starting(self, user_id: str, prefix: str) -> list[str]:
-        """The names of the user's models that start with `prefix`, in any case."""
+        """The names of the user's models that start with `prefix` in any case, lowercased
+        by Postgres."""
         pattern = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
         rows = await self._db.scalars(
-            select(Model.name).where(
+            select(func.lower(Model.name)).where(
                 Model.user_id == user_id,
                 func.lower(Model.name).like(func.lower(pattern), escape="\\"),
             )

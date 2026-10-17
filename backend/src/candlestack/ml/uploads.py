@@ -45,7 +45,18 @@ class RedisUploadLocks:
     async def hold(self, user_id: str) -> AsyncIterator[None]:
         key = f"ml:upload:{user_id}"
         token = secrets.token_hex(16)
-        if not await self._redis.set(key, token, nx=True, ex=UPLOAD_LOCK_TTL):
+        try:
+            acquired = await self._redis.set(key, token, nx=True, ex=UPLOAD_LOCK_TTL)
+        except RedisError as error:
+            # Without Redis the upload goes on unlocked: the lock of the user's models in
+            # Postgres still keeps the quota and the names, only uploads side by side are let
+            # through until Redis is back.
+            logger.warning(
+                "The upload of user %s runs without its lock (%s)", user_id, type(error).__name__
+            )
+            yield
+            return
+        if not acquired:
             raise UploadInProgress
         try:
             yield

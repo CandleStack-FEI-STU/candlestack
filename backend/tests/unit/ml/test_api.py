@@ -16,6 +16,7 @@ from candlestack.ml.api import _upload_problem
 from candlestack.ml.errors import (
     AccountGone,
     ModelCheckFailed,
+    ModelNameTaken,
     ModelTooLarge,
     StorageFull,
     TooManyModels,
@@ -152,6 +153,7 @@ def test_the_default_model_storage_is_relative() -> None:
         (UploadTimeout(), 408, "upload-timeout"),
         (ModelCheckFailed(ModelCheck.weights, "No weights."), 422, "model-check-failed"),
         (AccountGone(), 401, "not-signed-in"),
+        (ModelNameTaken("lstm.keras"), 409, "model-name-taken"),
     ],
 )
 def test_each_refused_upload_has_its_problem_and_is_logged_by_ids(

@@ -9,7 +9,9 @@ and fails the check instead of the API. The API process never imports h5py.
 import json
 import logging
 import os
+import subprocess
 import sys
+from dataclasses import fields
 from pathlib import Path
 
 import anyio
@@ -22,6 +24,14 @@ logger = logging.getLogger(__name__)
 
 # A real model is checked in well under a second (the child's start included).
 CHECK_TIMEOUT = 20.0
+# How long an upload waits for its turn: the checks of all users run one after another.
+QUEUE_TIMEOUT = 120.0
+# What the table's columns hold (`models.py`): the Keras version, bigints; a shape has a few
+# dimensions.
+_KERAS_VERSION_MAX = 32
+_BIGINT_MAX = 2**63 - 1
+_DIMENSIONS_MAX = 32
+_FACT_NAMES = frozenset(field.name for field in fields(ModelFacts))
 # One check at a time: they never pile up, and never use the thread pool that the sync
 # dependencies of the routes need.
 _CHECKS = anyio.CapacityLimiter(1)
@@ -44,6 +54,7 @@ _ENVIRONMENT_KEPT = ("PATH", "SYSTEMROOT", "TMPDIR", "TEMP", "TMP")
 _THREADS = {"OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1"}
 _SAVE_AGAIN = 'Save the model again with model.save("model.keras") and upload that file.'
 TOO_LONG = "The check took too long. The file may be damaged. " + _SAVE_AGAIN
+BUSY = "Many models are being checked right now. Upload the file again in a few minutes."
 STOPPED = "The check of the file stopped before it finished. The file may be damaged. " + (
     _SAVE_AGAIN
 )
@@ -59,8 +70,8 @@ async def check_upload(path: Path, scratch: Path) -> ModelFacts:
     `scratch`, which the caller removes.
 
     Raises:
-        ModelCheckFailed: A check failed, the child took too long or stopped (crashed, killed
-            at a limit).
+        ModelCheckFailed: A check failed, the checks of other uploads kept it waiting too long,
+            the child took too long or stopped (crashed, killed at a limit).
     """
     command = [
         sys.executable,
@@ -72,10 +83,20 @@ async def check_upload(path: Path, scratch: Path) -> ModelFacts:
         str(scratch),
         str(FILE_MAX_BYTES),
     ]
-    async with _CHECKS:
+    try:
+        with anyio.fail_after(QUEUE_TIMEOUT):
+            await _CHECKS.acquire()
+    except TimeoutError:
+        logger.warning("An upload waited longer than %s s for its check", QUEUE_TIMEOUT)
+        raise ModelCheckFailed(ModelCheck.opens, BUSY) from None
+    try:
         # Past the time limit the child is killed.
         with anyio.move_on_after(CHECK_TIMEOUT) as limit:
-            done = await anyio.run_process(command, check=False, env=_environment())
+            done = await anyio.run_process(
+                command, check=False, stdin=subprocess.DEVNULL, env=_environment()
+            )
+    finally:
+        _CHECKS.release()
     if limit.cancelled_caught:
         logger.warning("The check of an upload took longer than %s s", CHECK_TIMEOUT)
         raise ModelCheckFailed(ModelCheck.opens, TOO_LONG)
@@ -86,7 +107,7 @@ def _result(returncode: int, stdout: bytes) -> ModelFacts:
     """What the child found.
 
     Raises:
-        ModelCheckFailed: A check failed, or the child wrote no result.
+        ModelCheckFailed: A check failed, or the child wrote no result or one off its form.
     """
     try:
         result = json.loads(stdout) if returncode == 0 else None
@@ -94,8 +115,40 @@ def _result(returncode: int, stdout: bytes) -> ModelFacts:
             failed = result["failed"]
             raise ModelCheckFailed(ModelCheck(failed["check"]), str(failed["detail"]))
         if result is not None:
-            return ModelFacts(**result["facts"])
+            return _facts(result["facts"])
     except (ValueError, KeyError, TypeError):  # no JSON, or not what the child writes
         pass
     logger.warning("The check of an upload stopped (exit code %s)", returncode)
     raise ModelCheckFailed(ModelCheck.opens, STOPPED)
+
+
+def _is_count(value: object, maximum: int) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and 0 < value <= maximum
+
+
+def _is_shape(value: object) -> bool:
+    return value is None or (
+        isinstance(value, list)
+        and 0 < len(value) <= _DIMENSIONS_MAX
+        and all(_is_count(dim, _BIGINT_MAX) for dim in value)
+    )
+
+
+def _facts(raw: object) -> ModelFacts:
+    """The facts the child wrote, when they fit what the table holds.
+
+    Raises:
+        ValueError: They do not.
+    """
+    if not isinstance(raw, dict) or set(raw) != _FACT_NAMES:
+        raise ValueError("not the facts of a check")
+    version = raw["keras_version"]
+    if (
+        not isinstance(version, str)
+        or not 0 < len(version) <= _KERAS_VERSION_MAX
+        or not _is_count(raw["parameters"], _BIGINT_MAX)
+        or not _is_shape(raw["input_shape"])
+        or not _is_shape(raw["output_shape"])
+    ):
+        raise ValueError("facts off their form")
+    return ModelFacts(**raw)

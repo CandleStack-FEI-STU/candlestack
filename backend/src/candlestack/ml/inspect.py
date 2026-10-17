@@ -497,11 +497,14 @@ def _output_shape(config: dict[str, Any], layers: list[dict[str, Any]]) -> list[
 
 def limit_resources(resource: Any, *, file_max: int) -> None:
     """Limits this process (Linux): memory, CPU time and the size of a file it writes (the
-    weights unpacked); past them the kernel stops it, which fails the check."""
+    weights unpacked); past them the kernel stops it, which fails the check. No core dump: a
+    crash must not write the process' memory to the disk."""
     for limit, value in (
-        (resource.RLIMIT_DATA, 256 * MIB),
+        # What the backend's container has left next to the app (infra/README.md, "Memory").
+        (resource.RLIMIT_DATA, 192 * MIB),
         (resource.RLIMIT_CPU, 15),
         (resource.RLIMIT_FSIZE, 2 * file_max),
+        (resource.RLIMIT_CORE, 0),
     ):
         resource.setrlimit(limit, (value, value))
 

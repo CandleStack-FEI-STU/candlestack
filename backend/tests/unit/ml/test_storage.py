@@ -159,3 +159,27 @@ async def test_the_incoming_files_are_swept_every_10_minutes(
 
     assert sleeps == [600, 600, 600]
     assert len(sweeps) == 3
+
+
+async def test_a_sweep_that_fails_does_not_stop_the_next(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    sweeps: list[int] = []
+
+    class Storage:
+        async def sweep(self) -> None:
+            sweeps.append(1)
+            if len(sweeps) == 1:
+                raise PermissionError("/data/models/.incoming")
+            raise asyncio.CancelledError
+
+    async def sleep(_seconds: float) -> None:
+        pass
+
+    monkeypatch.setattr(storage_module.anyio, "sleep", sleep)
+
+    with caplog.at_level(logging.WARNING), pytest.raises(asyncio.CancelledError):
+        await keep_incoming_swept(cast("ModelStorage", Storage()))
+
+    assert len(sweeps) == 2
+    assert "The incoming model files were not swept (PermissionError)" in caplog.text

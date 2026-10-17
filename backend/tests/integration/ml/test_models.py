@@ -132,6 +132,19 @@ def test_a_taken_name_gets_a_number(ada, bob) -> None:
     assert other == "functional.keras"  # names are per user
 
 
+def test_names_that_python_lowercases_otherwise_are_numbered(ada) -> None:
+    # Python lowercases "İ" to two letters; Postgres compares the names by its own lower().
+    names = [
+        ada.upload(keras_file("functional"), name="İnci.keras").json()["name"] for _ in range(3)
+    ]
+
+    # Postgres may lowercase "İ" to "i" (its collation decides): then this name is taken too.
+    other = ada.upload(keras_file("functional"), name="inci.keras")
+
+    assert names == ["İnci.keras", "İnci (2).keras", "İnci (3).keras"]
+    assert other.status_code == 201
+
+
 def test_a_freed_name_is_taken_again(ada) -> None:
     first = ada.upload(keras_file("functional")).json()
     ada.upload(keras_file("functional"))

@@ -2102,7 +2102,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The file does not fit into the user's storage (`storage-full`; `used_bytes` and `quota_bytes` say how much is taken), the user has 100 models already (`too-many-models`; `limit`), or another upload of the user is in progress (`upload-in-progress`). */
+            /** @description The file does not fit into the user's storage (`storage-full`; `used_bytes` and `quota_bytes` say how much is taken), the user has 100 models already (`too-many-models`; `limit`), another upload of the user is in progress (`upload-in-progress`), or, rarely, the numbered name the file got is one the user has in another case (`model-name-taken`). */
             409: {
                 headers: {
                     [name: string]: unknown;
