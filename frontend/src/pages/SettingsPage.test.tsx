@@ -3,7 +3,7 @@ import { cleanup, screen, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { ARSEN, sessionWithPreferences, stubApi } from '@/test/api';
+import { ARSEN, MB, model, modelsAnswer, sessionWithPreferences, stubApi } from '@/test/api';
 import { renderApp, warmUpSettings } from '@/test/app';
 
 beforeAll(warmUpSettings);
@@ -81,6 +81,28 @@ describe('Settings', () => {
     const card = within(screen.getByRole('region', { name: 'Data and storage' }));
     expect(card.getByText('Market data').textContent).toBe('Market dataDelayed 15 min');
     expect(card.getByText('Alpaca, SIP feed')).toBeDefined();
+  });
+
+  it('shows the storage the models take and how many were uploaded', async () => {
+    stubApi({
+      ...sessionWithPreferences(ARSEN),
+      ...modelsAnswer([model({ size_bytes: 20 * MB }), model({ id: 'mdl_a2b3c4d5e6', size_bytes: 5 * MB })]),
+    });
+    await renderApp('/settings/data-and-storage');
+    const card = within(screen.getByRole('region', { name: 'Data and storage' }));
+    const usage = await card.findByText('25 MB of 100 MB');
+    expect(card.getByText('Models').textContent).toBe('Models2 uploaded');
+    const meter = usage.parentElement;
+    expect(meter?.className).toContain('max-w-[260px]');
+    expect((meter?.lastElementChild?.firstElementChild as HTMLElement | null)?.style.width).toBe('25%');
+  });
+
+  it('leaves the models row out until the API has said', async () => {
+    stubApi({ ...sessionWithPreferences(ARSEN), 'GET /api/v1/models': { status: 503, body: { detail: 'Down.' } } });
+    await renderApp('/settings/data-and-storage');
+    const card = within(screen.getByRole('region', { name: 'Data and storage' }));
+    expect(card.getByText('Alpaca, SIP feed')).toBeDefined();
+    expect(card.queryByText('Models')).toBeNull();
   });
 
   it('shows the API keys and the MCP server as coming soon, with the API docs of this host', async () => {

@@ -39,7 +39,15 @@ export {
   type TimeFormat,
   type TimeZone,
 } from './preferences';
-export { deleteModel, modelsQueryOptions, updateModel, uploadModel, type Model, type Models } from './models';
+export {
+  deleteModel,
+  modelsQueryOptions,
+  updateModel,
+  uploadModel,
+  type Model,
+  type Models,
+  type StorageUsage,
+} from './models';
 export { queryClient } from './queryClient';
 export {
   hasNextPage,

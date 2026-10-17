@@ -252,7 +252,8 @@ The two sections with the account's preferences load them in the route's loader
   their rows in `src/features/settings/rows.tsx` and their text field and segments in
   `controls.tsx`. A failure is a line in the design's hint style (12 px, muted) with
   `role="alert"`.
-- Data and storage shows the market data; the backtests and models rows come with those pages.
+- Data and storage shows the market data and the storage the models take (the sidebar's meter
+  and numbers, how many were uploaded); the backtests row comes with that page.
   API and MCP shows both cards as Coming soon, with the API docs of the same host.
 - Account: Sign out everywhere (`POST /api/v1/auth/sign-out-everywhere`) and Delete account
   (`DELETE /api/v1/me`, after the app's dialog). Both then forget the user and their data and go
@@ -271,7 +272,8 @@ upload, rename and delete modals):
   `frameworks.ts`, a quarter lighter in the dark theme), the star (`src/components/StarButton.tsx`,
   shared with the backtests later), the name, `Keras · size · added day`, the shape it reads, the
   best Sharpe and the backtest count, Rename and Delete. Sizes are binary MB like the API's
-  limits; days are the viewer's.
+  limits. The day goes through `src/lib/dates.ts` in the account's zone and date format: "Today",
+  else `13 Oct` in the default format while it is this year's, else the whole date.
 - Upload model (`UploadDialog`, exported for the dashboard): the file goes to
   `POST /api/v1/models?name=…` as the raw body. A file of another format (by its extension)
   never reaches the API: it shows that support is coming soon. While the API checks the file,

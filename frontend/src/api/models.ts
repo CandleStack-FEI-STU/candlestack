@@ -5,6 +5,7 @@ import type { components } from './schema';
 
 export type Model = components['schemas']['ModelOut'];
 export type Models = components['schemas']['ModelsOut'];
+export type StorageUsage = components['schemas']['StorageUsage'];
 export type ModelUpdate = components['schemas']['ModelUpdate'];
 
 // GET /api/v1/models: the user's models, oldest first, and the storage they take. Under
