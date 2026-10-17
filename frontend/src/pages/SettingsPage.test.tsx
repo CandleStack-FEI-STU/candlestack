@@ -3,7 +3,7 @@ import { cleanup, screen, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { ARSEN, MB, model, modelsAnswer, sessionWithPreferences, stubApi } from '@/test/api';
+import { ARSEN, dashboardAnswer, MB, model, modelsAnswer, sessionWithPreferences, stubApi } from '@/test/api';
 import { renderApp, warmUpSettings } from '@/test/app';
 
 beforeAll(warmUpSettings);
@@ -102,6 +102,32 @@ describe('Settings', () => {
     const card = within(screen.getByRole('region', { name: 'Data and storage' }));
     expect(card.getByText('Alpaca, SIP feed')).toBeDefined();
     expect(card.queryByText('Models')).toBeNull();
+  });
+
+  it('shows how many backtests are kept, between the market data and the models', async () => {
+    stubApi({
+      ...sessionWithPreferences(ARSEN),
+      ...dashboardAnswer({ counts: { all: 12, starred: 3, failed: 1 } }),
+      ...modelsAnswer([model()]),
+    });
+    await renderApp('/settings/data-and-storage');
+    const card = within(screen.getByRole('region', { name: 'Data and storage' }));
+    await card.findByText('Models');
+    expect(card.getByText('Backtests').textContent).toBe('BacktestsKept until you delete them');
+    expect(card.getByText('12')).toBeDefined();
+    expect(card.getAllByText(/^(Market data|Backtests|Models)$/).map((label) => label.textContent)).toEqual([
+      'Market dataDelayed 15 min',
+      'BacktestsKept until you delete them',
+      'Models1 uploaded',
+    ]);
+  });
+
+  it('leaves the backtests row out until the API has said', async () => {
+    stubApi({ ...sessionWithPreferences(ARSEN), 'GET /api/v1/dashboard': { status: 503, body: { detail: 'Down.' } } });
+    await renderApp('/settings/data-and-storage');
+    const card = within(screen.getByRole('region', { name: 'Data and storage' }));
+    expect(card.getByText('Alpaca, SIP feed')).toBeDefined();
+    expect(card.queryByText('Backtests')).toBeNull();
   });
 
   it('shows the API keys and the MCP server as coming soon, with the API docs of this host', async () => {
