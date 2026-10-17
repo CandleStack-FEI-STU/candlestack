@@ -21,7 +21,17 @@ from candlestack.accounts.dependencies import (
 )
 from candlestack.accounts.errors import SignInDenied, SignInFailed
 from candlestack.accounts.pending import TTL
-from candlestack.accounts.schemas import DeniedSignInOut, MeOut, Provider
+from candlestack.accounts.schemas import (
+    Appearance,
+    AppearanceUpdate,
+    BacktestDefaults,
+    DeniedSignInOut,
+    MeOut,
+    MeUpdate,
+    PreferencesOut,
+    Provider,
+    SignInIntent,
+)
 from candlestack.accounts.service import SESSION_MAX_AGE
 from candlestack.core import DATABASE_ERRORS, Problem, ProblemError, require_same_origin
 
@@ -35,6 +45,11 @@ DENIED_URL = "/signin?error=denied"
 NO_STORE = {"Cache-Control": "no-store"}
 # Environments with the dev sign-in: never stage or prod, whatever their settings say.
 _DEV_SIGN_IN_ENVS = frozenset({"local", "test"})
+
+IntentParam = Annotated[
+    SignInIntent,
+    Query(description="`sign-in` (default), or `connect` to add a sign-in method in Settings"),
+]
 
 NextPath = Annotated[
     str | None,
@@ -64,15 +79,21 @@ def _failed(provider: Provider, error: SignInFailed) -> RedirectResponse:
     status_code=302,
     response_class=RedirectResponse,
 )
-async def start_sign_in(
+async def start_sign_in(  # noqa: PLR0917 (scaffold: the builder makes intent keyword-only)
     provider: Provider,
     service: AccountsServiceDep,
     cookies: CookiesDep,
     wait: Annotated[int, Depends(sign_in_wait)],
     next: NextPath = None,  # noqa: A002 (the parameter's name in the URL)
+    intent: IntentParam = SignInIntent.sign_in,  # noqa: ARG001 (scaffold)
 ) -> RedirectResponse:
     """Redirects to the provider's sign-in page, or to `/signin?error=failed` when sign-in
-    with it is not available or this address made too many sign-in requests in a minute."""
+    with it is not available or this address made too many sign-in requests in a minute.
+
+    With `intent=connect` (signed in, from Settings) the provider's account is added to the
+    signed-in user's sign-in methods instead: the callback returns to `next` (default
+    `/settings/sign-in`), or to `/settings/sign-in?error=taken` when that account already
+    signs in to another CandleStack user, or `/settings/sign-in?error=failed`."""
     try:
         if wait:
             raise SignInFailed("too many sign-in requests from this address")
@@ -191,3 +212,75 @@ async def dev_sign_in(service: AccountsServiceDep, cookies: CookiesDep) -> Respo
     response = Response(status_code=204)
     cookies.set(response, SESSION, await service.dev_sign_in(), SESSION_MAX_AGE)
     return response
+
+
+# --- M2: settings (contract; the bodies come with the implementation) ---------------------
+
+
+@router.patch(
+    "/api/v1/me",
+    responses=_problem(401, "Not signed in (`not-signed-in`)."),
+    dependencies=[Depends(require_same_origin)],
+)
+async def update_me(body: MeUpdate, user: CurrentUserDep) -> MeOut:
+    """Changes the display name."""
+    raise NotImplementedError
+
+
+@router.delete(
+    "/api/v1/me",
+    status_code=204,
+    responses=_problem(401, "Not signed in (`not-signed-in`)."),
+    dependencies=[Depends(require_same_origin)],
+)
+async def delete_me(user: CurrentUserDep) -> Response:
+    """Deletes the account with everything it owns and ends all its sessions."""
+    raise NotImplementedError
+
+
+@router.delete(
+    "/api/v1/me/sign-in-methods/{provider}",
+    status_code=204,
+    responses=_problem(409, "It is the account's last sign-in method (`last-sign-in-method`)."),
+    dependencies=[Depends(require_same_origin)],
+)
+async def disconnect(provider: Provider, user: CurrentUserDep) -> Response:
+    """Removes a sign-in method; the last one cannot be removed."""
+    raise NotImplementedError
+
+
+@router.post(
+    "/api/v1/auth/sign-out-everywhere",
+    status_code=204,
+    responses=_problem(401, "Not signed in (`not-signed-in`)."),
+    dependencies=[Depends(require_same_origin)],
+)
+async def sign_out_everywhere(user: CurrentUserDep) -> Response:
+    """Ends every session of the user, this one included."""
+    raise NotImplementedError
+
+
+@router.get("/api/v1/me/preferences", responses=_problem(401, "Not signed in (`not-signed-in`)."))
+async def preferences(user: CurrentUserDep) -> PreferencesOut:
+    """The user's settings, defaults included."""
+    raise NotImplementedError
+
+
+@router.put(
+    "/api/v1/me/preferences/backtest-defaults",
+    responses=_problem(401, "Not signed in (`not-signed-in`)."),
+    dependencies=[Depends(require_same_origin)],
+)
+async def save_backtest_defaults(body: BacktestDefaults, user: CurrentUserDep) -> BacktestDefaults:
+    """Saves how new backtests start (Save defaults)."""
+    raise NotImplementedError
+
+
+@router.patch(
+    "/api/v1/me/preferences/appearance",
+    responses=_problem(401, "Not signed in (`not-signed-in`)."),
+    dependencies=[Depends(require_same_origin)],
+)
+async def update_appearance(body: AppearanceUpdate, user: CurrentUserDep) -> Appearance:
+    """Changes some appearance settings; each control saves as soon as it changes."""
+    raise NotImplementedError
