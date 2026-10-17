@@ -435,8 +435,14 @@ export interface components {
              */
             threshold: number;
             /** @default 30m */
-            timeframe: components["schemas"]["candlestack__accounts__schemas__Timeframe"];
+            timeframe: components["schemas"]["BacktestTimeframe"];
         };
+        /**
+         * BacktestTimeframe
+         * @description Timeframes a new backtest can start with (Settings, Backtest defaults).
+         * @enum {string}
+         */
+        BacktestTimeframe: "5m" | "30m" | "1h" | "1d";
         /**
          * Benchmark
          * @description What each backtest is measured against: buy and hold of its own instruments, or an ETF.
@@ -508,7 +514,7 @@ export interface components {
              */
             start: number;
             /** @example 1h */
-            timeframe: components["schemas"]["candlestack__data__models__Timeframe"];
+            timeframe: components["schemas"]["Timeframe"];
         };
         /**
          * CandlesOut
@@ -719,7 +725,7 @@ export interface components {
              *       "1d"
              *     ]
              */
-            timeframes: components["schemas"]["candlestack__data__models__Timeframe"][];
+            timeframes: components["schemas"]["Timeframe"][];
         };
         /**
          * InstrumentItemOut
@@ -1014,16 +1020,10 @@ export interface components {
         TimeZone: "ny" | "local";
         /**
          * Timeframe
-         * @description Timeframes a new backtest can start with (Settings, Backtest defaults).
-         * @enum {string}
-         */
-        candlestack__accounts__schemas__Timeframe: "5m" | "30m" | "1h" | "1d";
-        /**
-         * Timeframe
          * @description Candle durations; iteration goes from the shortest to the longest.
          * @enum {string}
          */
-        candlestack__data__models__Timeframe: "1m" | "5m" | "15m" | "30m" | "1h" | "4h" | "1d";
+        Timeframe: "1m" | "5m" | "15m" | "30m" | "1h" | "4h" | "1d";
     };
     responses: never;
     parameters: never;
@@ -1339,7 +1339,7 @@ export interface operations {
     candles_api_v1_data_instruments__instrument_id__candles_get: {
         parameters: {
             query: {
-                timeframe: components["schemas"]["candlestack__data__models__Timeframe"];
+                timeframe: components["schemas"]["Timeframe"];
                 /** @description Start of the period, inclusive: UTC epoch seconds or ISO 8601 (`2024-06-03`, `2024-06-03T13:30:00Z`; without an offset it is UTC). Without it, the period starts where the last `limit` candles before `end` begin; `meta.start` tells where. Not together with `limit`. */
                 start?: (number | string) | null;
                 /** @description End of the period, exclusive, in the same formats; default now. */

@@ -147,12 +147,23 @@
             "type": "number"
           },
           "timeframe": {
-            "$ref": "#/components/schemas/candlestack__accounts__schemas__Timeframe",
+            "$ref": "#/components/schemas/BacktestTimeframe",
             "default": "30m"
           }
         },
         "title": "BacktestDefaults",
         "type": "object"
+      },
+      "BacktestTimeframe": {
+        "description": "Timeframes a new backtest can start with (Settings, Backtest defaults).",
+        "enum": [
+          "5m",
+          "30m",
+          "1h",
+          "1d"
+        ],
+        "title": "BacktestTimeframe",
+        "type": "string"
       },
       "Benchmark": {
         "description": "What each backtest is measured against: buy and hold of its own instruments, or an ETF.",
@@ -264,7 +275,7 @@
             "type": "integer"
           },
           "timeframe": {
-            "$ref": "#/components/schemas/candlestack__data__models__Timeframe",
+            "$ref": "#/components/schemas/Timeframe",
             "examples": [
               "1h"
             ]
@@ -642,7 +653,7 @@
               ]
             ],
             "items": {
-              "$ref": "#/components/schemas/candlestack__data__models__Timeframe"
+              "$ref": "#/components/schemas/Timeframe"
             },
             "title": "Timeframes",
             "type": "array"
@@ -1221,18 +1232,7 @@
         "title": "TimeZone",
         "type": "string"
       },
-      "candlestack__accounts__schemas__Timeframe": {
-        "description": "Timeframes a new backtest can start with (Settings, Backtest defaults).",
-        "enum": [
-          "5m",
-          "30m",
-          "1h",
-          "1d"
-        ],
-        "title": "Timeframe",
-        "type": "string"
-      },
-      "candlestack__data__models__Timeframe": {
+      "Timeframe": {
         "description": "Candle durations; iteration goes from the shortest to the longest.",
         "enum": [
           "1m",
@@ -1731,7 +1731,7 @@
             "name": "timeframe",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/candlestack__data__models__Timeframe",
+              "$ref": "#/components/schemas/Timeframe",
               "examples": [
                 "1h"
               ]

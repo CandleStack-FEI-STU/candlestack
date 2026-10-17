@@ -59,7 +59,7 @@ class MeUpdate(BaseModel):
     )
 
 
-class Timeframe(StrEnum):
+class BacktestTimeframe(StrEnum):
     """Timeframes a new backtest can start with (Settings, Backtest defaults)."""
 
     m5 = "5m"
@@ -85,7 +85,7 @@ class Benchmark(StrEnum):
 class BacktestDefaults(BaseModel):
     """How new backtests start (Settings, Backtest defaults)."""
 
-    timeframe: Timeframe = Timeframe.m30
+    timeframe: BacktestTimeframe = BacktestTimeframe.m30
     period_start: date = Field(default=date(2021, 1, 4), description="First day of the test")
     period_end: date = Field(default=date(2024, 12, 31), description="Last day of the test")
     direction: Direction = Direction.long
