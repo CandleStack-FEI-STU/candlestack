@@ -13,6 +13,8 @@ from candlestack.core import Base
 # similar characters.
 _ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567"
 _ID_LENGTH = 10
+# Longer names from a provider are cut.
+DISPLAY_NAME_LENGTH = 200
 
 
 def new_user_id() -> str:
@@ -24,7 +26,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[str] = mapped_column(String(14), primary_key=True)
-    display_name: Mapped[str] = mapped_column(String(200))
+    display_name: Mapped[str] = mapped_column(String(DISPLAY_NAME_LENGTH))
     # Lowercased, so the same address from another provider finds the account.
     email: Mapped[str] = mapped_column(String(320), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

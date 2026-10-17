@@ -14,7 +14,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from candlestack.accounts.errors import SignInDenied, SignInFailed
-from candlestack.accounts.models import Identity, User, UserSession, new_user_id
+from candlestack.accounts.models import (
+    DISPLAY_NAME_LENGTH,
+    Identity,
+    User,
+    UserSession,
+    new_user_id,
+)
 from candlestack.accounts.oauth import OAuthClient, ProviderAccount
 from candlestack.accounts.pending import PendingSignIn, PendingStore
 from candlestack.accounts.schemas import DeniedSignInOut, MeOut, Provider
@@ -244,5 +250,7 @@ class AccountsService:
 
 
 def _display_name(account: ProviderAccount) -> str:
-    """GitHub's name or else login, Google's name, else the email's local part."""
-    return account.name or account.login or account.email.partition("@")[0]
+    """GitHub's name or else login, Google's name, else the email's local part; cut to the
+    column's length."""
+    name = account.name or account.login or account.email.partition("@")[0]
+    return name[:DISPLAY_NAME_LENGTH]

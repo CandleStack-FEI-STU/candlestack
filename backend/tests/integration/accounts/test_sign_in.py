@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from candlestack.accounts import dependencies, service
+from candlestack.accounts import dependencies, service, store
 
 pytestmark = pytest.mark.integration
 
@@ -246,6 +246,34 @@ def test_the_display_name_falls_back_to_the_login(browser, providers) -> None:
     browser.sign_in("github")
 
     assert browser.me().json()["display_name"] == "ada"
+
+
+def test_a_long_name_is_cut_to_fit(browser, providers) -> None:
+    providers.github_account(name="A" * 300)
+
+    assert browser.sign_in("github").headers["location"] == "/dashboard"
+    assert browser.me().json()["display_name"] == "A" * 200
+
+
+def test_a_first_sign_in_that_loses_a_race_fails(
+    browser, other_browser, monkeypatch, sql, caplog
+) -> None:
+    other_browser.sign_in("google")
+
+    # The GitHub sign-in of the same email looked for its user before the Google one saved it.
+    async def no_user(_store, _email: str) -> None:
+        return None
+
+    monkeypatch.setattr(store.AccountStore, "user_by_email", no_user)
+    with caplog.at_level(logging.ERROR):
+        callback = browser.sign_in("github")
+
+    assert callback.status_code == 302
+    assert callback.headers["location"] == "/signin?error=failed"
+    assert "session" not in cookies_set(callback)
+    assert "Postgres failed (IntegrityError)" in caplog.text
+    assert "ada@example.com" not in caplog.text
+    assert sql("SELECT provider FROM identities") == [("google",)]
 
 
 def test_dev_sign_in(browser, sql) -> None:
