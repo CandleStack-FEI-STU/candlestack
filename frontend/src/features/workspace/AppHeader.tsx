@@ -10,7 +10,7 @@ import { NewBacktest } from './NewBacktest';
 export function AppHeader() {
   const user = useSignedInUser();
   return (
-    <HeaderBar home="/dashboard" homeLabel="CandleStack dashboard">
+    <HeaderBar home="/dashboard" homeLabel="CandleStack dashboard" app>
       <div className="ml-auto flex items-center gap-2">
         <NewBacktest />
         <ThemeToggle />

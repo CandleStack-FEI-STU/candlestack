@@ -40,7 +40,9 @@ function parseSort(sort: unknown, order: unknown): Pick<BacktestsSearch, 'sort' 
   return { sort: column, order: order === 'asc' || order === 'desc' ? order : firstOrder(column) };
 }
 
-// Unknown or broken values are dropped, so ?show=all or ?page=-3 opens the plain list.
+// Unknown or broken values are dropped, so ?show=all or ?page=-3 opens the plain list. Each key
+// stays in the result, undefined when dropped: the router lays the result over the raw URL values
+// its parent routes pass on, and a key left out would bring the broken value back to the request.
 export function validateBacktestsSearch(
   search: {
     q?: unknown;
@@ -51,14 +53,15 @@ export function validateBacktestsSearch(
     page?: unknown;
   } & SearchSchemaInput,
 ): BacktestsSearch {
-  const result: BacktestsSearch = {
+  return {
     q: parseText(search.q, MAX_QUERY),
     show: search.show === 'starred' || search.show === 'failed' ? search.show : undefined,
     model: parseText(search.model, MAX_MODEL),
+    sort: undefined,
+    order: undefined,
     ...parseSort(search.sort, search.order),
     page: parsePage(search.page),
   };
-  return Object.fromEntries(Object.entries(result).filter(([, value]) => value !== undefined));
 }
 
 // What a click on a column's header does (mockups/app, btSort): a new column sorts down (Model

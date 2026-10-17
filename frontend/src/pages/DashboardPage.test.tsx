@@ -235,6 +235,25 @@ describe('the dashboard of an account with backtests', () => {
     ).toBeDefined();
   });
 
+  it('gives the focus back to what opened a dialog when it closes', async () => {
+    await open({ ...dashboardAnswer(FULL), ...modelsAnswer([]) });
+    const user = userEvent.setup();
+    const best = within(await screen.findByRole('region', { name: 'Best backtests' }));
+    const openers = [
+      [() => best.getByRole('button', { name: 'Backtest #10' }), 'Backtest #10'],
+      [() => screen.getByRole('button', { name: /^New backtest\s*Pick/ }), 'New backtest'],
+      [() => screen.getByRole('button', { name: /^Upload model/ }), 'Upload model'],
+      [() => screen.getByRole('button', { name: /^Compare backtests/ }), 'Compare backtests'],
+    ] as const;
+    for (const [opener, dialog] of openers) {
+      await user.click(opener());
+      await screen.findByRole('dialog', { name: dialog });
+      await user.keyboard('{Escape}');
+      await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(document.activeElement).toBe(opener());
+    }
+  });
+
   it('lists the starred models by best Sharpe, then by use, with More past four', async () => {
     const OTHER = model({ id: 'mdl_o', name: 'other.keras', starred: true, backtest_count: 0 });
     const UNSTARRED = model({ id: 'mdl_u', name: 'plain.keras', best_sharpe: 9 });

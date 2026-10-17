@@ -101,7 +101,7 @@ function Footer({ state, onAgain, onDone, onBacktest }: FooterProps) {
 type FlowProps = { onDone: () => void; onBacktest: () => void };
 
 // The dialog's content: the drop zone, then the file and its checks. It mounts with the dialog
-// and unmounts with it, which aborts an upload still running.
+// and unmounts with it; an upload still running goes on to its answer (useUpload).
 function UploadFlow({ onDone, onBacktest }: FlowProps) {
   const { state, choose, reset } = useUpload();
   const input = useRef<HTMLInputElement>(null);

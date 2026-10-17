@@ -77,7 +77,7 @@ function Option({ index, active, selected, usable, label, note, highlight, onPic
       )}
     >
       <span className="min-w-0 truncate">{label}</span>
-      <span className="ml-auto text-xs/[1.5] text-muted-foreground">{note}</span>
+      <span className="ml-auto shrink-0 text-xs/[1.5] text-muted-foreground">{note}</span>
       <Check aria-hidden className={cn('size-4 shrink-0 text-primary', !selected && 'invisible')} />
     </div>
   );

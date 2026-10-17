@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 
-import { ApiError, type Model } from '@/api';
+import { ApiError, errorMessage, type Model } from '@/api';
 import { CancelButton, PrimaryButton } from '@/components/DialogButtons';
 import { Hint } from '@/components/Hint';
 import {
@@ -12,18 +12,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { NAME_REFUSED } from '@/lib/messages';
 import { cn } from '@/lib/utils';
 
 import { splitExtension } from './format';
+import { nameOf, nameProblem } from './names';
 import { isGone, useRenameModel } from './useModels';
 
-// As the API takes it: 1 to 60 characters before the extension.
-const NAME_MAX = 60;
-
-function errorText(error: unknown): string {
+function errorText(error: Error): string {
   if (error instanceof ApiError && error.problem === 'model-name-taken')
     return 'You already have a model with this name.';
-  return error instanceof Error ? error.message : 'Could not rename the model.';
+  return errorMessage(error, NAME_REFUSED);
 }
 
 type FieldProps = { value: string; extension: string; onChange: (value: string) => void };
@@ -44,7 +43,6 @@ function NameField({ value, extension, onChange }: FieldProps) {
           ref={input}
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          maxLength={NAME_MAX}
           aria-label="Model name"
           className="h-[34px] w-full min-w-0 bg-transparent px-2.5 text-sm outline-none"
         />
@@ -58,14 +56,15 @@ function NameField({ value, extension, onChange }: FieldProps) {
 
 type FormProps = { model: Model; onDone: () => void };
 
-// Save is off while the name is empty, unchanged or being saved; Enter saves. A name the user
-// already has turns the help line red.
+// Save is off while the name is empty, unchanged, one the API refuses or being saved; Enter
+// saves. A name the API refuses, or one the user already has, turns the help line red.
 function RenameForm({ model, onDone }: FormProps) {
   const [stem, extension] = splitExtension(model.name);
   const [text, setText] = useState(stem);
   const rename = useRenameModel();
-  const name = text.trim();
-  const canSave = name !== '' && name !== stem && !rename.isPending;
+  const name = nameOf(text);
+  const problem = nameProblem(name) ?? (rename.error ? errorText(rename.error) : undefined);
+  const canSave = name !== '' && name !== stem && nameProblem(name) === undefined && !rename.isPending;
 
   const save = (event: FormEvent) => {
     event.preventDefault();
@@ -85,10 +84,8 @@ function RenameForm({ model, onDone }: FormProps) {
             rename.reset();
           }}
         />
-        <DialogDescription role={rename.isError ? 'alert' : undefined} className={cn(rename.isError && 'text-down')}>
-          {rename.isError
-            ? errorText(rename.error)
-            : `The extension stays ${extension}. Backtests that used this model show the new name.`}
+        <DialogDescription role={problem ? 'alert' : undefined} className={cn(problem && 'text-down')}>
+          {problem ?? `The extension stays ${extension}. Backtests that used this model show the new name.`}
         </DialogDescription>
       </DialogBody>
       <DialogFooter>

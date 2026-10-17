@@ -25,6 +25,17 @@ describe('validateBacktestsSearch', () => {
     expect(validate({ page: '1e20' })).toEqual({});
   });
 
+  it('keeps every key, undefined when dropped, so it covers the raw value of the URL', () => {
+    expect(validate({ show: 'bar', sort: 'foo', order: 'x', page: '0' })).toStrictEqual({
+      q: undefined,
+      show: undefined,
+      model: undefined,
+      sort: undefined,
+      order: undefined,
+      page: undefined,
+    });
+  });
+
   it('drops an order without a column and gives a column its first order', () => {
     expect(validate({ order: 'asc' })).toEqual({});
     expect(validate({ sort: 'return' })).toEqual({ sort: 'return', order: 'desc' });

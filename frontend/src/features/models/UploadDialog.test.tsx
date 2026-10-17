@@ -219,33 +219,63 @@ describe('the upload dialog', () => {
     expect(screen.queryByRole('dialog', { name: 'Upload model' })).toBeNull();
   });
 
-  it('aborts the upload when the dialog closes', async () => {
-    let signal: AbortSignal | null | undefined;
+  // Once the file is in, the API checks and keeps it whatever the page does: closing the dialog
+  // lets the upload come to its answer, and a model the API kept joins the page.
+  it('shows the model the API kept after the dialog closed during its checks', async () => {
+    let answer = (_value: { status: number; body: unknown }) => undefined as void;
+    let request: RequestInit | undefined;
     const { dialog, choose, user } = await openUpload({
       [UPLOAD]: (init) => {
-        signal = init?.signal;
-        return new Promise(() => {});
+        request = init;
+        return new Promise((resolve) => {
+          answer = resolve;
+        });
       },
     });
     choose(file('lstm-signals.keras'));
-    await vi.waitFor(() => expect(signal).toBeDefined());
-    expect(signal?.aborted).toBe(false);
+    await vi.waitFor(() => expect(request).toBeDefined());
     await user.click(dialog.getByRole('button', { name: 'Cancel' }));
-    expect(signal?.aborted).toBe(true);
+    await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(request?.signal?.aborted ?? false).toBe(false);
+    expect(screen.getByText('0 models · 0 MB of 100 MB used')).toBeDefined();
+
+    stubApi(modelsAnswer([LSTM]));
+    answer({ status: 201, body: LSTM });
+    expect(await screen.findByText('1 model · 12.4 MB of 100 MB used')).toBeDefined();
+    expect(screen.getAllByRole('article')).toHaveLength(1);
   });
 
-  it('asks for the models again after an abort: the API may have kept the file', async () => {
+  it('asks for the models again when an upload ends without the model: the API may have kept it', async () => {
+    let fail = () => undefined as void;
     const { fetch, dialog, choose, user } = await openUpload({
-      [UPLOAD]: (init) =>
+      [UPLOAD]: () =>
         new Promise((_resolve, reject) => {
-          init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+          fail = () => reject(new TypeError('Failed to fetch'));
         }),
     });
     choose(file('lstm-signals.keras'));
+    await user.click(dialog.getByRole('button', { name: 'Cancel' }));
     const listed = () => fetch.mock.calls.filter(([path]) => path === '/api/v1/models').length;
     const before = listed();
-    await user.click(dialog.getByRole('button', { name: 'Cancel' }));
+    fail();
     await vi.waitFor(() => expect(listed()).toBe(before + 1));
+  });
+
+  it.each([
+    ['a server error', { status: 503, body: { detail: 'Down.' } }, 1],
+    ['a refusal of the file', problem(413, 'model-too-large', 'Too large.'), 0],
+    ['a failed check', problem(422, 'model-check-failed', 'No weights.', { check: 'weights' }), 0],
+    ['a full storage', problem(409, 'storage-full', 'Full.'), 0],
+  ])('after %s asks for the models again only when the API may have kept the file', async (_, answer, again) => {
+    const { fetch, dialog, choose } = await openUpload({ [UPLOAD]: answer });
+    const listed = () => fetch.mock.calls.filter(([path]) => path === '/api/v1/models').length;
+    await vi.waitFor(() => expect(listed()).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const before = listed();
+    choose(file('lstm-signals.keras'));
+    await dialog.findByRole('button', { name: 'Choose another file' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(listed()).toBe(before + again);
   });
 
   it('says a file over the limit is too large without sending it', async () => {
@@ -336,6 +366,13 @@ describe('a failed upload', () => {
   it('for any other reason: the message', async () => {
     const { dialog } = await failWith({ status: 500, body: { detail: 'Something broke on our side.' } });
     expect(checks(dialog)).toEqual(['Failed: Upload failedSomething broke on our side.']);
+  });
+
+  it("refused by the API's check of the request: plain words, not the API's", async () => {
+    const { dialog } = await failWith(
+      problem(422, 'validation', "query parameter 'name': String should have at most 255 characters"),
+    );
+    expect(checks(dialog)).toEqual(['Failed: Upload failedThe file could not be sent. Rename it and try again.']);
   });
 
   it('without an answer: the message', async () => {

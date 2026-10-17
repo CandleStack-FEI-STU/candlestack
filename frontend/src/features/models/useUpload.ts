@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 
-import { ApiError, type Model, type StorageUsage } from '@/api';
+import { ApiError, errorMessage, type Model, type StorageUsage } from '@/api';
 
 import { frameworkOfFile, type Framework } from './frameworks';
 import { formatSize } from './format';
@@ -49,7 +49,7 @@ export function failureOf(error: unknown, usage?: StorageUsage): UploadFailure {
   if (!(error instanceof ApiError)) {
     return { kind: 'other', detail: error instanceof Error ? error.message : String(error) };
   }
-  const detail = error.message;
+  const detail = errorMessage(error, 'The file could not be sent. Rename it and try again.');
   if (error.problem === 'model-check-failed') {
     return { kind: checkOf(error.body) === 'weights' ? 'weights' : 'opens', detail };
   }
@@ -63,14 +63,13 @@ export function failureOf(error: unknown, usage?: StorageUsage): UploadFailure {
 const isUnsupported = (error: unknown) => error instanceof ApiError && error.problem === 'unsupported-model-format';
 
 // The state of one upload at a time. A Keras file goes to the API at once; any other format
-// stays here (no request). Closing the dialog unmounts its content, which aborts the upload.
+// stays here (no request). Closing the dialog does not stop an upload: once the file is in, the
+// API checks and keeps it whatever the page does, so the upload runs to its answer, which puts a
+// kept model on the page (useUploadModel).
 export function useUpload() {
   const [state, setState] = useState<UploadState>({ step: 'pick' });
-  const controller = useRef<AbortController | null>(null);
   const upload = useUploadModel();
   const usage = useModels().data?.usage;
-
-  useEffect(() => () => controller.current?.abort(), []);
 
   const choose = (file: File) => {
     const framework = frameworkOfFile(file.name);
@@ -83,14 +82,10 @@ export function useUpload() {
       setState({ step: 'failed', file, failure: { kind: 'large', detail: `The file is ${formatSize(file.size)}.` } });
       return;
     }
-    controller.current?.abort();
-    const current = new AbortController();
-    controller.current = current;
     setState({ step: 'checking', file });
-    upload(file, current.signal).then(
+    upload(file).then(
       (model) => setState({ step: 'ready', file, model }),
       (error: unknown) => {
-        if (current.signal.aborted) return;
         // The API knows the formats best: one it does not take yet is not a failed check.
         if (isUnsupported(error)) setState({ step: 'soon', file, framework: null });
         else setState({ step: 'failed', file, failure: failureOf(error, usage) });

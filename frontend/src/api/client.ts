@@ -29,6 +29,13 @@ export class ApiError extends Error {
   }
 }
 
+// What to show for a failed request. The API's own check of a request (422 `validation`) names
+// its fields and rules ("body 'name': String should match pattern ..."), which tells the user
+// nothing: the page says in `fallback` what did not work instead.
+export function errorMessage(error: Error, fallback: string): string {
+  return error instanceof ApiError && error.problem === 'validation' ? fallback : error.message;
+}
+
 // Retry-After is either whole seconds ("30", "0") or an HTTP date. Anything else: no hint.
 export function parseRetryAfter(value: string | null, now: number = Date.now()): number | undefined {
   if (value === null || value.trim() === '') return undefined;
@@ -124,11 +131,10 @@ export const put = <T>(path: string, body: unknown) => sendJson<T>('PUT', path, 
 
 // Sends a file as the raw body, e.g. a model upload, and returns the JSON answer. Raw, not a
 // form: the API reads the body as the file and takes its name from the query.
-export async function postFile<T>(path: string, file: Blob, signal?: AbortSignal): Promise<T> {
+export async function postFile<T>(path: string, file: Blob): Promise<T> {
   const res = await send(path, {
     method: 'POST',
     body: file,
-    signal,
     headers: { Accept: 'application/json', 'Content-Type': 'application/octet-stream' },
   });
   return readBody<T>(res);

@@ -21,17 +21,21 @@ const replace = (data: Models, model: Model): Models => ({
   models: data.models.map((item) => (item.id === model.id ? model : item)),
 });
 
+const refused = (error: unknown) => error instanceof ApiError && error.status >= 400 && error.status < 500;
+
 // Uploads a file; the new model joins the end of the list (oldest first) and takes its size of
-// the storage. Not a mutation: the dialog keeps the upload's own state and aborts it on close.
+// the storage. Not a mutation: the dialog keeps the upload's own state. The list follows the
+// answer even when the dialog closed before it came.
 export function useUploadModel() {
   const queryClient = useQueryClient();
-  return async (file: File, signal: AbortSignal): Promise<Model> => {
+  return async (file: File): Promise<Model> => {
     let model: Model;
     try {
-      model = await uploadModel(file, signal);
+      model = await uploadModel(file);
     } catch (error) {
-      // The file may have reached the API before the abort, which then kept it.
-      if (signal.aborted) void queryClient.invalidateQueries({ queryKey: KEY });
+      // Without an answer the app can read (a connection lost on the way back, a server error),
+      // the API may have kept the file: the list is asked for again. A refusal (4xx) kept nothing.
+      if (!refused(error)) void queryClient.invalidateQueries({ queryKey: KEY });
       throw error;
     }
     change(queryClient, (data) => ({

@@ -102,6 +102,25 @@ describe('the Backtests page', () => {
     await vi.waitFor(() => expect(subtitle()).toBe('Down.'));
   });
 
+  it("says in plain words when the API refuses the request, not in the API's", async () => {
+    stubApi({
+      ...sessionWithPreferences(ARSEN),
+      'GET /api/v1/backtests': problem(422, 'validation', "query parameter 'page': Input should be at least 1"),
+    });
+    await renderApp('/backtests');
+    await vi.waitFor(() => expect(subtitle()).toBe('Could not load the backtests.'));
+  });
+
+  it.each(['page=0', 'page=abc', 'page=-3', 'show=bar', 'sort=foo', 'order=x', 'show=bar&sort=foo&page=abc'])(
+    'opens the plain list for ?%s, without asking the API for it',
+    async (query) => {
+      const fetch = stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer(PAGE) });
+      await renderApp(`/backtests?${query}`);
+      expect(await screen.findByText('3 backtests')).toBeDefined();
+      expect(asked(fetch)).toEqual(['/api/v1/backtests']);
+    },
+  );
+
   it('searches as the typing pauses, from page 1, keeping the focus in the field', async () => {
     const fetch = stubApi({
       ...sessionWithPreferences(ARSEN),
@@ -206,6 +225,22 @@ describe('the Backtests page', () => {
     expect(document.activeElement).toBe(button);
   });
 
+  it('ends a model name too long for the Filters panel in an ellipsis, its count still beside it', async () => {
+    stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer(PAGE) });
+    await renderApp('/backtests');
+    await screen.findByText('#12');
+    await userEvent.click(screen.getByRole('button', { name: 'Filters: All backtests' }));
+    const option = within(screen.getByRole('dialog', { name: 'Filters' })).getByRole('option', { name: /blesk/ });
+    const name = within(option).getByText('blesk-novol-8.keras');
+    expect(name.className.split(' ')).toEqual(expect.arrayContaining(['min-w-0', 'truncate']));
+    // The mark and the name sit in a row no wider than the entry's label, which gives way first.
+    expect(name.parentElement?.className.split(' ')).toContain('max-w-full');
+    expect(name.parentElement?.parentElement?.className.split(' ')).toEqual(
+      expect.arrayContaining(['min-w-0', 'truncate']),
+    );
+    expect(within(option).getByText('3').className.split(' ')).toContain('shrink-0');
+  });
+
   it('lights an entry of the Filters panel under the pointer, and where the focus is only once keys are used', async () => {
     stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer(PAGE) });
     await renderApp('/backtests');
@@ -296,6 +331,29 @@ describe('the Backtests page', () => {
       within(dialog).getByText('BTCUSDT, ETHUSDT and SOLUSDT · Time windows · blesk-novol-8.keras · 12 Oct 19:44'),
     ).toBeDefined();
     expect(within(dialog).getByText('Coming soon')).toBeDefined();
+  });
+
+  it.each([
+    ['Escape', (user: ReturnType<typeof userEvent.setup>) => user.keyboard('{Escape}')],
+    [
+      'its close button',
+      (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole('button', { name: 'Close' })),
+    ],
+    [
+      'a click beside it',
+      (user: ReturnType<typeof userEvent.setup>) =>
+        user.click(document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]')!),
+    ],
+  ])('gives the focus back to the row that opened a backtest, closed with %s', async (_, close) => {
+    stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer(PAGE) });
+    await renderApp('/backtests');
+    const user = userEvent.setup();
+    const opener = await screen.findByRole('button', { name: 'Backtest #10' });
+    await user.click(opener);
+    await screen.findByRole('dialog', { name: 'Backtest #10' });
+    await close(user);
+    await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Backtest #10' }));
   });
 
   it('pages through the backtests', async () => {

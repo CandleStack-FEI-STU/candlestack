@@ -1,6 +1,6 @@
 import { useSearch } from '@tanstack/react-router';
 
-import type { BacktestsPage as Page } from '@/api';
+import { errorMessage, type BacktestsPage as Page } from '@/api';
 import { PageTitle } from '@/components/PageTitle';
 import { BacktestsList, useBacktestsPage } from '@/features/backtests';
 import { plural } from '@/lib/plural';
@@ -12,7 +12,7 @@ function description(data: Page | undefined, error: Error | null): string {
   if (data)
     return data.total === data.counts.all ? plural(data.counts.all, 'backtest') : `${data.total} of ${data.counts.all}`;
   // A no-break space while they load keeps the line, so the title row does not move.
-  return error?.message ?? '\u00a0';
+  return error ? errorMessage(error, 'Could not load the backtests.') : '\u00a0';
 }
 
 // The user's backtests (#208, mockups/app ddRuns): searched, filtered, sorted and paged by the API.

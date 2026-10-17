@@ -61,13 +61,14 @@ export function ReturnValue({ value }: { value: number }) {
   return <b className={cn('font-semibold', returnClass(value))}>{formatPercent(value)}</b>;
 }
 
-// The model by its framework's 14 px mark (.bt-m), the name beside it.
+// The model by its framework's 14 px mark (.bt-m), the name beside it. Where it has less room than
+// it needs (an entry of the Filters panel on a phone), the name ends in an ellipsis.
 export function ModelName({ name, framework }: { name: string; framework: string }) {
   const mark = frameworkOf(framework);
   return (
-    <span className="inline-flex items-center gap-[7px]">
+    <span className="inline-flex max-w-full items-center gap-[7px]">
       {mark && <FrameworkMini framework={mark} />}
-      <span>{name}</span>
+      <span className="min-w-0 truncate">{name}</span>
     </span>
   );
 }
