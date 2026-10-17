@@ -387,8 +387,9 @@ def test_sign_out_ends_only_this_browsers_session(browser, other_browser) -> Non
 def test_sign_in_rate_limit(browser, monkeypatch) -> None:
     monkeypatch.setattr(dependencies, "SIGN_IN_RATE_LIMIT", 2)
 
-    statuses = [browser.start("github").status_code for _ in range(3)]
+    starts = [browser.start("github").headers["location"] for _ in range(3)]
 
-    assert statuses == [302, 302, 429]
+    assert [urlsplit(start).netloc for start in starts[:2]] == ["github.com", "github.com"]
+    assert starts[2] == "/signin?error=failed"
     callback = browser.callback("github", code="the-code", state="s")
     assert callback.headers["location"] == "/signin?error=failed"

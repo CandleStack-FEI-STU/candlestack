@@ -99,7 +99,7 @@ export interface paths {
         /**
          * Start Sign In
          * @description Redirects to the provider's sign-in page, or to `/signin?error=failed` when sign-in
-         *     with it is not available.
+         *     with it is not available or this address made too many sign-in requests in a minute.
          */
         get: operations["start_sign_in_api_v1_auth__provider__start_get"];
         put?: never;
@@ -910,15 +910,6 @@ export interface operations {
             };
             /** @description Invalid request */
             422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description More sign-in requests from this address than the per-minute limit (`rate-limited`); see `Retry-After`. */
-            429: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -63,22 +63,19 @@ def _failed(provider: Provider, error: SignInFailed) -> RedirectResponse:
     "/api/v1/auth/{provider}/start",
     status_code=302,
     response_class=RedirectResponse,
-    responses=_problem(
-        429,
-        "More sign-in requests from this address than the per-minute limit "
-        "(`rate-limited`); see `Retry-After`.",
-    ),
-    dependencies=[Depends(limit_sign_ins)],
 )
 async def start_sign_in(
     provider: Provider,
     service: AccountsServiceDep,
     cookies: CookiesDep,
+    wait: Annotated[int, Depends(sign_in_wait)],
     next: NextPath = None,  # noqa: A002 (the parameter's name in the URL)
 ) -> RedirectResponse:
     """Redirects to the provider's sign-in page, or to `/signin?error=failed` when sign-in
-    with it is not available."""
+    with it is not available or this address made too many sign-in requests in a minute."""
     try:
+        if wait:
+            raise SignInFailed("too many sign-in requests from this address")
         start = await service.start_sign_in(provider, next)
     except SignInFailed as error:
         return _failed(provider, error)

@@ -50,7 +50,7 @@ flowchart LR
 | `GET /api/health` | liveness + Redis + Postgres; used by deploys and the ops page; not versioned |
 | `GET /api/health/sources` | reachability of Binance and Alpaca (cached 60 s) |
 | `GET /api/v1/data/...` | instruments and candles, see [data.md](data.md) |
-| `GET /api/v1/auth/{provider}/start?next=<path>` | sign-in with `github` or `google`: redirects to the provider |
+| `GET /api/v1/auth/{provider}/start?next=<path>` | sign-in with `github` or `google`: redirects to the provider, or to `/signin?error=failed` (provider not configured, too many sign-ins from the address) |
 | `GET /api/v1/auth/{provider}/callback` | where the provider returns; sets the session cookie and redirects to `next` (default `/dashboard`), or to `/signin?error=denied` (not on the beta list) or `/signin?error=failed`; not in the API reference |
 | `GET /api/v1/auth/denied` | the account this browser was just turned away with (email, provider), for the sign-in page |
 | `POST /api/v1/auth/sign-out` | ends this browser's session |

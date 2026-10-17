@@ -127,10 +127,24 @@ def test_start_with_an_unknown_provider(client: TestClient) -> None:
     assert response.status_code == 422
 
 
-def test_sign_in_rate_limit(client: TestClient, limiter: FakeLimiter) -> None:
+def test_start_over_the_rate_limit_fails(
+    client: TestClient, limiter: FakeLimiter, caplog: pytest.LogCaptureFixture
+) -> None:
     limiter.wait = 12.3
 
     response = client.get("/api/v1/auth/github/start", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "/signin?error=failed"
+    assert "set-cookie" not in response.headers
+    assert limiter.keys == ["accounts:rl:testclient"]
+    assert "Sign-in with github failed: too many sign-in requests" in caplog.text
+
+
+def test_dev_sign_in_rate_limit(client: TestClient, limiter: FakeLimiter) -> None:
+    limiter.wait = 12.3
+
+    response = client.post("/api/v1/auth/dev", headers=ORIGIN)
 
     assert response.status_code == 429
     assert response.headers["retry-after"] == "13"
