@@ -88,6 +88,13 @@ describe('the upload dialog', () => {
     expect(dialog.queryByRole('button', { name: 'Cancel' })).toBeNull();
   });
 
+  it('keeps an empty live region in the accessibility tree for the first announcement', async () => {
+    const { dialog } = await openUpload();
+    const region = dialog.getByRole('button', { name: /Drop a trained model here/ }).nextElementSibling;
+    expect(region?.getAttribute('aria-live')).toBe('polite');
+    expect(region?.childElementCount).toBe(0);
+  });
+
   it('opens the file picker on a click of the drop zone', async () => {
     const { user, dialog } = await openUpload();
     const input = dialog.getByLabelText<HTMLInputElement>('Model file');

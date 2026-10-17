@@ -54,10 +54,11 @@ function Result({ state }: { state: Exclude<UploadState, { step: 'pick' }> }) {
 }
 
 // The file and its checks, in a live region mounted in every step, so screen readers hear each
-// result, the ready model too.
+// result, the ready model too. Empty, it has no height and its negative margin cancels the
+// body's gap (14 px), so it stays in the accessibility tree without moving the layout.
 function Results({ state }: { state: UploadState }) {
   return (
-    <div aria-live="polite" className="flex flex-col gap-3.5 empty:hidden">
+    <div aria-live="polite" className="flex flex-col gap-3.5 empty:-mt-3.5">
       {state.step !== 'pick' && (
         <>
           <FileRow file={state.file} />
