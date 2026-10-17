@@ -10,6 +10,7 @@ import {
   type InstrumentSearchResult,
   type Market,
 } from '@/api';
+import { Pager } from '@/components/Pager';
 import { Button } from '@/components/ui/button';
 
 import type { ListSort } from '@/routes/instrumentsSearch';
@@ -17,8 +18,7 @@ import type { ListSort } from '@/routes/instrumentsSearch';
 import { mismatchOf, withExchange } from './filterRules';
 import { InstrumentTable } from './InstrumentTable';
 import { describeListError, emptyMessage, mismatchMessage, unavailableMessage, type ListError } from './messages';
-import { Pager } from './Pager';
-import { clampedPage, listBodyState } from './pagination';
+import { clampedPage, lastPage, listBodyState } from './pagination';
 import { apiSort, shownSort } from './sorting';
 
 // Rows per page. The API allows up to 100; 25 fits about one screen.
@@ -148,6 +148,7 @@ export function InstrumentList(props: Props) {
   }
 
   const { data } = result;
+  const total = resultTotal(data);
   const unavailable = unavailableMessage(data.unavailable);
   return (
     <>
@@ -165,10 +166,10 @@ export function InstrumentList(props: Props) {
         </div>
       </div>
       <Pager
+        from="/instruments"
         page={page}
         hasNext={hasNextPage(data, LIST_PAGE_SIZE)}
-        total={resultTotal(data)}
-        pageSize={LIST_PAGE_SIZE}
+        pages={total === undefined ? undefined : lastPage(total, LIST_PAGE_SIZE)}
         loading={result.isPlaceholderData}
       />
     </>

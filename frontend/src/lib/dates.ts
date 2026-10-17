@@ -88,6 +88,34 @@ export function formatShortDay(date: Date, { timeZone }: Pick<DateStyle, 'timeZo
   return `${Number(day)} ${monthName(month)}`;
 }
 
+// Days since 1970 of a calendar day as calendarDay writes it, to count the days between two.
+const dayNumber = ({ year, month, day }: ReturnType<typeof calendarDay>) =>
+  Date.UTC(Number(year), Number(month) - 1, Number(day)) / 86_400_000;
+
+// A recent day as the app's lists write it (mockups/app), in the user's zone: "Today", with
+// `yesterday` also "Yesterday", or the day in the user's date format (13 Oct 2025, 2025-10-13,
+// 13.10.2025). The default format keeps the year out while it is this year's (13 Oct); the
+// numeric formats always write the whole date.
+export function formatRecentDay(
+  date: Date,
+  style: Pick<DateStyle, 'timeZone' | 'dateFormat'>,
+  now = new Date(),
+  yesterday = false,
+): string {
+  const day = calendarDay(date, style.timeZone);
+  const today = calendarDay(now, style.timeZone);
+  const ago = dayNumber(today) - dayNumber(day);
+  if (ago === 0) return 'Today';
+  if (yesterday && ago === 1) return 'Yesterday';
+  if (style.dateFormat === 'dmy' && day.year === today.year) return formatShortDay(date, style);
+  return formatDate(date, style);
+}
+
+// When something ran, day and time: "Today 16:05", "Yesterday 18:10", "12 Oct 19:44".
+export function formatRecentTime(date: Date, style: DateStyle, now = new Date()): string {
+  return `${formatRecentDay(date, style, now, true)} ${formatTime(date, style)}`;
+}
+
 // 16:05 (24) or 4:05 PM (12), in `timeZone`. A plain space before AM and PM: newer browsers put a
 // narrow one there, which some fonts draw too thin.
 export function formatTime(date: Date, { timeZone, timeFormat }: Pick<DateStyle, 'timeZone' | 'timeFormat'>): string {

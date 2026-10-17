@@ -33,6 +33,12 @@ export const FRAMEWORK_MARKS: Record<Framework, { color: string; path: string }>
 // The API's name of a model's framework, as the app writes it.
 export const API_FRAMEWORKS: Record<Model['framework'], Framework> = { keras: 'Keras' };
 
+// The framework of a name as the API writes it ('keras', 'onnx'), or undefined for one the app has
+// no mark for.
+export function frameworkOf(name: string): Framework | undefined {
+  return FRAMEWORKS.find((framework) => framework.toLowerCase() === name.toLowerCase());
+}
+
 // The file extensions of each framework; the file picker offers all of them.
 const EXTENSIONS: Record<Framework, string[]> = {
   Keras: ['.keras'],

@@ -1,7 +1,8 @@
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useCallback, useEffect } from 'react';
 
-import { Filters, InstrumentFacts, InstrumentList, SearchBox, rememberListSearch } from '@/features/instruments';
+import { SearchBox } from '@/components/SearchBox';
+import { Filters, InstrumentFacts, InstrumentList, rememberListSearch } from '@/features/instruments';
 import { usePageTitle } from '@/lib/usePageTitle';
 
 // Every stock and crypto pair, searchable, the most traded first.
@@ -32,7 +33,14 @@ export function InstrumentsPage() {
         <InstrumentFacts />
       </div>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <SearchBox query={q} onSearch={onSearch} />
+        <SearchBox
+          query={q}
+          onSearch={onSearch}
+          placeholder="Symbol or name, e.g. btc or apple"
+          label="Search instruments by symbol or name"
+          maxLength={50}
+          debounceMs={300}
+        />
         <Filters market={market} exchange={exchange} sort={sort} />
       </div>
       <InstrumentList query={q} market={market} exchange={exchange} sort={sort} page={page} />

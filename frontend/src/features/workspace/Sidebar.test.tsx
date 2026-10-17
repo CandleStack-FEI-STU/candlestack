@@ -2,7 +2,7 @@
 import { cleanup, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ARSEN, MB, model, modelsAnswer, session, stubApi } from '@/test/api';
+import { ARSEN, MB, dashboardAnswer, model, modelsAnswer, session, stubApi } from '@/test/api';
 import { renderApp } from '@/test/app';
 
 afterEach(() => {
@@ -19,6 +19,14 @@ describe('the sidebar', () => {
     const link = within(sidebar()).getByRole('link', { name: /^Models/ });
     await vi.waitFor(() => expect(link.textContent).toBe('Models2'));
     expect(link.lastElementChild?.textContent).toBe('2');
+  });
+
+  it('counts the backtests beside Backtests', async () => {
+    stubApi({ ...session(ARSEN), ...dashboardAnswer({ counts: { all: 15, starred: 5, failed: 2 } }) });
+    await renderApp('/models');
+    const link = within(sidebar()).getByRole('link', { name: /^Backtests/ });
+    await vi.waitFor(() => expect(link.textContent).toBe('Backtests15'));
+    expect(link.lastElementChild?.textContent).toBe('15');
   });
 
   it('shows the storage the models take above the data note', async () => {

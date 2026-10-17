@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 
 import { ApiError, type Model } from '@/api';
 import { CancelButton, PrimaryButton } from '@/components/DialogButtons';
+import { Hint } from '@/components/Hint';
 import {
   Dialog,
   DialogBody,
@@ -37,7 +38,7 @@ function NameField({ value, extension, onChange }: FieldProps) {
   }, []);
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-xs/[1.5] text-muted-foreground">Name</span>
+      <Hint>Name</Hint>
       <span className="flex items-center rounded-md border bg-background focus-within:border-[color-mix(in_srgb,var(--accent)_55%,var(--rule))]">
         <input
           ref={input}

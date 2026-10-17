@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { DashboardCard } from '@/components/DashboardCard';
 import { ApiError, connectUrl, disconnectSignInMethod, meQueryOptions, type Provider, type SignInMethod } from '@/api';
 import { ACCENT_BUTTON, BUTTON_SIZES, OUTLINE_BUTTON } from '@/components/buttonStyles';
+import { ErrorNote } from '@/components/ErrorNote';
+import { HINT } from '@/components/Hint';
 import { KeyIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { useSignedInUser } from '@/features/account';
@@ -12,7 +14,7 @@ import { PROVIDER_INFO, PROVIDERS } from '@/features/signin';
 import { cn } from '@/lib/utils';
 import type { ConnectError } from '@/routes/settingsSections';
 
-import { ErrorNote, HINT, SettingsLead } from './rows';
+import { SettingsLead } from './rows';
 
 // The API returns here after adding a method.
 const RETURN_PATH = '/settings/sign-in';

@@ -1,17 +1,19 @@
 import type { Model } from '@/api';
 import { BUTTON_SIZES, GHOST_BUTTON } from '@/components/buttonStyles';
+import { HINT } from '@/components/Hint';
 import { PencilIcon, TrashIcon } from '@/components/icons';
 import { StarButton } from '@/components/StarButton';
 import { Button } from '@/components/ui/button';
 import { useDateStyle } from '@/features/preferences';
+import { formatRecentDay } from '@/lib/dates';
 import { pluralNoun } from '@/lib/plural';
+import { formatSharpe } from '@/lib/results';
 import { cn } from '@/lib/utils';
 
-import { formatAdded, formatSharpe, formatShape, formatSize } from './format';
+import { formatShape, formatSize } from './format';
 import { FrameworkTile } from './FrameworkMark';
 import { API_FRAMEWORKS } from './frameworks';
 
-const HINT = 'text-xs/[1.5] text-muted-foreground';
 const ACTION = cn(BUTTON_SIZES.sm, GHOST_BUTTON, 'font-medium');
 
 type Props = {
@@ -87,7 +89,7 @@ export function ModelTile({ model, onStar, onRename, onDelete }: Props) {
           {model.name}
         </b>
         <span className={HINT}>
-          {framework} · {formatSize(model.size_bytes)} · added {formatAdded(model.created_at, dateStyle)}
+          {framework} · {formatSize(model.size_bytes)} · added {formatRecentDay(new Date(model.created_at), dateStyle)}
         </span>
       </div>
       <div className="font-mono text-xs/[normal] text-muted-foreground">

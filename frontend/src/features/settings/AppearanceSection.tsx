@@ -9,13 +9,14 @@ import {
   type TimeZone,
 } from '@/api';
 import { DashboardCard } from '@/components/DashboardCard';
+import { ErrorNote } from '@/components/ErrorNote';
 import { AppearanceIcon } from '@/components/icons';
 import { Switch } from '@/components/ui/switch';
 import { useAppearanceError, useThemeSetting, useUpdateAppearance } from '@/features/preferences';
 import { cityOf, formatDate, formatTime, viewerTimeZone } from '@/lib/dates';
 
 import { Choice } from './controls';
-import { ErrorNote, SettingsRow } from './rows';
+import { SettingsRow } from './rows';
 
 // The formats show themselves on one moment: 12 October 2024, 16:05.
 const EXAMPLE = new Date(Date.UTC(2024, 9, 12, 16, 5));

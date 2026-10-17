@@ -4,7 +4,15 @@ import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { meQueryOptions, preferencesQueryOptions } from '@/api';
-import { ARSEN, NOT_SIGNED_IN, sessionWithPreferences, stubApi } from '@/test/api';
+import {
+  ARSEN,
+  NOT_SIGNED_IN,
+  dashboardAnswer,
+  model,
+  modelsAnswer,
+  sessionWithPreferences,
+  stubApi,
+} from '@/test/api';
 import { renderApp, warmUpSettings } from '@/test/app';
 
 beforeAll(warmUpSettings);
@@ -69,6 +77,20 @@ describe('Account', () => {
     await user.click(dialog.getByRole('button', { name: 'Cancel' }));
     await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(fetch).not.toHaveBeenCalledWith('/api/v1/me', expect.objectContaining({ method: 'DELETE' }));
+  });
+
+  it('says how many backtests and uploaded models go with the account', async () => {
+    stubApi({
+      ...sessionWithPreferences(ARSEN),
+      ...dashboardAnswer({ counts: { all: 15, starred: 5, failed: 2 } }),
+      ...modelsAnswer([model(), model({ id: 'mdl_a2b3c4d5e6' })]),
+    });
+    await renderApp('/settings/account');
+    await userEvent.setup().click(card().getByRole('button', { name: 'Delete account' }));
+    const dialog = within(screen.getByRole('dialog', { name: 'Delete account?' }));
+    expect(
+      await dialog.findByText('This deletes 15 backtests, 2 uploaded models and your account. This cannot be undone.'),
+    ).toBeDefined();
   });
 
   it('deletes the account from the dialog and goes home signed out', async () => {

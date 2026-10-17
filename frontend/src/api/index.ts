@@ -13,6 +13,18 @@ export {
   type Provider,
   type SignInMethod,
 } from './accounts';
+export {
+  backtestsQueryOptions,
+  dashboardQueryOptions,
+  updateBacktest,
+  type Backtest,
+  type BacktestsPage,
+  type BacktestsParams,
+  type BestMetric,
+  type Dashboard,
+  type Representation,
+  type SortOrder,
+} from './backtests';
 export { candleBridgeQueryOptions, candlePageQueryOptions, type Candles } from './candles';
 export { ApiError } from './client';
 export { EXCHANGES, exchangeLabel, exchangeMarket, type Exchange } from './exchanges';

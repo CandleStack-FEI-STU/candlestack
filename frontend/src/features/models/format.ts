@@ -1,8 +1,7 @@
-import { calendarDay, formatDate, formatShortDay, type DateStyle } from '@/lib/dates';
 import { formatPriceWith } from '@/lib/numbers';
 
-// How the Models part writes sizes, parameters, shapes and dates (mockups/app, the Models page
-// and the upload dialog). Megabytes are binary, as the API's limits: 1 MB = 1,048,576 bytes.
+// How the Models part writes sizes, parameters and shapes (mockups/app, the Models page and the
+// upload dialog). Megabytes are binary, as the API's limits: 1 MB = 1,048,576 bytes.
 
 const MB = 1024 * 1024;
 
@@ -41,26 +40,6 @@ export function formatShape(input: number[] | null, output: number[] | null, spa
   const times = spaced ? ' × ' : '×';
   const text = input.join(times);
   return output === null || output.length === 0 ? text : `${text} → ${output.join(times)}`;
-}
-
-// A Sharpe ratio with 2 decimals and a real minus sign, taken from the rounded value (−0.004 is
-// 0.00); an en dash without one, as the mockup writes it.
-export function formatSharpe(sharpe: number | null): string {
-  if (sharpe === null) return '–';
-  const text = formatPriceWith(Math.abs(sharpe), 2);
-  return sharpe < 0 && /[1-9]/.test(text) ? `−${text}` : text;
-}
-
-// When a model was added, the day in the user's zone: "Today", or the day in the user's date
-// format (13 Oct 2025, 2025-10-13, 13.10.2025). The mockup's "13 Oct" keeps its year out in the
-// default format while it is this year's; the numeric formats always write the whole date.
-export function formatAdded(iso: string, style: Pick<DateStyle, 'timeZone' | 'dateFormat'>, now = new Date()): string {
-  const date = new Date(iso);
-  const day = calendarDay(date, style.timeZone);
-  const today = calendarDay(now, style.timeZone);
-  if (day.year === today.year && day.month === today.month && day.day === today.day) return 'Today';
-  if (style.dateFormat === 'dmy' && day.year === today.year) return formatShortDay(date, style);
-  return formatDate(date, style);
 }
 
 // "lstm.keras" as its stem "lstm" and the extension ".keras", which a rename keeps.

@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 
-import type { Me, Model, Preferences } from '@/api';
+import type { Backtest, BacktestsPage, Dashboard, Me, Model, Preferences } from '@/api';
 
 // A signed-in user as GET /api/v1/me sends it.
 export const ARSEN: Me = {
@@ -101,6 +101,91 @@ export const model = (fields: Partial<Model> = {}): Model => ({
   best_sharpe: null,
   created_at: '2026-10-13T09:00:00Z',
   ...fields,
+});
+
+// A finished backtest as the API sends it: #12 on AAPL and MSFT with blesk-novol-8.keras.
+export const backtest = (fields: Partial<Backtest> = {}): Backtest => ({
+  id: 'bt_7f3k2m9qx4',
+  number: 12,
+  instruments: [
+    { symbol: 'AAPL', market: 'stock' },
+    { symbol: 'MSFT', market: 'stock' },
+  ],
+  representation: 'windows',
+  model: { id: 'mdl_7f3k2m9qx4', name: 'blesk-novol-8.keras', framework: 'keras' },
+  setup: {
+    timeframe: '30m',
+    period_start: '2021-01-04',
+    period_end: '2024-12-31',
+    direction: 'long',
+    threshold: 0.05,
+    stop_loss_pct: 7,
+    fees_pct: 0.1,
+    slippage_pct: 0.02,
+    benchmark: 'bh',
+  },
+  status: 'finished',
+  starred: false,
+  total_return: 0.246,
+  buy_and_hold_return: 0.682,
+  sharpe: 0.79,
+  max_drawdown: -0.197,
+  win_rate: 0.512,
+  num_trades: 1712,
+  duration_s: 162,
+  equity: { strategy: [0, 0.031, 0.118, 0.246], benchmark: [0, 0.12, 0.35, 0.682] },
+  error: null,
+  created_at: '2026-10-17T14:05:00Z',
+  finished_at: '2026-10-17T14:07:42Z',
+  ...fields,
+});
+
+// The same backtest as it failed: no results, an error.
+export const failedBacktest = (fields: Partial<Backtest> = {}): Backtest =>
+  backtest({
+    status: 'failed',
+    total_return: null,
+    buy_and_hold_return: null,
+    sharpe: null,
+    max_drawdown: null,
+    win_rate: null,
+    num_trades: null,
+    equity: null,
+    error: 'The model expects 25 × 23 but got 25 × 101.',
+    ...fields,
+  });
+
+// GET /api/v1/backtests (any query unless `query` is given) with this page.
+export const backtestsAnswer = (page: Partial<BacktestsPage>, query = ''): Record<string, Answer> => {
+  const backtests = page.backtests ?? [];
+  return {
+    [`GET /api/v1/backtests${query}`]: {
+      status: 200,
+      body: {
+        backtests,
+        total: backtests.length,
+        page: 1,
+        pages: 1,
+        counts: { all: backtests.length, starred: 0, failed: 0 },
+        models: [],
+        ...page,
+      },
+    },
+  };
+};
+
+// GET /api/v1/dashboard of an account; without fields, one without backtests.
+export const dashboardAnswer = (dashboard: Partial<Dashboard> = {}): Record<string, Answer> => ({
+  'GET /api/v1/dashboard': {
+    status: 200,
+    body: {
+      counts: { all: 0, starred: 0, failed: 0 },
+      last: [],
+      best: { sharpe: [], total_return: [], max_drawdown: [], win_rate: [] },
+      starred: { backtests: [], total: 0 },
+      ...dashboard,
+    },
+  },
 });
 
 // GET /api/v1/models with these models; the storage they take is the sum of their sizes.

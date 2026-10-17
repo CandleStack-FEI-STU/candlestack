@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react';
 import { DashboardCard } from '@/components/DashboardCard';
 import { preferencesQueryOptions, saveBacktestDefaults, type DefaultTimeframe } from '@/api';
 import { ACCENT_BUTTON, BUTTON_SIZES } from '@/components/buttonStyles';
+import { Hint } from '@/components/Hint';
 import { SlidersIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -144,11 +145,7 @@ export function BacktestDefaultsSection() {
   const fields = { form, set, invalid };
   return (
     <form onSubmit={submit}>
-      <DashboardCard
-        icon={SlidersIcon}
-        title="Backtest defaults"
-        aside={<span className="text-xs text-muted-foreground">New backtests start here</span>}
-      >
+      <DashboardCard icon={SlidersIcon} title="Backtest defaults" aside={<Hint>New backtests start here</Hint>}>
         <DataRows {...fields} />
         <TradeRows {...fields} />
         <CostRows {...fields} />

@@ -1,4 +1,5 @@
 import { DashboardCard } from '@/components/DashboardCard';
+import { ErrorNote } from '@/components/ErrorNote';
 import { BUTTON_SIZES, DANGER_BUTTON, OUTLINE_BUTTON } from '@/components/buttonStyles';
 import { CancelButton, DangerButton } from '@/components/DialogButtons';
 import { WarnIcon } from '@/components/icons';
@@ -14,22 +15,36 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { useDeleteAccount, useSignOutEverywhere } from '@/features/account';
+import { useDashboard } from '@/features/backtests';
+import { useModels } from '@/features/models';
+import { plural } from '@/lib/plural';
 import { cn } from '@/lib/utils';
 
-import { ActionRow, ErrorNote } from './rows';
+import { ActionRow } from './rows';
+
+// What goes with the account (mockups/app, MODALS.delAcct): "This deletes 15 backtests, 2 uploaded
+// models and your account.", in general words until the API has said how many.
+function useDeleteText(): string {
+  const backtests = useDashboard().data?.counts.all;
+  const models = useModels().data?.models.length;
+  const what =
+    backtests === undefined || models === undefined
+      ? 'your backtests, uploaded models'
+      : `${plural(backtests, 'backtest')}, ${plural(models, 'uploaded model')}`;
+  return `This deletes ${what} and your account. This cannot be undone.`;
+}
 
 // The question before the account goes: what goes with it, Cancel, and the red Delete account.
 function DeleteAccountQuestion() {
   const remove = useDeleteAccount();
+  const text = useDeleteText();
   return (
     <>
       <DialogHeader>
         <DialogTitle>Delete account?</DialogTitle>
       </DialogHeader>
       <DialogBody>
-        <DialogDescription className="text-sm text-foreground">
-          This deletes your backtests, uploaded models and your account. This cannot be undone.
-        </DialogDescription>
+        <DialogDescription className="text-sm text-foreground">{text}</DialogDescription>
         {remove.error && <ErrorNote>{remove.error.message}</ErrorNote>}
       </DialogBody>
       <DialogFooter>

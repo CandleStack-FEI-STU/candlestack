@@ -1,7 +1,9 @@
 import { Link } from '@tanstack/react-router';
 import { LayoutGrid } from 'lucide-react';
 
+import { HINT } from '@/components/Hint';
 import { BacktestsIcon, ModelsIcon, SettingsIcon } from '@/components/icons';
+import { useDashboard } from '@/features/backtests';
 import { SidebarStorage, useModels } from '@/features/models';
 
 const SECTIONS = [
@@ -17,10 +19,12 @@ const SECTIONS = [
 const ITEM =
   'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm/[normal] whitespace-nowrap text-muted-foreground transition-colors duration-150 hover:text-foreground hover:not-data-[status=active]:bg-muted data-[status=active]:bg-surface-2 data-[status=active]:font-medium data-[status=active]:text-foreground motion-reduce:transition-none max-[980px]:w-auto max-[980px]:flex-none';
 
-// How many there are in a section, at the row's right (.dd-n): the models once the API has said.
+// How many there are in a section, at the row's right (.dd-n): the backtests and the models, each
+// once the API has said.
 function useCounts(): Partial<Record<(typeof SECTIONS)[number]['to'], number>> {
-  const models = useModels().data?.models;
-  return models ? { '/models': models.length } : {};
+  const backtests = useDashboard().data?.counts.all;
+  const models = useModels().data?.models.length;
+  return { '/backtests': backtests, '/models': models };
 }
 
 // The workspace's sections beside the page (mockups/app, direction D): a 200 px card, the storage
@@ -46,7 +50,7 @@ export function Sidebar() {
       ))}
       <div className="mt-2.5 flex flex-col gap-1.5 border-t px-2.5 pt-3 pb-1 max-[980px]:hidden">
         <SidebarStorage />
-        <p className="text-xs/[1.5] text-muted-foreground">Market data delayed 15 min</p>
+        <p className={HINT}>Market data delayed 15 min</p>
       </div>
     </nav>
   );

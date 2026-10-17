@@ -1,4 +1,5 @@
 import { EXCHANGES, exchangeLabel, exchangeMarket, type Exchange, type Market } from '@/api';
+import { moveInList, typeAhead } from '@/lib/listKeys';
 import type { InstrumentsSearch, ListSort } from '@/routes/instrumentsSearch';
 
 import { MARKET_NAMES } from './messages';
@@ -129,23 +130,6 @@ export function usableActive(options: readonly FilterOption[], active: number): 
   return sectionStart(options, option?.section ?? 'type');
 }
 
-// The arrows, Home and End go through both sections, stopping at the ends.
-function moveInList(usable: readonly number[], at: number, key: string): number | undefined {
-  if (key === 'ArrowDown') return usable[Math.min(at + 1, usable.length - 1)];
-  if (key === 'ArrowUp') return usable[Math.max(at - 1, 0)];
-  if (key === 'Home') return usable[0];
-  if (key === 'End') return usable.at(-1);
-  return undefined;
-}
-
-// A letter goes to the next entry that starts with it, round the end.
-function typeAhead(options: readonly FilterOption[], usable: readonly number[], at: number, key: string) {
-  if (key.length !== 1 || key.trim() === '') return undefined;
-  const letter = key.toLowerCase();
-  const after = [...usable.slice(at + 1), ...usable.slice(0, at + 1)];
-  return after.find((index) => options[index]?.label.toLowerCase().startsWith(letter));
-}
-
 type Section = FilterOption['section'];
 
 // How the panel lays out its sections: `wide` (from sm up) has Type over Sort by in the left
@@ -194,5 +178,6 @@ export function nextActive(
   const moved = moveInList(inColumn, Math.max(0, inColumn.indexOf(active)), key);
   if (moved !== undefined) return moved;
   const usable = options.flatMap((option, index) => (canPick(option) ? [index] : []));
-  return typeAhead(options, usable, Math.max(0, usable.indexOf(active)), key);
+  const labels = options.map((option) => option.label);
+  return typeAhead(labels, usable, Math.max(0, usable.indexOf(active)), key);
 }
