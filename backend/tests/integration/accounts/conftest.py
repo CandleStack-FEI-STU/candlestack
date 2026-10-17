@@ -80,7 +80,7 @@ def auth_keys(redis_url: str) -> Callable[[], list[str]]:
 
 @pytest.fixture(autouse=True)
 def empty_stores(sql: Callable[[str], list[Any]], forget_pending: Callable[[], None]) -> None:
-    sql("TRUNCATE users, identities, sessions, user_preferences, models")
+    sql("TRUNCATE users, identities, sessions, user_preferences, models, backtests")
     forget_pending()
 
 

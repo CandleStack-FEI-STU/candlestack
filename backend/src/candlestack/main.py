@@ -33,13 +33,13 @@ from candlestack.core import (
     setup_sentry,
 )
 from candlestack.data import DataService, build_data_service, data_router
+from candlestack.experiments import backtests_router, model_usage
 from candlestack.ml import (
     LocalModelStorage,
     ModelsAccountDeletion,
     ModelStorage,
     keep_incoming_swept,
     models_router,
-    no_usage,
 )
 
 logger = logging.getLogger(__name__)
@@ -167,13 +167,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # and what they return after the commit).
     deletion_hooks: tuple[AccountDeletionHook, ...] = (ModelsAccountDeletion(model_storage),)
     app.state.account_deletion_hooks = deletion_hooks
-    app.state.model_usage = no_usage
+    # The models list counts their backtests through experiments, which ml cannot import.
+    app.state.model_usage = model_usage
     app.add_middleware(RequestContextMiddleware)
     install_error_handlers(app)
     app.include_router(health_router)
     app.include_router(data_router)
     app.include_router(accounts_router)
     app.include_router(models_router)
+    app.include_router(backtests_router)
     if dev_sign_in_allowed(settings.app_env):
         app.include_router(dev_sign_in_router)
     if settings.app_env == SENTRY_CHECK_ENV:

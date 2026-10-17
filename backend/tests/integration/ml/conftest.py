@@ -46,7 +46,7 @@ def sql(database_url: str) -> Callable[..., list[Any]]:
 
 @pytest.fixture(autouse=True)
 def empty_tables(sql: Callable[..., list[Any]]) -> None:
-    sql("TRUNCATE users, identities, sessions, user_preferences, models")
+    sql("TRUNCATE users, identities, sessions, user_preferences, models, backtests")
 
 
 @pytest.fixture

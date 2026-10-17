@@ -138,6 +138,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/backtests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Backtests
+         * @description A page of the user's backtests that match the search and the filters, and what the
+         *     filter panel shows: the counts of all, starred and failed backtests and every model the
+         *     backtests used. A page past the last one is empty.
+         */
+        get: operations["list_backtests_api_v1_backtests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/backtests/{backtest_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Backtest
+         * @description Stars or unstars the backtest.
+         */
+        patch: operations["update_backtest_api_v1_backtests__backtest_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dashboard
+         * @description Everything the Dashboard shows: the counts of the user's backtests, the newest ones,
+         *     the best finished ones by Sharpe ratio, return, drawdown and win rate, and the best
+         *     starred ones.
+         */
+        get: operations["dashboard_api_v1_dashboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/data/instruments": {
         parameters: {
             query?: never;
@@ -443,6 +507,27 @@ export interface components {
             time_zone?: components["schemas"]["TimeZone"] | null;
         };
         /**
+         * BacktestCounts
+         * @description The user's backtests in all, starred and failed.
+         */
+        BacktestCounts: {
+            /**
+             * All
+             * @example 15
+             */
+            all: number;
+            /**
+             * Failed
+             * @example 2
+             */
+            failed: number;
+            /**
+             * Starred
+             * @example 5
+             */
+            starred: number;
+        };
+        /**
          * BacktestDefaults
          * @description How new backtests start (Settings, Backtest defaults).
          */
@@ -535,18 +620,237 @@ export interface components {
             threshold: number;
             timeframe: components["schemas"]["BacktestTimeframe"];
         };
+        /** BacktestInstrument */
+        BacktestInstrument: {
+            market: components["schemas"]["InstrumentMarket"];
+            /**
+             * Symbol
+             * @description Symbol as the market data API names it
+             * @example AAPL
+             */
+            symbol: string;
+        };
+        /**
+         * BacktestOut
+         * @description A backtest of the user. Returns and rates are fractions: 0.246 is 24.6 %. The results are
+         *     null for a backtest that did not finish.
+         */
+        BacktestOut: {
+            /**
+             * Buy And Hold Return
+             * @description Return of buying and holding the instruments over the period, a fraction
+             * @example 0.682
+             */
+            buy_and_hold_return: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the backtest started (UTC)
+             */
+            created_at: string;
+            /**
+             * Duration S
+             * @description How long the run took, in seconds
+             * @example 162
+             */
+            duration_s: number | null;
+            /**
+             * Error
+             * @description What went wrong and what to do, for a failed backtest; else null
+             * @example null
+             */
+            error: string | null;
+            /**
+             * Finished At
+             * @description When it finished or failed (UTC); null while it runs
+             */
+            finished_at: string | null;
+            /**
+             * Id
+             * @description Public ID of the backtest
+             * @example bt_7f3k2m9qx4
+             */
+            id: string;
+            /**
+             * Instruments
+             * @description The instruments, in the order chosen
+             */
+            instruments: components["schemas"]["BacktestInstrument"][];
+            /**
+             * Max Drawdown
+             * @description Largest fall from a peak of the equity, a negative fraction (or 0)
+             * @example -0.197
+             */
+            max_drawdown: number | null;
+            model: components["schemas"]["UsedModel"];
+            /**
+             * Num Trades
+             * @description Number of trades
+             * @example 1712
+             */
+            num_trades: number | null;
+            /**
+             * Number
+             * @description The user's own number of the backtest, shown as #N
+             */
+            number: number;
+            representation: components["schemas"]["Representation"];
+            setup: components["schemas"]["BacktestSetup"];
+            /**
+             * Sharpe
+             * @description Sharpe ratio, per year
+             * @example 0.79
+             */
+            sharpe: number | null;
+            /**
+             * Starred
+             * @description The user starred the backtest
+             */
+            starred: boolean;
+            status: components["schemas"]["BacktestStatus"];
+            /**
+             * Total Return
+             * @description Return of the strategy over the period, a fraction
+             * @example 0.246
+             */
+            total_return: number | null;
+            /**
+             * Win Rate
+             * @description Share of the trades that made money, a fraction
+             * @example 0.512
+             */
+            win_rate: number | null;
+        };
+        /**
+         * BacktestSetup
+         * @description The settings a backtest ran with: the fields of Settings, Backtest defaults.
+         */
+        BacktestSetup: {
+            benchmark: components["schemas"]["SetupBenchmark"];
+            direction: components["schemas"]["SetupDirection"];
+            /**
+             * Fees Pct
+             * @description Fees in percent per side
+             */
+            fees_pct: number;
+            /**
+             * Period End
+             * Format: date
+             * @description Last day of the test
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date
+             * @description First day of the test
+             */
+            period_start: string;
+            /**
+             * Slippage Pct
+             * @description Slippage in percent
+             */
+            slippage_pct: number;
+            /**
+             * Stop Loss Pct
+             * @description Exit when a trade loses this many percent
+             */
+            stop_loss_pct: number;
+            /**
+             * Threshold
+             * @description Signal strength to trade
+             */
+            threshold: number;
+            timeframe: components["schemas"]["SetupTimeframe"];
+        };
+        /**
+         * BacktestShow
+         * @description Which backtests the list shows: all, the starred or the failed ones.
+         * @enum {string}
+         */
+        BacktestShow: "all" | "starred" | "failed";
+        /**
+         * BacktestSort
+         * @description What the list is sorted by. `default` is newest first (`order` does not apply); `when`
+         *     sorts like `number`. Backtests without the value (failed ones) come last either way, and
+         *     ties go by number, newest first.
+         * @enum {string}
+         */
+        BacktestSort: "default" | "number" | "model" | "return" | "sharpe" | "max_drawdown" | "trades" | "when";
+        /**
+         * BacktestStatus
+         * @description `finished` (it has results) or `failed` (it has an error); `running` comes with the
+         *     backtest builder.
+         * @enum {string}
+         */
+        BacktestStatus: "running" | "finished" | "failed";
         /**
          * BacktestTimeframe
          * @description Timeframes a new backtest can start with (Settings, Backtest defaults).
          * @enum {string}
          */
         BacktestTimeframe: "5m" | "30m" | "1h" | "1d";
+        /** BacktestUpdate */
+        BacktestUpdate: {
+            /**
+             * Starred
+             * @description Star or unstar the backtest
+             */
+            starred: boolean;
+        };
+        /** BacktestsPage */
+        BacktestsPage: {
+            /**
+             * Backtests
+             * @description The page, at most 10 backtests
+             */
+            backtests: components["schemas"]["BacktestOut"][];
+            /** @description All the user's backtests, whatever the filters */
+            counts: components["schemas"]["BacktestCounts"];
+            /**
+             * Models
+             * @description Every model the user's backtests used, whatever the filters, the most used first, then by name
+             */
+            models: components["schemas"]["ModelCount"][];
+            /**
+             * Page
+             * @description The page, from 1
+             * @example 1
+             */
+            page: number;
+            /**
+             * Pages
+             * @description Pages of the backtests that match, at least 1
+             * @example 2
+             */
+            pages: number;
+            /**
+             * Total
+             * @description Backtests that match the filters
+             * @example 15
+             */
+            total: number;
+        };
         /**
          * Benchmark
          * @description What each backtest is measured against: buy and hold of its own instruments, or an ETF.
          * @enum {string}
          */
         Benchmark: "bh" | "SPY" | "QQQ" | "DIA";
+        /**
+         * BestBacktests
+         * @description The 5 best finished backtests by each result, the best first (for `max_drawdown` the
+         *     smallest fall).
+         */
+        BestBacktests: {
+            /** Max Drawdown */
+            max_drawdown: components["schemas"]["BacktestOut"][];
+            /** Sharpe */
+            sharpe: components["schemas"]["BacktestOut"][];
+            /** Total Return */
+            total_return: components["schemas"]["BacktestOut"][];
+            /** Win Rate */
+            win_rate: components["schemas"]["BacktestOut"][];
+        };
         /** CandlesMeta */
         CandlesMeta: {
             /**
@@ -680,6 +984,20 @@ export interface components {
              *     ]
              */
             v: number[];
+        };
+        /**
+         * DashboardOut
+         * @description Everything the Dashboard shows, in one response.
+         */
+        DashboardOut: {
+            best: components["schemas"]["BestBacktests"];
+            counts: components["schemas"]["BacktestCounts"];
+            /**
+             * Last
+             * @description The 6 newest backtests, failed ones included
+             */
+            last: components["schemas"]["BacktestOut"][];
+            starred: components["schemas"]["StarredBacktests"];
         };
         /**
          * DateFormat
@@ -928,6 +1246,12 @@ export interface components {
              */
             volume_24h: number | null;
         };
+        /**
+         * InstrumentMarket
+         * @description The market of an instrument, as the market data API names it.
+         * @enum {string}
+         */
+        InstrumentMarket: "crypto" | "stock";
         /** InstrumentSearchOut */
         InstrumentSearchOut: {
             /**
@@ -1026,6 +1350,28 @@ export interface components {
              * @example Arsen Labovich
              */
             display_name: string;
+        };
+        /**
+         * ModelCount
+         * @description A model the user's backtests used, by the name they show for it.
+         */
+        ModelCount: {
+            /**
+             * Count
+             * @description Backtests that used it
+             * @example 9
+             */
+            count: number;
+            /**
+             * Framework
+             * @example keras
+             */
+            framework: string;
+            /**
+             * Name
+             * @example blesk-novol-8.keras
+             */
+            name: string;
         };
         /** ModelOut */
         ModelOut: {
@@ -1164,6 +1510,29 @@ export interface components {
          */
         Provider: "github" | "google";
         /**
+         * Representation
+         * @description What the model reads: Renko bricks, a Kagi line or time windows of candles.
+         * @enum {string}
+         */
+        Representation: "renko" | "kagi" | "windows";
+        /**
+         * SetupBenchmark
+         * @description What a backtest is measured against: buy and hold of its own instruments, or an ETF.
+         * @enum {string}
+         */
+        SetupBenchmark: "bh" | "SPY" | "QQQ" | "DIA";
+        /**
+         * SetupDirection
+         * @enum {string}
+         */
+        SetupDirection: "long" | "both";
+        /**
+         * SetupTimeframe
+         * @description Timeframes a backtest runs on (those of Settings, Backtest defaults).
+         * @enum {string}
+         */
+        SetupTimeframe: "5m" | "30m" | "1h" | "1d";
+        /**
          * SignInIntent
          * @enum {string}
          */
@@ -1187,6 +1556,11 @@ export interface components {
             login: string | null;
             provider: components["schemas"]["Provider"];
         };
+        /**
+         * SortOrder
+         * @enum {string}
+         */
+        SortOrder: "asc" | "desc";
         /** SourceHealthOut */
         SourceHealthOut: {
             /**
@@ -1222,6 +1596,20 @@ export interface components {
              * @enum {string}
              */
             status: "ok" | "error";
+        };
+        /** StarredBacktests */
+        StarredBacktests: {
+            /**
+             * Backtests
+             * @description The 4 starred backtests with the best Sharpe ratio, those without one last
+             */
+            backtests: components["schemas"]["BacktestOut"][];
+            /**
+             * Total
+             * @description All the starred backtests
+             * @example 5
+             */
+            total: number;
         };
         /** StorageUsage */
         StorageUsage: {
@@ -1267,6 +1655,30 @@ export interface components {
          * @enum {string}
          */
         Timeframe: "1m" | "5m" | "15m" | "30m" | "1h" | "4h" | "1d";
+        /**
+         * UsedModel
+         * @description The model a backtest used.
+         */
+        UsedModel: {
+            /**
+             * Framework
+             * @description Framework of the model file when the backtest ran
+             * @example keras
+             */
+            framework: string;
+            /**
+             * Id
+             * @description Public ID of the model; null once the model was deleted
+             * @example mdl_7f3k2m9qx4
+             */
+            id: string | null;
+            /**
+             * Name
+             * @description The model's current name, or the name it had when the backtest ran once it was deleted
+             * @example blesk-novol-8.keras
+             */
+            name: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -1451,6 +1863,149 @@ export interface operations {
             };
             /** @description Invalid request */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_backtests_api_v1_backtests_get: {
+        parameters: {
+            query?: {
+                /** @description Search: part of the number (`#12` or `12`), of an instrument's symbol or of the model's name, in any case */
+                q?: string;
+                /** @description All, the starred or the failed backtests */
+                show?: components["schemas"]["BacktestShow"];
+                /** @description Only the backtests of the model with this name, in any case */
+                model?: string | null;
+                /** @description What to sort by */
+                sort?: components["schemas"]["BacktestSort"];
+                /** @description SetupDirection of the sort */
+                order?: components["schemas"]["SortOrder"];
+                /** @description The page, from 1, of 10 backtests */
+                page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BacktestsPage"];
+                };
+            };
+            /** @description Not signed in (`not-signed-in`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_backtest_api_v1_backtests__backtest_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Public ID of the backtest */
+                backtest_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BacktestUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BacktestOut"];
+                };
+            };
+            /** @description Not signed in (`not-signed-in`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not come from the app's own pages (`cross-origin-request`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The user has no backtest with this ID (`not-found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    dashboard_api_v1_dashboard_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardOut"];
+                };
+            };
+            /** @description Not signed in (`not-signed-in`). */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
