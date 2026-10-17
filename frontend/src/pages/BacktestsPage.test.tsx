@@ -102,6 +102,16 @@ describe('the Backtests page', () => {
     await vi.waitFor(() => expect(subtitle()).toBe('Down.'));
   });
 
+  it.each(['page=0', 'page=abc', 'page=-3', 'show=bar', 'sort=foo', 'order=x', 'show=bar&sort=foo&page=abc'])(
+    'opens the plain list for ?%s, without asking the API for it',
+    async (query) => {
+      const fetch = stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer(PAGE) });
+      await renderApp(`/backtests?${query}`);
+      expect(await screen.findByText('3 backtests')).toBeDefined();
+      expect(asked(fetch)).toEqual(['/api/v1/backtests']);
+    },
+  );
+
   it('searches as the typing pauses, from page 1, keeping the focus in the field', async () => {
     const fetch = stubApi({
       ...sessionWithPreferences(ARSEN),
