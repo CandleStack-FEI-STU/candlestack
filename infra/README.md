@@ -191,8 +191,8 @@ at the end; the release tags those images with the version in the registry.
 `up` reads its stdin: the first line is a GHCR token used once for the pull, then `KEY=VALUE`
 lines with the environment's secrets. Only `ALPACA_KEY_ID`, `ALPACA_SECRET_KEY`,
 `LOGO_DEV_KEY`, `SENTRY_DSN`, `POSTGRES_PASSWORD`, the four `OAUTH_` keys and `BETA_ALLOWLIST`
-are accepted (at most 256 printable characters, the beta list 4096, no spaces or quotes). The
-script hands them to
+are accepted (at most 256 printable characters, the beta list 4096, no spaces or quotes; the
+database password only the characters the table below names). The script hands them to
 `docker compose` in its environment only: it never writes them to a file or prints them (Docker
 itself keeps them in the container's configuration, as with any container environment variable).
 The workflows send them with the `env-secrets` input of `.github/actions/deploy`. After `up` the
@@ -207,7 +207,7 @@ The other commands are `edge` and `agent <image@digest>` (stage key); the header
 | `ALPACA_KEY_ID`, `ALPACA_SECRET_KEY` | environments `production`, `staging` | Alpaca paper account keys for the backend (US stocks); each has its own account |
 | `LOGO_DEV_KEY` | environments `production`, `staging` | logo.dev publishable key for the instrument icons; one free account for both |
 | `SENTRY_DSN` | environments `production`, `staging` | where the backend sends errors, traces, profiles and logs (Sentry project `backend`) |
-| `POSTGRES_PASSWORD` | environments `production`, `staging` | password of the environment's Postgres user `candlestack`; set when its database is created (the first deploy), so changing it later needs `ALTER ROLE` in the database too |
+| `POSTGRES_PASSWORD` | environments `production`, `staging` | password of the environment's Postgres user `candlestack`, 16 to 256 letters, digits or `. _ ~ -` (it goes into the database URL as it is), e.g. `openssl rand -hex 32`; set when its database is created (the first deploy), so changing it later needs `ALTER ROLE` in the database too |
 | `OAUTH_GITHUB_CLIENT_ID`, `OAUTH_GITHUB_CLIENT_SECRET` | environments `production`, `staging` | the environment's GitHub OAuth app, callback `https://<host>/api/v1/auth/github/callback` |
 | `OAUTH_GOOGLE_CLIENT_ID`, `OAUTH_GOOGLE_CLIENT_SECRET` | environments `production`, `staging` | the environment's Google OAuth client, callback `https://<host>/api/v1/auth/google/callback` |
 | `BETA_ALLOWLIST` | environments `production`, `staging` | comma-separated emails that may sign in with GitHub or Google; empty lets nobody in |

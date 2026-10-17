@@ -410,6 +410,13 @@ ALPACA_SECRET_KEY=$value" \
     "ALPACA_SECRET_KEY must be at most 256 printable characters without spaces or quotes" \
     "$value"
 done
+# The password goes into the database URL as it is: '@', '%', '/', ':' would change the URL.
+for value in 'p@ss-0123456789abcdef' 'pass%40-0123456789abc' 'pass/0123456789abcdef' \
+  'pass:0123456789abcdef' 'short-0123456' ''; do
+  refused "database password ${value:0:12}" stage "up stage v1 $IMAGES" "$TOKEN
+POSTGRES_PASSWORD=$value" \
+    "POSTGRES_PASSWORD must be 16 to 256 letters, digits or the characters . _ ~ -" ${value:+"$value"}
+done
 secret=$SECRET
 SECRET=$(printf '~%.0s' {1..256})
 allowed "secret value of 256 characters, blank lines" stage "up stage v1 $IMAGES" "$TOKEN

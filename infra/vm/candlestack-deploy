@@ -144,6 +144,9 @@ read_secrets() {
     [ "$key" != BETA_ALLOWLIST ] || max=4096
     [[ $value =~ ^[!-~]{0,$max}$ && $value != *[\"\'\`\\]* ]] ||
       fail "$key must be at most $max printable characters without spaces or quotes"
+    # The database URL holds the password as it is: only characters a URL keeps as they are.
+    [[ $key != POSTGRES_PASSWORD || $value =~ ^[A-Za-z0-9._~-]{16,256}$ ]] ||
+      fail "POSTGRES_PASSWORD must be 16 to 256 letters, digits or the characters . _ ~ -"
     export "$key=$value"
   done
 }
