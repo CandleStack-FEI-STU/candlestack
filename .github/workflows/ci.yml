@@ -377,7 +377,7 @@ jobs:
         run: |
           ENV_NAME=stage APP_VERSION=check BACKEND_IMAGE=backend FRONTEND_IMAGE=frontend \
             REDIS_MAXMEMORY=256mb REDIS_MEM_LIMIT=288m EDGE_NETWORK=edge \
-            POSTGRES_SHARED_BUFFERS=32MB POSTGRES_MEM_LIMIT=128m POSTGRES_PASSWORD=check \
+            POSTGRES_PASSWORD=check \
             docker compose -f infra/env/compose.yaml config --quiet
           docker compose -f infra/edge/compose.yaml config --quiet
           IMAGE=agent docker compose -f infra/agent/compose.yaml config --quiet
