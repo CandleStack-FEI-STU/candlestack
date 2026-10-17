@@ -30,6 +30,7 @@ compresses the responses (zstd or gzip) on the way to Cloudflare.
 | `postgres` | `postgres:18-alpine`, pinned by digest | `postgres:5432` on the environment's own network only | `128m` |
 | `migrate` | the backend image, `alembic upgrade head` | runs once per deploy, before the backend starts | `160m` |
 | `backup` | `prodrigestivill/postgres-backup-local:18-alpine`, pinned by digest | nothing reaches it | `32m` |
+| `models-backup` | `offen/docker-volume-backup`, pinned by digest | nothing reaches it, no network | `32m` |
 
 The frontend image holds the app, built with Node in the image's build stage and served by its
 Caddy (`frontend/Caddyfile`), the same in every environment. A path that is no file gets the
@@ -49,22 +50,24 @@ Redis is a cache for the backend: no persistence, least recently used keys are e
 | prod | `256mb` | `288m` |
 | stage | `256mb` | `288m` |
 
-Postgres keeps what users create (accounts and sessions so far) in the volume
-`<env>_postgres`. The backend image carries the migrations (`backend/migrations`): every deploy
+Postgres keeps what users create (accounts, sessions, settings, the models' rows) in the volume
+`<env>_postgres`; the backend keeps the files of the uploaded models in the volume
+`<env>_models` (`/data/models`, the only path it writes to, served only through the API). The backend image carries the migrations (`backend/migrations`): every deploy
 starts with the `migrate` service, which brings the database to them and exits, and the backend
 starts only once it succeeded, so a failing migration fails the deploy before the new backend
 serves anything. Postgres is sized for a few connections (`max_connections` 20: the backend's
 pool of at most 10, the migration, the backup) with `shared_buffers` 32 MB.
 
-Memory: the container limits of one environment add up to 800 MB (backend 320, frontend 32,
-Redis 288, Postgres 128, backup 32), 1.6 GB for prod and stage on a VM with 2 GB; `migrate`
-runs only during a deploy. What runs is far below the limits: an idle Postgres of this size
-with the backend's pool connected uses about 30 MB, the backup service about 2 MB between its
-nightly runs, the backend about 120 MB.
+Memory: the container limits of one environment add up to 832 MB (backend 320, frontend 32,
+Redis 288, Postgres 128, backup 32, models-backup 32), 1.66 GB for prod and stage on a VM with
+2 GB; `migrate` runs only during a deploy. What runs is far below the limits: an idle Postgres
+of this size with the backend's pool connected uses about 30 MB, each backup service about 2 MB
+between its nightly runs, the backend about 120 MB.
 
 All containers of an environment run with a read-only root filesystem, no Linux capabilities
 and `no-new-privileges`. Postgres runs as the image's `postgres` user, which owns its volume;
-the backup service as root, which owns its volume, but also without any capability.
+the backend as `65534`, which owns the models volume (the image's `/data/models`); the backup
+services as root, which owns their volumes, but also without any capability.
 
 ### Backups
 
@@ -89,12 +92,32 @@ sudo docker start prod-backend-1
 its night: after restoring one older than the last migration, the next deploy migrates it
 again.
 
+The `models-backup` service archives the files of the uploaded models (the volume
+`<env>_models`, mounted read-only, without the uploads in progress) every night at 00:30 UTC
+into the volume `<env>_model_backups`, as `models-<date>T<time>.tar.gz`, and keeps the
+archives of the last 7 days. It runs half an hour after the database dump, so a dump and the
+archive of the same night belong together: restore both from one night, or a model's row may
+point to no file (its file is gone) or a file to no row (an orphan, which does no harm). To
+take an archive now: `sudo docker exec prod-models-backup-1 backup`; to list them:
+`sudo docker exec prod-models-backup-1 ls /archive`.
+
+To restore the files of a given night (after the database of the same night, the backend
+still stopped):
+
+```sh
+sudo docker stop prod-backend-1
+sudo docker run --rm -v prod_models:/data/models -v prod_model_backups:/archive:ro alpine:3 \
+  sh -c 'rm -rf /data/models/* && tar -xzf /archive/models-<yyyy-mm-dd>T00-30-00.tar.gz \
+  -C /data/models --strip-components 2 && chown -R 65534:65534 /data/models'
+sudo docker start prod-backend-1
+```
+
 The Docker networks:
 
 | Network | Who is on it |
 | --- | --- |
 | `edge` | the edge Caddy, the backend and frontend of prod and stage, the server agent (`vm-agent`) |
-| `<env>_default` | the backend, Redis, Postgres, `migrate` and `backup` of that environment |
+| `<env>_default` | the backend, Redis, Postgres, `migrate` and `backup` of that environment (`models-backup` is on no network) |
 | `agent_docker` (internal) | the server agent and its Docker socket proxy |
 
 Every push to `main` builds the backend, frontend and agent images once, and a release builds
@@ -226,7 +249,7 @@ The other commands are `edge` and `agent <image@digest>` (stage key); the header
 | `vm/deploy_authorized_keys` | Public deploy keys with their scopes |
 | `cloudflared/config.yml` | Tunnel ingress: SSH for deployments, everything else to the edge |
 | `edge/` | Caddy that routes each hostname to its environment |
-| `env/compose.yaml` | One environment (prod or stage): backend, frontend, Redis, Postgres with its migration and nightly backup |
+| `env/compose.yaml` | One environment (prod or stage): backend, frontend, Redis, Postgres with its migration and nightly backup, the nightly backup of the model files |
 | `agent/` | Server agent for ops: host metrics and containers as JSON, read-only Docker proxy |
 | `github/` | Snapshot of the organization's GitHub settings: rulesets, environments, Actions policy, security, project |
 | `cloudflare/` | Snapshot of the Cloudflare settings: zone, DNS, Access, tunnel, Workers |

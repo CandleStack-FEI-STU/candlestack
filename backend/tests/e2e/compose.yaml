@@ -28,6 +28,7 @@ services:
       ALPACA_SECRET_KEY: e2e-secret
       LOGO_DEV_URL: http://sources:8080
       LOGO_DEV_KEY: e2e-logo-key
+      MODEL_STORAGE_DIR: /data/models
     ports:
       - 127.0.0.1:${E2E_PORT:-18000}:8000
     depends_on:
@@ -45,6 +46,9 @@ services:
     # The limit of the deployed backends (infra/env/compose.yaml): the tests run within it.
     mem_limit: 320m
     read_only: true
+    # A volume for the model files, like the deployed backends' (removed with the stack).
+    volumes:
+      - models:/data/models
     tmpfs:
       - /tmp
     cap_drop:
@@ -106,3 +110,6 @@ services:
       interval: 2s
       timeout: 3s
       retries: 15
+
+volumes:
+  models: {}
