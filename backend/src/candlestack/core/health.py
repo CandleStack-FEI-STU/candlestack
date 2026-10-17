@@ -1,4 +1,5 @@
-"""``GET /api/health``: liveness of the app and its Redis, read by deploy checks and ops."""
+"""``GET /api/health``: liveness of the app, its Redis and its Postgres, read by deploy checks
+and ops."""
 
 import asyncio
 import logging
@@ -10,6 +11,7 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from candlestack.core.config import SettingsDep
+from candlestack.core.db import DATABASE_ERRORS, Database, DatabaseDep
 from candlestack.core.redis import RedisDep
 
 logger = logging.getLogger(__name__)
@@ -17,43 +19,66 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["health"])
 
 REDIS_TIMEOUT = 2.0
+POSTGRES_TIMEOUT = 2.0
+
+Check = Literal["ok", "error"]
 
 
 class Health(BaseModel):
-    status: Literal["ok", "error"]
+    status: Check
     env: str
     version: str
     commit: str
-    redis: Literal["ok", "error"]
+    redis: Check
+    postgres: Check
 
 
 @router.get(
     "/api/health",
     summary="Health of the app",
-    responses={503: {"model": Health, "description": "Redis is unreachable"}},
+    responses={503: {"model": Health, "description": "Redis or Postgres is unreachable"}},
 )
-async def health(settings: SettingsDep, redis: RedisDep, response: Response) -> Health:
-    """200 when the app and its Redis work, 503 with the same body when Redis does not.
+async def health(
+    settings: SettingsDep, redis: RedisDep, db: DatabaseDep, response: Response
+) -> Health:
+    """200 when the app, its Redis and its Postgres work, 503 with the same body when one of
+    them does not.
 
     The body is compact JSON: deploy checks look for `"version":"<version>"` and the commit.
     """
-    redis_ok = await _ping(redis)
-    if not redis_ok:
+    redis_ok, postgres_ok = await asyncio.gather(_ping_redis(redis), _ping_postgres(db))
+    ok = redis_ok and postgres_ok
+    if not ok:
         response.status_code = 503
     return Health(
-        status="ok" if redis_ok else "error",
+        status=_check(ok),
         env=settings.app_env,
         version=settings.app_version,
         commit=settings.app_commit,
-        redis="ok" if redis_ok else "error",
+        redis=_check(redis_ok),
+        postgres=_check(postgres_ok),
     )
 
 
-async def _ping(redis: Redis) -> bool:
+def _check(ok: bool) -> Check:  # noqa: FBT001 (the result of a check)
+    return "ok" if ok else "error"
+
+
+async def _ping_redis(redis: Redis) -> bool:
     try:
         async with asyncio.timeout(REDIS_TIMEOUT):
             await redis.ping()
     except (RedisError, OSError, TimeoutError) as exc:
         logger.warning("Redis ping failed: %s", type(exc).__name__)
+        return False
+    return True
+
+
+async def _ping_postgres(db: Database) -> bool:
+    try:
+        async with asyncio.timeout(POSTGRES_TIMEOUT):
+            await db.ping()
+    except DATABASE_ERRORS as exc:
+        logger.warning("Postgres ping failed: %s", type(exc).__name__)
         return False
     return True

@@ -230,6 +230,28 @@
         "title": "CandlesOut",
         "type": "object"
       },
+      "DeniedSignInOut": {
+        "description": "The last sign-in of this browser that the beta list turned away.",
+        "properties": {
+          "email": {
+            "description": "The account's email",
+            "examples": [
+              "arsen@example.com"
+            ],
+            "title": "Email",
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/Provider"
+          }
+        },
+        "required": [
+          "email",
+          "provider"
+        ],
+        "title": "DeniedSignInOut",
+        "type": "object"
+      },
       "Exchange": {
         "description": "Where the instruments of the catalog trade: for stocks the listing exchanges Alpaca\nreports for tradable US equities without OTC (docs/data.md, \"Alpaca\"), for crypto pairs\nBinance.",
         "enum": [
@@ -251,6 +273,14 @@
           },
           "env": {
             "title": "Env",
+            "type": "string"
+          },
+          "postgres": {
+            "enum": [
+              "ok",
+              "error"
+            ],
+            "title": "Postgres",
             "type": "string"
           },
           "redis": {
@@ -279,7 +309,8 @@
           "env",
           "version",
           "commit",
-          "redis"
+          "redis",
+          "postgres"
         ],
         "title": "Health",
         "type": "object"
@@ -746,6 +777,64 @@
         "title": "Market",
         "type": "string"
       },
+      "MeOut": {
+        "description": "The signed-in user.",
+        "properties": {
+          "created_at": {
+            "description": "When the account was created (UTC)",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_name": {
+            "description": "Name shown in the app",
+            "examples": [
+              "Arsen Labovich"
+            ],
+            "title": "Display Name",
+            "type": "string"
+          },
+          "email": {
+            "description": "From the identity provider, read-only",
+            "examples": [
+              "arsen@example.com"
+            ],
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "description": "Public user ID, shown in Settings and given to support",
+            "examples": [
+              "usr_7f3k2m9qx4"
+            ],
+            "pattern": "^usr_[a-z0-9]{10}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "providers": {
+            "description": "Connected sign-in methods",
+            "examples": [
+              [
+                "github"
+              ]
+            ],
+            "items": {
+              "$ref": "#/components/schemas/Provider"
+            },
+            "title": "Providers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "email",
+          "providers",
+          "created_at"
+        ],
+        "title": "MeOut",
+        "type": "object"
+      },
       "Problem": {
         "additionalProperties": true,
         "description": "Error response (RFC 9457). Some problems add members, such as `errors` on 422.",
@@ -787,6 +876,15 @@
         ],
         "title": "Problem",
         "type": "object"
+      },
+      "Provider": {
+        "description": "An identity provider a user signs in with.",
+        "enum": [
+          "github",
+          "google"
+        ],
+        "title": "Provider",
+        "type": "string"
       },
       "SourceHealthOut": {
         "properties": {
@@ -895,7 +993,7 @@
   "paths": {
     "/api/health": {
       "get": {
-        "description": "200 when the app and its Redis work, 503 with the same body when Redis does not.\n\nThe body is compact JSON: deploy checks look for `\"version\":\"<version>\"` and the commit.",
+        "description": "200 when the app, its Redis and its Postgres work, 503 with the same body when one of\nthem does not.\n\nThe body is compact JSON: deploy checks look for `\"version\":\"<version>\"` and the commit.",
         "operationId": "health_api_health_get",
         "responses": {
           "200": {
@@ -916,7 +1014,7 @@
                 }
               }
             },
-            "description": "Redis is unreachable"
+            "description": "Redis or Postgres is unreachable"
           }
         },
         "summary": "Health of the app",
@@ -954,6 +1052,119 @@
         "summary": "Health of the data sources",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/v1/auth/denied": {
+      "get": {
+        "description": "The account the beta list just turned away, for the sign-in page; 404 when this browser\nwas not turned away in the last 10 minutes.",
+        "operationId": "denied_sign_in_api_v1_auth_denied_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeniedSignInOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "This browser was not turned away lately (`not-found`)."
+          }
+        },
+        "summary": "Denied Sign In",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/v1/auth/sign-out": {
+      "post": {
+        "description": "Ends this browser's session; 204 also when it had none.",
+        "operationId": "sign_out_api_v1_auth_sign_out_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request does not come from the app's own pages (`cross-origin-request`)."
+          }
+        },
+        "summary": "Sign Out",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/v1/auth/{provider}/start": {
+      "get": {
+        "description": "Redirects to the provider's sign-in page, or to `/signin?error=failed` when sign-in\nwith it is not available or this address made too many sign-in requests in a minute.",
+        "operationId": "start_sign_in_api_v1_auth__provider__start_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Provider"
+            }
+          },
+          {
+            "description": "Path of the app to open after signing in (default `/dashboard`)",
+            "in": "query",
+            "name": "next",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Path of the app to open after signing in (default `/dashboard`)",
+              "examples": [
+                "/dashboard"
+              ],
+              "title": "Next"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Start Sign In",
+        "tags": [
+          "accounts"
         ]
       }
     },
@@ -1456,6 +1667,38 @@
         "summary": "Instrument icon",
         "tags": [
           "data"
+        ]
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "description": "The signed-in user.",
+        "operationId": "me_api_v1_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No session came with the request, or it ended (`not-signed-in`)."
+          }
+        },
+        "summary": "Me",
+        "tags": [
+          "accounts"
         ]
       }
     }

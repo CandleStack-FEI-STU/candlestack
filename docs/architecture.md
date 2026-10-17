@@ -1,17 +1,20 @@
 # Architecture
 
 The CandleStack backend is one Python service: a FastAPI application that serves the HTTP API
-under `/api`. In this milestone it has two modules: `core` (configuration, logging, errors,
-Redis and HTTP clients, health, Sentry) and `data` (market data: instrument catalog and candles from
-Binance and Alpaca, see [data.md](data.md)). It stores nothing: the sources are the truth and
-Redis is a cache that can be lost at any time. The backtest is being built next to them
+under `/api`. In this milestone it has three modules: `core` (configuration, logging, errors,
+Redis, Postgres and HTTP clients, CSRF protection, health, Sentry), `data` (market data:
+instrument catalog and candles from Binance and Alpaca, see [data.md](data.md)) and `accounts`
+(users, GitHub and Google sign-in, sessions, the beta list). Postgres stores what users create,
+accounts and sessions so far; market data is not stored: the sources are the truth and Redis is
+a cache that can be lost at any time. The backtest is being built next to them
 (`signals`, `engine`, `metrics` and the `candlestack-bt` command in `cli`, see
 [Modules](#modules) and the contract in [engine.md](engine.md)); it runs from the command line,
 not in the service.
 
 ## Runtime
 
-prod and stage run the same three containers on one VM. Deployment, hosts and secrets are described in [infra/README.md](../infra/README.md).
+prod and stage run the same containers on one VM. Deployment, hosts, secrets and backups are
+described in [infra/README.md](../infra/README.md).
 
 ```mermaid
 flowchart LR
@@ -24,10 +27,12 @@ flowchart LR
             caddy -->|"/api/*"| backend["backend<br/>FastAPI on granian :8000"]
             caddy -->|"everything else"| frontend["frontend<br/>static page, Caddy :8080"]
             backend --> redis[("redis<br/>cache only")]
+            backend --> postgres[("postgres<br/>users, sessions")]
         end
     end
     backend -->|HTTPS| binance["Binance<br/>REST + data.binance.vision"]
     backend -->|HTTPS| alpaca["Alpaca<br/>trading API + market data"]
+    backend -->|"HTTPS, sign-in"| oauth["GitHub and Google<br/>OAuth"]
     backend -.->|"HTTPS, prod and stage"| sentry["Sentry (EU)<br/>errors, traces, profiles, logs"]
 ```
 
@@ -36,14 +41,21 @@ flowchart LR
 | `backend` | `ghcr.io/candlestack-fei-stu/candlestack/backend` | calls Binance and Alpaca; gets the environment's Alpaca keys at deploy time |
 | `frontend` | `ghcr.io/candlestack-fei-stu/candlestack/frontend` | the web app, static files served by Caddy |
 | `redis` | `redis:8-alpine` | private network of the environment, no persistence, `allkeys-lru` |
+| `postgres` | `postgres:18-alpine` | private network of the environment, data in a volume; migrated by a one-shot `migrate` container (the backend image, `alembic upgrade head`) before the backend starts; prod and stage dump it every night (`backup`) |
 
 ## HTTP surface
 
 | Path | What |
 | --- | --- |
-| `GET /api/health` | liveness + Redis; used by deploys and the ops page; not versioned |
+| `GET /api/health` | liveness + Redis + Postgres; used by deploys and the ops page; not versioned |
 | `GET /api/health/sources` | reachability of Binance and Alpaca (cached 60 s) |
 | `GET /api/v1/data/...` | instruments and candles, see [data.md](data.md) |
+| `GET /api/v1/auth/{provider}/start?next=<path>` | sign-in with `github` or `google`: redirects to the provider, or to `/signin?error=failed` (provider not configured, too many sign-ins from the address) |
+| `GET /api/v1/auth/{provider}/callback` | where the provider returns; sets the session cookie and redirects to `next` (default `/dashboard`), or to `/signin?error=denied` (not on the beta list) or `/signin?error=failed`; not in the API reference |
+| `GET /api/v1/auth/denied` | the account this browser was just turned away with (email, provider), for the sign-in page |
+| `POST /api/v1/auth/sign-out` | ends this browser's session |
+| `POST /api/v1/auth/dev` | signs in as a fixed dev user; only `APP_ENV` `local` and `test`, not in the API reference |
+| `GET /api/v1/me` | the signed-in user |
 | `GET /api/v1/docs` | API reference (Scalar); public on prod |
 | `GET /api/v1/openapi.json` | OpenAPI schema; snapshot committed as [openapi.json](openapi.json) |
 
@@ -55,7 +67,9 @@ flowchart LR
   `validation` (422), the framework's own errors `not-found` (404) and `method-not-allowed`
   (405), and an unhandled exception `internal-error` (500), whose `detail` reveals nothing and
   asks to report the response's `X-Request-ID`. The slugs of the data module are listed in
-  [data.md](data.md#errors). Each `type` URI opens a page on the website that says what the
+  [data.md](data.md#errors). The accounts module adds `not-signed-in` (401: no session, or it
+  ended) and `cross-origin-request` (403: a change that does not come from the app's own
+  pages), and uses `not-found` (404) and `rate-limited` (429) too. Each `type` URI opens a page on the website that says what the
   problem means and what the client should do.
 - Every response carries `X-Request-ID` and `Server-Timing: app;dur=<ms>` (the app's time
   until the response started), so response times can be measured from outside.
@@ -69,8 +83,9 @@ A module is a subpackage of `candlestack` under `backend/src/candlestack/`.
 
 | Module | Status | Responsibility |
 | --- | --- | --- |
-| `core` | now | settings, logging, problem errors, Redis and HTTP clients, health endpoint |
+| `core` | now | settings, logging, problem errors, Redis, Postgres and HTTP clients, CSRF protection, health endpoint |
 | `data` | now | instrument catalog, candles, sessions, cache, source adapters, rate limits |
+| `accounts` | now | users, GitHub and Google sign-in, sessions, the beta list; `CurrentUserDep` for the routes of the signed-in user |
 | `preprocessing` | later | Renko, Kagi, time windows, normalization, segmentation |
 | `ml` | later | upload `.keras` models, validate input/output shapes, run inference; worker only (below) |
 | `signals` | started | turn predictions into signals: align them with the candles, thresholds, long only; later smoothing, holding period, sizing, risk limits |
@@ -85,11 +100,12 @@ the ones whose folder exists while their code is being written.
 
 ## Import rules
 
-- Dependencies point one way: `experiments` -> `preprocessing` -> `data` -> `core`. `core`
-  imports no other module.
+- Dependencies point one way: `experiments` -> `preprocessing` -> `data` -> `core`, and
+  `accounts` -> `core`. `core` imports no other module.
 - The backtest modules `signals`, `engine` and `metrics` stand alone: they import no other
   module of the project, not each other, and no server library (`fastapi`, `starlette`,
-  `scalar_fastapi`, `granian`, `redis`, `httpx`, `sentry_sdk`, `pydantic_settings`). They are
+  `scalar_fastapi`, `granian`, `redis`, `httpx`, `sentry_sdk`, `pydantic_settings`,
+  `sqlalchemy`, `asyncpg`, `alembic`, `authlib`). They are
   plain functions on Polars frames, put together only by the code that runs them: `cli` now,
   `experiments` later.
 - No module imports `cli`: it is the entry point of the `candlestack-bt` command
@@ -121,6 +137,8 @@ the ones whose folder exists while their code is being written.
 | JSON | orjson | serializes large numeric arrays (up to 50000 candles) quickly |
 | Data frames | Polars | fast columnar processing, Arrow-native; cache blobs are Arrow IPC + zstd |
 | Cache | Redis with `redis[hiredis]` asyncio | one store for cache blobs, locks and rate-limit counters |
+| Database | Postgres 18, SQLAlchemy 2 (asyncio) on asyncpg, Alembic migrations in `backend/migrations` | relational data with constraints; typed models; versioned schema changes that run before each deploy's backend starts |
+| Sign-in | Authlib (OAuth 2.0 messages, PKCE) over the app's httpx client | a maintained implementation of the protocol; the requests stay on the client the tests mock with respx |
 | HTTP client | httpx (async), timeouts always set | async calls to the sources; mocked in tests with respx |
 | API docs | scalar-fastapi at `/api/v1/docs` | readable reference with request examples; Swagger and ReDoc disabled |
 | Time zones | stdlib `zoneinfo` + `tzdata` | DST-correct New York sessions even in slim images without system tz data |
@@ -141,7 +159,12 @@ Environment variables, read by pydantic-settings without a prefix. All are docum
 | `APP_VERSION` | `dev` | deployed version (`main-<sha>`, `v0.2.0`) |
 | `APP_COMMIT` | `unknown` | commit sha, baked into the image at build time |
 | `LOG_LEVEL` | `INFO` | |
+| `PUBLIC_URL` | prod `https://app.candlestack.tech`, stage `https://stage.candlestack.tech`, local `http://localhost:5173`, test `http://testserver` | where the app is reached: OAuth callbacks, cookies (`Secure` and `__Host-` over https), the same-origin check |
 | `REDIS_URL` | `redis://127.0.0.1:6379/0` | |
+| `DATABASE_URL` | `postgresql+asyncpg://candlestack:candlestack@127.0.0.1:5432/candlestack` | Postgres (whitespace stripped); the pool holds at most 10 connections |
+| `OAUTH_GITHUB_CLIENT_ID`, `OAUTH_GITHUB_CLIENT_SECRET` | empty | GitHub OAuth app; without both, GitHub sign-in is off |
+| `OAUTH_GOOGLE_CLIENT_ID`, `OAUTH_GOOGLE_CLIENT_SECRET` | empty | Google OAuth client; without both, Google sign-in is off |
+| `BETA_ALLOWLIST` | empty | comma-separated emails that may sign in with GitHub or Google, any case; empty lets nobody in |
 | `ALPACA_KEY_ID`, `ALPACA_SECRET_KEY` | empty | Alpaca paper account keys (whitespace stripped) |
 | `ALPACA_API_URL` | `https://paper-api.alpaca.markets` | assets, calendar, clock |
 | `ALPACA_DATA_URL` | `https://data.alpaca.markets` | bars |
@@ -181,9 +204,12 @@ What the backend sends to Sentry (only prod and stage have a DSN), set up in
   checks), each with its `request_id`.
 - Every event carries `environment` (`prod`, `stage`), `release` (`APP_VERSION`) and
   `request_id`: the `X-Request-ID` a user reports finds the error.
-- Nothing personal or secret: no IP addresses, cookies, request bodies or Cloudflare Access
-  logins; the Alpaca keys and the DSN are filtered; only our own frames keep their local
-  variables, without the ASGI scope.
+- Nothing personal or secret: no IP addresses, cookies, request bodies, Cloudflare Access
+  logins or emails; the Alpaca keys, the DSN, the database URL and the OAuth client secrets,
+  codes, verifiers, states and tokens are filtered, in the query of a request too; Redis keys
+  hold the sign-in's state and the denial's id only as SHA-256; only our own frames keep their
+  local variables, without the ASGI scope. The logs of a sign-in name the provider and why it
+  failed, never the account.
 - At most 100 error events an hour per process, so an error in a loop cannot use up the
   month's quota (50,000 errors, no pay-as-you-go).
 
@@ -198,7 +224,6 @@ to check that an error reaches Sentry. The Sentry settings are recorded in
 
 ## Not in this milestone
 
-- Postgres (no stored data yet)
 - Celery (job queue and worker)
 - TensorFlow / Keras
 - admin, roles, audit log
@@ -212,7 +237,13 @@ to check that an error reaches Sentry. The Sentry settings are recorded in
 | Decision | Why |
 | --- | --- |
 | Modular monolith, one package, boundaries checked by import-linter | one image and one deploy for a small team; the boundaries still hold |
-| No database; Redis as a disposable cache (no persistence, `allkeys-lru`) | market data comes from the sources on demand; losing Redis costs only refetch time |
+| Market data is not stored; Redis as a disposable cache (no persistence, `allkeys-lru`) | market data comes from the sources on demand; losing Redis costs only refetch time |
+| Postgres for what users create, one database per environment, nightly dumps on prod and stage | accounts and later models and backtests must survive restarts and deploys; one small instance per environment keeps stage away from prod's data |
+| Sign-in with GitHub or Google only, no passwords | no password storage, reset or verification flows to build and secure; both providers vouch for a verified email, which also links a user's two providers into one account |
+| A beta list (`BETA_ALLOWLIST`) decides who signs in, closed when empty | the app is for the team and invited testers while it is built; a turned-away account is named on the sign-in page (from Redis, for 10 minutes, never in a URL) and gets no account |
+| Server-side sessions: a random token in an HttpOnly, SameSite=Lax cookie (`__Host-` over https), only its SHA-256 in Postgres, 30 days sliding | a session can be ended at once (sign-out, later admin), a database leak does not leak sessions, and no script can read the cookie |
+| Changes on behalf of the user require the app's own origin (`core.require_same_origin`), the OAuth round trip a state bound to the browser (Redis and a cookie) and PKCE | every host under candlestack.tech is the same site to the browser, so SameSite cookies alone do not stop a page on another of them; the state stops login CSRF; PKCE stops a stolen code |
+| A dev sign-in for `APP_ENV` `local` and `test` only, fixed in code, not a setting | signed-in pages can be built and tested without OAuth keys; no setting can turn it on in stage or prod |
 | One source per market, never mixed in one series: Binance spot for crypto, Alpaca SIP for US stocks (15 minutes delayed) | consistent data; both are free |
 | Full history fetched lazily on request, catalog cached 24 h and refreshed in the background | no ingestion pipeline and no scheduler to run |
 | The instruments' 24 h stats refreshed by one asyncio task in the API process (started in the app's lifespan, every 5-10 minutes, a Redis lock per market), only in prod and stage | a list sorted by volume needs every instrument's numbers before anyone asks; a task in the process needs no worker, queue or cron container, and the lock keeps a second process from fetching them again |

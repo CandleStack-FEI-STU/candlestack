@@ -59,7 +59,7 @@ All four are required to merge:
 | `no-ai-signs / No AI signs` | commit messages, authors and the pull request text |
 | `linked-issue / Linked issue` | the pull request description closes an issue ("Closes #N"); the tech lead and Dependabot are exempt |
 | `pr-hygiene / Title and branch` | the title (starts with a capital letter and an imperative verb, no `type:` prefix, no trailing period, at most 72 characters) and the branch name (`<area>/<topic>`); Dependabot's titles are exempt. `pr-hygiene / Size` only warns, above 1000 changed lines (lockfiles, fixtures and generated snapshots not counted) |
-| `ci` | `Pre-commit` (the git hooks on every file, ruff aside), the backend jobs `lint` (ruff, ty, import-linter, the root `compose.yaml` validated and its dev image built), `unit` (no network: pytest-socket), `integration` (the unit and integration tests with Redis, at least 95% branch coverage, and on a pull request at least 90% of the changed lines covered, diff-cover) and `e2e` (the built image, then scanned by Trivy); `frontend` (in `frontend/`: `npm run lint`, `npm test`, `npm run build`, and `src/api/schema.d.ts` regenerated from `docs/openapi.json` with `npm run api:types` must not change); `api` (breaking changes to the API, see below); `infra` (the deploy script's tests, the compose files of `infra/` validated, the server agent's ruff and tests, the edge Caddyfile and the tunnel ingress rules validated, the frontend and server agent images built and scanned by Trivy; see [infra/README.md](infra/README.md#tests)) |
+| `ci` | `Pre-commit` (the git hooks on every file, ruff aside), the backend jobs `lint` (ruff, ty, import-linter, the root `compose.yaml` validated and its dev image built), `unit` (no network: pytest-socket), `integration` (the unit and integration tests with Redis and Postgres, at least 95% branch coverage, and on a pull request at least 90% of the changed lines covered, diff-cover) and `e2e` (the built image, then scanned by Trivy); `frontend` (in `frontend/`: `npm run lint`, `npm test`, `npm run build`, and `src/api/schema.d.ts` regenerated from `docs/openapi.json` with `npm run api:types` must not change); `api` (breaking changes to the API, see below); `infra` (the deploy script's tests, the compose files of `infra/` validated, the server agent's ruff and tests, the edge Caddyfile and the tunnel ingress rules validated, the frontend and server agent images built and scanned by Trivy; see [infra/README.md](infra/README.md#tests)) |
 
 The backend jobs run only when `backend/`, `docs/openapi.json`, a `compose*.yaml` file in the
 repository root (`compose.yaml`) or `.github/workflows/ci.yml` changed, and `infra` only when
@@ -90,14 +90,20 @@ uv run ty check                                       # types
 uv run lint-imports                                   # module boundaries
 uv run pytest                                         # unit tests (-n auto: in parallel)
 uv run pytest -m slow                                 # speed and memory checks, by hand only (CI skips them)
-docker compose up -d redis                            # Redis of ../compose.yaml on 127.0.0.1:6379 ...
-uv run pytest -m integration                          # ... Redis DB 15, which the tests flush; runs serially
+docker compose up -d redis postgres                   # Redis and Postgres of ../compose.yaml on 127.0.0.1 ...
+uv run pytest -m integration                          # ... Redis DB 15 and the database candlestack_test, which the tests empty; runs serially
 uv run pytest -m e2e                                  # builds and runs the image with compose on 127.0.0.1:18000 (E2E_PORT to change)
 ```
 
 - `REDIS_URL` points the integration tests at another Redis; they flush the database they
-  get, so never give them one whose data you need.
-- Coverage of the unit and integration tests (with Redis running):
+  get, so never give them one whose data you need. `DATABASE_URL` does the same for Postgres:
+  the tests create the database when it is missing, migrate it down to nothing and up again and
+  empty its tables before each test.
+- The Postgres schema changes only through Alembic migrations in `migrations/`: after changing
+  a model, `uv run alembic revision --autogenerate -m "<what changes>"` (with the Postgres of
+  `../compose.yaml` running and migrated: `uv run alembic upgrade head`), then read and fix the
+  generated file. An integration test fails when the migrations and the models differ.
+- Coverage of the unit and integration tests (with Redis and Postgres running):
   `uv run pytest --cov -m "not e2e and not slow"` fails under 95% (branch coverage included);
   CI also wants at least 90% of the lines a pull request changes covered
   (`uv run pytest --cov --cov-report=xml -m "not e2e and not slow" && uv run diff-cover

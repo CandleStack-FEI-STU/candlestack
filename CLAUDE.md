@@ -26,8 +26,8 @@ contract.
   `api` fails on a breaking change, and only the user decides to accept one in
   `docs/api-breaking-changes.txt`.
 - Every change comes with tests at the lowest level that proves it: unit by default,
-  integration for Redis or the sources (mocked with respx), e2e only for behaviour over HTTP.
-  Tests never use the network or real keys; warnings fail the run.
+  integration for Redis, Postgres or the sources (mocked with respx), e2e only for behaviour
+  over HTTP. Tests never use the network or real keys; warnings fail the run.
 - `infra/`, `.github/`, the Dockerfiles, the toolchain pins and the other paths in
   `.github/CODEOWNERS` belong to the tech lead: a change there needs their approval to merge,
   so propose it in the pull request description first.
@@ -55,6 +55,6 @@ uv run ty check
 uv run lint-imports
 uv run pytest                                   # unit tests
 uv run pytest --cov -m "not e2e and not slow"   # unit + integration, coverage >= 95%;
-                                                # needs `docker compose up -d redis` from
-                                                # the repository root
+                                                # needs `docker compose up -d redis postgres`
+                                                # from the repository root
 ```

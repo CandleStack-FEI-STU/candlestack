@@ -51,6 +51,15 @@ class CapturingTransport(Transport):
         return [log for batch in self.items("log") for log in batch["items"]]
 
 
+def _without_source(event: dict[str, Any]) -> dict[str, Any]:
+    """`event` without the source lines around its frames, which hold the test's literals."""
+    for each in event["exception"]["values"]:
+        for frame in each["stacktrace"]["frames"]:
+            for key in ("pre_context", "context_line", "post_context"):
+                frame.pop(key, None)
+    return event
+
+
 @pytest.fixture
 def sentry(monkeypatch: pytest.MonkeyPatch) -> Iterator[CapturingTransport]:
     transport = CapturingTransport()
@@ -140,13 +149,32 @@ def test_secrets_and_personal_data_are_not_sent(
     }
     # The source lines around each frame are sent as they are, and here they hold the test's
     # own literals; everything else must not.
-    for each in event["exception"]["values"]:
-        for code in each["stacktrace"]["frames"]:
-            for key in ("pre_context", "context_line", "post_context"):
-                code.pop(key, None)
-    sent = json.dumps(event)
+    sent = json.dumps(_without_source(event))
     for value in ("PKTESTKEY", "s3cr3t-value", "203.0.113.7", "someone@example.com", "zq9-session"):
         assert value not in sent
+
+
+def test_sign_in_secrets_and_emails_are_not_sent(
+    sentry: CapturingTransport, app: FastAPI, client: TestClient
+) -> None:
+    @app.get("/api/test/sign-in-crash")
+    async def sign_in_crash() -> None:
+        sign_in = {
+            "client_secret": "gh-secret-value",
+            "code": "oauth-code-value",
+            "code_verifier": "verifier-value",
+            "state": "state-value",
+            "access_token": "access-token-value",
+            "email": "ada@example.com",
+            "database_url": "postgresql+asyncpg://app:pg-pass-value@db/app",
+        }
+        raise RuntimeError(f"sign-in failed with {len(sign_in)} values")
+
+    client.get("/api/test/sign-in-crash")
+
+    [event] = sentry.items("event")
+    frame = event["exception"]["values"][-1]["stacktrace"]["frames"][-1]
+    assert set(frame["vars"]["sign_in"].values()) == {"[Filtered]"}
 
 
 def test_a_token_in_an_outgoing_query_is_not_sent(
@@ -163,11 +191,33 @@ def test_a_token_in_an_outgoing_query_is_not_sent(
     [span] = [s for s in transaction["spans"] if s["op"] == "http.client"]
     assert span["data"]["http.query"] == "token=[Filtered]&fallback=404"
     # The source lines around each frame hold the test's own literal.
-    for each in event["exception"]["values"]:
-        for code in each["stacktrace"]["frames"]:
-            for key in ("pre_context", "context_line", "post_context"):
-                code.pop(key, None)
-    assert "pk_SECRET123" not in json.dumps([event, transaction])
+    assert "pk_SECRET123" not in json.dumps([_without_source(event), transaction])
+
+
+def test_a_sign_in_code_and_state_in_the_query_are_not_sent(
+    sentry: CapturingTransport, client: TestClient
+) -> None:
+    query = {"code": "oauth-code-value", "state": "state-value", "scope": "read:user"}
+
+    callback = client.get("/api/v1/auth/github/callback", params=query, follow_redirects=False)
+    client.get("/api/test/crash", params=query)
+
+    assert callback.status_code == 302
+    filtered = "code=[Filtered]&state=[Filtered]&scope=read:user"
+    [event] = sentry.items("event")
+    assert event["request"]["query_string"] == filtered
+    transactions = sentry.items("transaction")
+    assert {t["request"]["query_string"] for t in transactions} == {filtered}
+    # The source lines around each frame hold the test's own literals, and the test client
+    # logs the URLs it requests.
+    logs = [
+        log
+        for log in sentry.logs()
+        if log["attributes"]["logger.name"]["value"].startswith("candlestack")
+    ]
+    sent = json.dumps([_without_source(event), transactions, logs])
+    assert "oauth-code-value" not in sent
+    assert "state-value" not in sent
 
 
 @pytest.mark.parametrize(

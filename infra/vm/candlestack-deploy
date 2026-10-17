@@ -7,9 +7,8 @@
 #   stage    up stage <version> <backend@digest> <frontend@digest>   |   edge   |   agent <image@digest>
 #
 # "up" and "agent" read a GHCR token from the first line of stdin and use it only for this
-# one pull. "up" then reads the backend's secrets as KEY=VALUE lines (only ALPACA_KEY_ID,
-# ALPACA_SECRET_KEY and SENTRY_DSN) and passes them to compose in its environment: no file,
-# never printed.
+# one pull. "up" then reads the environment's secrets as KEY=VALUE lines (only the keys
+# read_secrets accepts) and passes them to compose in its environment: no file, never printed.
 # Once the containers run, "up" prints "images <backend@digest> <frontend@digest>".
 # "up stage" also records its images in the stage record (see stage_images). "up prod" takes
 # no images: it runs the ones stage last ran for the commit of the release tag named by
@@ -132,16 +131,22 @@ read_token() {
 
 # The lines after the token, until EOF. Nothing read here is ever printed.
 read_secrets() {
-  local line key value
+  local line key value max
   while IFS= read -r line || [ -n "$line" ]; do
     [ -n "$line" ] || continue
     [[ $line == *=* ]] || fail "expected KEY=VALUE lines after the token on stdin"
     key=${line%%=*}
     value=${line#*=}
-    [[ $key =~ ^(ALPACA_KEY_ID|ALPACA_SECRET_KEY|LOGO_DEV_KEY|SENTRY_DSN)$ ]] ||
-      fail "only ALPACA_KEY_ID, ALPACA_SECRET_KEY, LOGO_DEV_KEY and SENTRY_DSN may follow the token on stdin"
-    [[ $value =~ ^[!-~]{0,256}$ && $value != *[\"\'\`\\]* ]] ||
-      fail "$key must be at most 256 printable characters without spaces or quotes"
+    [[ $key =~ ^(ALPACA_KEY_ID|ALPACA_SECRET_KEY|LOGO_DEV_KEY|SENTRY_DSN|POSTGRES_PASSWORD|OAUTH_(GITHUB|GOOGLE)_CLIENT_(ID|SECRET)|BETA_ALLOWLIST)$ ]] ||
+      fail "only ALPACA_KEY_ID, ALPACA_SECRET_KEY, LOGO_DEV_KEY, SENTRY_DSN, POSTGRES_PASSWORD, the OAUTH_ keys and BETA_ALLOWLIST may follow the token on stdin"
+    # The beta list is comma-separated emails, one per team member and tester: it may be longer.
+    max=256
+    [ "$key" != BETA_ALLOWLIST ] || max=4096
+    [[ $value =~ ^[!-~]{0,$max}$ && $value != *[\"\'\`\\]* ]] ||
+      fail "$key must be at most $max printable characters without spaces or quotes"
+    # The database URL holds the password as it is: only characters a URL keeps as they are.
+    [[ $key != POSTGRES_PASSWORD || $value =~ ^[A-Za-z0-9._~-]{16,256}$ ]] ||
+      fail "POSTGRES_PASSWORD must be 16 to 256 letters, digits or the characters . _ ~ -"
     export "$key=$value"
   done
 }

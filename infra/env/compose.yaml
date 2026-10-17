@@ -1,13 +1,18 @@
 # One environment (prod or stage) as its own compose project, started by
 # infra/vm/candlestack-deploy on the VM, which also exports the backend's Alpaca keys
-# (ALPACA_KEY_ID, ALPACA_SECRET_KEY), the logo.dev key (LOGO_DEV_KEY) and SENTRY_DSN for this
-# command only:
+# (ALPACA_KEY_ID, ALPACA_SECRET_KEY), the logo.dev key (LOGO_DEV_KEY), SENTRY_DSN, the Postgres
+# password (POSTGRES_PASSWORD), the OAuth apps (OAUTH_GITHUB_CLIENT_ID,
+# OAUTH_GITHUB_CLIENT_SECRET, OAUTH_GOOGLE_CLIENT_ID, OAUTH_GOOGLE_CLIENT_SECRET) and the beta
+# list (BETA_ALLOWLIST) for this command only:
 #   ENV_NAME=stage APP_VERSION=<version> BACKEND_IMAGE=<image@digest> FRONTEND_IMAGE=<image@digest> \
-#   REDIS_MAXMEMORY=256mb REDIS_MEM_LIMIT=288m EDGE_NETWORK=edge \
+#   REDIS_MAXMEMORY=256mb REDIS_MEM_LIMIT=288m EDGE_NETWORK=edge POSTGRES_PASSWORD=<password> \
 #   docker compose -p stage -f infra/env/compose.yaml up -d
 # On the edge network (EDGE_NETWORK: "edge" for prod and stage) the edge Caddy reaches
-# <ENV_NAME>-backend:8000 (/api/*) and <ENV_NAME>-frontend:8080 (everything else). Redis is on
-# the environment's own network only.
+# <ENV_NAME>-backend:8000 (/api/*) and <ENV_NAME>-frontend:8080 (everything else). Redis and
+# Postgres are on the environment's own network only. Postgres keeps its data in the volume
+# <ENV_NAME>_postgres; the migrate service brings it to the backend image's migrations before
+# the backend starts, and the backup service dumps it every night into <ENV_NAME>_backups
+# (infra/README.md, "Backups").
 services:
   backend:
     image: ${BACKEND_IMAGE:?}
@@ -20,6 +25,12 @@ services:
       ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY:-}
       LOGO_DEV_KEY: ${LOGO_DEV_KEY:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
+      DATABASE_URL: postgresql+asyncpg://candlestack:${POSTGRES_PASSWORD:?}@postgres:5432/candlestack
+      OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-}
+      OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-}
+      OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENT_ID:-}
+      OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:-}
+      BETA_ALLOWLIST: ${BETA_ALLOWLIST:-}
     # Read by the server agent: ops tells deploys (new version) from redeploys (same version).
     labels:
       candlestack.version: ${APP_VERSION:?}
@@ -31,7 +42,7 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    # 503 while Redis is unreachable, so the container is unhealthy then too.
+    # 503 while Redis or Postgres is unreachable, so the container is unhealthy then too.
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)"]
       interval: 10s
@@ -41,6 +52,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       default: {}
       edge:
@@ -68,6 +81,94 @@ services:
         aliases:
           - ${ENV_NAME}-frontend
 
+  # Brings the database to the migrations of the backend image (alembic upgrade head), then
+  # exits; the backend starts only after it succeeded, so a failing migration fails the deploy.
+  migrate:
+    image: ${BACKEND_IMAGE:?}
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    environment:
+      APP_ENV: ${ENV_NAME:?}
+      DATABASE_URL: postgresql+asyncpg://candlestack:${POSTGRES_PASSWORD:?}@postgres:5432/candlestack
+    mem_limit: 160m
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
+
+  # The users' data, sized for a few connections (the backend's pool of at most 10, the
+  # migration, the backup); the container limit leaves room for them above shared_buffers. Runs
+  # as the image's postgres user, which owns the data volume, so it needs no capabilities.
+  postgres:
+    image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    restart: unless-stopped
+    command: ["postgres", "-c", "shared_buffers=32MB", "-c", "max_connections=20", "-c", "maintenance_work_mem=16MB", "-c", "effective_cache_size=96MB"]
+    environment:
+      POSTGRES_USER: candlestack
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: candlestack
+    user: postgres
+    mem_limit: 128m
+    read_only: true
+    volumes:
+      - postgres:/var/lib/postgresql
+    tmpfs:
+      - /var/run/postgresql
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "pg_isready", "--username", "candlestack", "--dbname", "candlestack"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - default
+
+  # A pg_dump of the database every night at 00:00 UTC into the volume <ENV_NAME>_backups, the
+  # last 7 days kept (infra/README.md, "Backups"). Root in the container, which owns the backup
+  # volume, but without any capability.
+  backup:
+    image: prodrigestivill/postgres-backup-local:18-alpine@sha256:5519b121b9f3058dc6f116927f8131a6f67951542dbf2cdacfd193f42daaa7a3
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: candlestack
+      POSTGRES_USER: candlestack
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      SCHEDULE: "@daily"
+      BACKUP_KEEP_DAYS: "7"
+      BACKUP_KEEP_WEEKS: "0"
+      BACKUP_KEEP_MONTHS: "0"
+    mem_limit: 32m
+    read_only: true
+    volumes:
+      - backups:/backups
+    # The image declares a volume for a database it does not run: a tmpfs keeps Docker from
+    # leaving an anonymous volume there.
+    tmpfs:
+      - /tmp
+      - /var/lib/postgresql
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - default
+
   # Cache only: no persistence, least recently used keys go first when maxmemory is reached.
   redis:
     image: redis:8-alpine@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0
@@ -90,6 +191,10 @@ services:
       retries: 5
     networks:
       - default
+
+volumes:
+  postgres: {}
+  backups: {}
 
 networks:
   # Without EDGE_NETWORK compose fails, rather than start the environment on a network the

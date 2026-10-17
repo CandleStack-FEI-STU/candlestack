@@ -1,9 +1,10 @@
-# Allowlist: the build context is pyproject.toml, uv.lock, src/ and granian-logging.json, all
-# that any stage (dev included) needs.
+# Allowlist: the build context is pyproject.toml, uv.lock, src/, migrations/ and
+# granian-logging.json, all that any stage (dev included) needs.
 *
 !pyproject.toml
 !uv.lock
 !src
+!migrations
 !granian-logging.json
 **/__pycache__
 **/*.pyc

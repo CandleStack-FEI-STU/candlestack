@@ -29,7 +29,9 @@ from candlestack.core.logging import request_id_var
 ERRORS_PER_HOUR = 100
 
 # Values never sent, on top of Sentry's defaults (passwords, tokens, cookies, authorization):
-# the Alpaca and logo.dev keys as settings, variables and request headers, and the DSN.
+# the Alpaca and logo.dev keys as settings, variables and request headers, the DSN, the database
+# URL (it holds the password), and the OAuth client secrets, codes, verifiers, states and
+# tokens of a sign-in.
 _DENYLIST = [
     *DEFAULT_DENYLIST,
     "alpaca_key_id",
@@ -41,15 +43,33 @@ _DENYLIST = [
     "logo_dev_key",
     "dsn",
     "sentry_dsn",
+    "database_url",
+    "postgres_password",
+    "client_secret",
+    "oauth_github_client_secret",
+    "oauth_google_client_secret",
+    "code",
+    "code_verifier",
+    "verifier",
+    "state",
+    "access_token",
+    "refresh_token",
+    "id_token",
 ]
-# The httpx integration records the query of every outgoing request in breadcrumbs and spans as
-# one string, which the scrubber cannot see into; logo.dev takes its key as ``token`` there.
+# The query of a request is recorded as one string, which the scrubber cannot see into: the
+# httpx integration's ``http.query`` of every outgoing request in breadcrumbs and spans
+# (logo.dev takes its key as ``token`` there), and the ASGI integration's ``query_string`` of
+# the incoming request in events and transactions (a sign-in's ``code`` and ``state`` there).
 _QUERY = "http.query"
+_REQUEST_QUERY = "query_string"
 _QUERY_DENYLIST = frozenset(name.lower() for name in _DENYLIST)
 _FILTERED = "[Filtered]"
-# Personal data never sent: the client's IP and the Cloudflare Access login of stage.
+# Personal data never sent: the client's IP, the Cloudflare Access login of stage, and the
+# users' emails and the beta list.
 _PII_DENYLIST = [
     *DEFAULT_PII_DENYLIST,
+    "email",
+    "beta_allowlist",
     "cf-connecting-ip",
     "true-client-ip",
     "x-forwarded-for",
@@ -116,22 +136,23 @@ def _before_send(budget: ErrorBudget) -> Callable[[Event, Hint], Event | None]:
         if not budget.take():
             return None
         _drop_request_variables(event)
+        _hide_query_secrets(event.get("request"), _REQUEST_QUERY)
         return event
 
     return before_send
 
 
-def _hide_query_secrets(data: Any) -> None:
-    """Replaces the values of the denylisted parameters (any case) in the recorded query of an
-    outgoing request."""
-    if not isinstance(data, dict) or not isinstance(query := data.get(_QUERY), str):
+def _hide_query_secrets(data: Any, key: str = _QUERY) -> None:
+    """Replaces the values of the denylisted parameters (any case) in the recorded query
+    ``data[key]``."""
+    if not isinstance(data, dict) or not isinstance(query := data.get(key), str):
         return
     parts = []
     for part in query.split("&"):
         name, equals, _ = part.partition("=")
         secret = equals and unquote_plus(name).lower() in _QUERY_DENYLIST
         parts.append(f"{name}={_FILTERED}" if secret else part)
-    data[_QUERY] = "&".join(parts)
+    data[key] = "&".join(parts)
 
 
 def _before_breadcrumb(crumb: Breadcrumb, _hint: BreadcrumbHint) -> Breadcrumb | None:
@@ -140,6 +161,7 @@ def _before_breadcrumb(crumb: Breadcrumb, _hint: BreadcrumbHint) -> Breadcrumb |
 
 
 def _before_send_transaction(event: Event, _hint: Hint) -> Event | None:
+    _hide_query_secrets(event.get("request"), _REQUEST_QUERY)
     spans = event.get("spans")
     if isinstance(spans, list):
         for span in spans:

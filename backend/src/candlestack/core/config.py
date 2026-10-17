@@ -5,7 +5,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import Depends, Request
 from pydantic import Field, SecretStr, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
@@ -47,6 +47,20 @@ def default_traces_sample_rate(app_env: str) -> float:
     return _TRACES_SAMPLE_RATE_PROD if app_env == "prod" else _TRACES_SAMPLE_RATE_DEFAULT
 
 
+# Where each environment is reached; the OAuth callbacks, the cookies and the same-origin check
+# of cookie-authenticated requests depend on it.
+_PUBLIC_URLS = {
+    "prod": "https://app.candlestack.tech",
+    "stage": "https://stage.candlestack.tech",
+    "local": "http://localhost:5173",
+    "test": "http://testserver",
+}
+
+
+def default_public_url(app_env: str) -> str:
+    return _PUBLIC_URLS[app_env]
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_ignore_empty=True, extra="ignore", frozen=True)
 
@@ -55,7 +69,22 @@ class Settings(BaseSettings):
     app_commit: str = "unknown"
     log_level: LogLevel = "INFO"
 
+    public_url: str = Field(
+        default_factory=lambda data: default_public_url(data.get("app_env", "local")),
+        pattern=r"^https?://[^/]+$",
+    )
+
     redis_url: str = "redis://127.0.0.1:6379/0"
+    database_url: SecretStr = SecretStr(
+        "postgresql+asyncpg://candlestack:candlestack@127.0.0.1:5432/candlestack"
+    )
+
+    oauth_github_client_id: str = ""
+    oauth_github_client_secret: SecretStr = SecretStr("")
+    oauth_google_client_id: str = ""
+    oauth_google_client_secret: SecretStr = SecretStr("")
+    # Emails that may sign in with GitHub or Google, lowercased; empty lets nobody in.
+    beta_allowlist: Annotated[frozenset[str], NoDecode] = frozenset()
 
     alpaca_key_id: SecretStr = SecretStr("")
     alpaca_secret_key: SecretStr = SecretStr("")
@@ -94,10 +123,35 @@ class Settings(BaseSettings):
     def _upper_log_level(cls, value: Any) -> Any:
         return value.upper() if isinstance(value, str) else value
 
-    @field_validator("alpaca_key_id", "alpaca_secret_key", "logo_dev_key", mode="before")
+    @field_validator(
+        "alpaca_key_id",
+        "alpaca_secret_key",
+        "logo_dev_key",
+        "database_url",
+        "oauth_github_client_id",
+        "oauth_github_client_secret",
+        "oauth_google_client_id",
+        "oauth_google_client_secret",
+        mode="before",
+    )
     @classmethod
     def _strip_key(cls, value: Any) -> Any:
         return value.strip() if isinstance(value, str) else value
+
+    @field_validator("public_url", mode="before")
+    @classmethod
+    def _strip_trailing_slash(cls, value: Any) -> Any:
+        return value.strip().rstrip("/") if isinstance(value, str) else value
+
+    @field_validator("beta_allowlist", mode="before")
+    @classmethod
+    def _split_emails(cls, value: Any) -> Any:
+        """``a@x.com, B@y.com`` from the environment: comma-separated, any case."""
+        if isinstance(value, str):
+            value = value.split(",")
+        if isinstance(value, list | tuple | set | frozenset):
+            return frozenset(email.strip().lower() for email in value if email.strip())
+        return value
 
 
 @cache

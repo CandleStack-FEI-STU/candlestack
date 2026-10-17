@@ -1,8 +1,11 @@
 """Fixed-window rate limits counted in Redis: our budgets at the sources and per client."""
 
+import ipaddress
 import logging
 import time
+from typing import Annotated
 
+from fastapi import Depends, Request
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
@@ -67,3 +70,28 @@ class RateLimiter:
             logger.warning("Redis failed (%s): the %s count is not known", type(exc).__name__, key)
             return None
         return int(value or 0)
+
+
+def get_rate_limiter(request: Request) -> RateLimiter:
+    return request.app.state.rate_limiter
+
+
+RateLimiterDep = Annotated[RateLimiter, Depends(get_rate_limiter)]
+
+
+def client_address(request: Request) -> str:
+    """The client as the rate limits count it: Cloudflare's ``CF-Connecting-IP``, else the peer
+    (local runs). An IPv6 client counts as its /64 network: a subscriber usually gets a whole
+    /64, so single addresses would give one client any number of counters."""
+    address = request.headers.get("cf-connecting-ip")
+    if not address and request.client:
+        address = request.client.host
+    try:
+        ip = ipaddress.ip_address(address or "")
+    except ValueError:
+        return address or "unknown"
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            return str(ip.ipv4_mapped)
+        return str(ipaddress.IPv6Network((ip, 64), strict=False))
+    return str(ip)

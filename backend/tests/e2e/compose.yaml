@@ -1,4 +1,5 @@
-# The backend image with Redis, hardened like the deployed environments, for the e2e tests.
+# The backend image with Redis and Postgres (migrated by the image's own migrate step), hardened
+# like the deployed environments, for the e2e tests.
 # Binance, Alpaca and logo.dev are faked by mock_sources.py, which serves the committed fixtures
 # (tests/fixtures) under the sources' paths, so the tests need no network and no keys.
 # The host port, the project name and the image tag come from E2E_PORT, so several stacks
@@ -18,6 +19,7 @@ services:
       APP_ENV: test
       APP_VERSION: e2e
       REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: &database-url postgresql+asyncpg://candlestack:e2e@postgres:5432/candlestack
       BINANCE_API_URL: http://sources:8080
       BINANCE_DATA_URL: http://sources:8080
       ALPACA_API_URL: http://sources:8080
@@ -31,6 +33,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       sources:
         condition: service_healthy
     healthcheck:
@@ -47,6 +51,35 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+
+  # The same image, as infra/env/compose.yaml runs it before the backend.
+  migrate:
+    image: candlestack-backend:e2e-${E2E_PORT:-18000}
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: *database-url
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: candlestack
+      POSTGRES_PASSWORD: e2e
+      POSTGRES_DB: candlestack
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "--username", "candlestack", "--dbname", "candlestack"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
 
   redis:
     image: redis:8-alpine

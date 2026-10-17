@@ -11,7 +11,9 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from scalar_fastapi import AgentScalarConfig, get_scalar_api_reference
 
+from candlestack.accounts import accounts_router, dev_sign_in_allowed, dev_sign_in_router
 from candlestack.core import (
+    Database,
     RateLimiter,
     RequestContextMiddleware,
     Settings,
@@ -65,12 +67,13 @@ class CandleStackAPI(FastAPI):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Opens the shared clients on ``app.state`` (``redis``, ``http``) and builds what uses
-    them: the client ``rate_limiter`` and the market ``data_service``. With ``STATS_REFRESH``
-    (prod and stage) the instrument stats are refreshed in a background task while the app
-    runs."""
+    """Opens the shared clients on ``app.state`` (``redis``, ``db``, ``http``) and builds what
+    uses them: the client ``rate_limiter`` and the market ``data_service``. With
+    ``STATS_REFRESH`` (prod and stage) the instrument stats are refreshed in a background task
+    while the app runs."""
     settings: Settings = app.state.settings
     app.state.redis = create_redis(settings.redis_url)
+    app.state.db = Database(settings.database_url.get_secret_value())
     app.state.rate_limiter = RateLimiter(app.state.redis)
     try:
         async with create_http_client(settings) as http:
@@ -79,6 +82,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             async with _background(app.state.data_service, stats=settings.stats_refresh):
                 yield
     finally:
+        await app.state.db.dispose()
         await app.state.redis.aclose()
 
 
@@ -128,6 +132,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     install_error_handlers(app)
     app.include_router(health_router)
     app.include_router(data_router)
+    app.include_router(accounts_router)
+    if dev_sign_in_allowed(settings.app_env):
+        app.include_router(dev_sign_in_router)
     if settings.app_env == SENTRY_CHECK_ENV:
         app.include_router(sentry_check_router)
 

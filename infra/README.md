@@ -18,15 +18,18 @@ are proxied CNAMEs to the tunnel, so moving to another server does not touch DNS
 | prod | https://app.candlestack.tech | a `v*` tag is pushed on a commit of `main` | tech lead (GitHub environment `production`) |
 | stage | https://stage.candlestack.tech | every push to `main` | none |
 
-Every environment is one compose project (`env/compose.yaml`) with three containers. The edge
-Caddy sends `/api/*` of the environment's hostname to its backend and everything else to its
-frontend, and compresses the responses (zstd or gzip) on the way to Cloudflare.
+Every environment is one compose project (`env/compose.yaml`). The edge Caddy sends `/api/*`
+of the environment's hostname to its backend and everything else to its frontend, and
+compresses the responses (zstd or gzip) on the way to Cloudflare.
 
 | Container | Image | Reached as | Memory limit |
 | --- | --- | --- | --- |
 | `backend` | `ghcr.io/candlestack-fei-stu/candlestack/backend` (built from `backend/`) | `<env>-backend:8000` on the edge network (below) | `320m` |
 | `frontend` | `ghcr.io/candlestack-fei-stu/candlestack/frontend` (built from `frontend/`: the app) | `<env>-frontend:8080` on the edge network (below) | `32m` |
 | `redis` | `redis:8-alpine`, pinned by digest | `redis:6379` on the environment's own network only | see below |
+| `postgres` | `postgres:18-alpine`, pinned by digest | `postgres:5432` on the environment's own network only | `128m` |
+| `migrate` | the backend image, `alembic upgrade head` | runs once per deploy, before the backend starts | `160m` |
+| `backup` | `prodrigestivill/postgres-backup-local:18-alpine`, pinned by digest | nothing reaches it | `32m` |
 
 The frontend image holds the app, built with Node in the image's build stage and served by its
 Caddy (`frontend/Caddyfile`), the same in every environment. A path that is no file gets the
@@ -46,15 +49,52 @@ Redis is a cache for the backend: no persistence, least recently used keys are e
 | prod | `256mb` | `288m` |
 | stage | `256mb` | `288m` |
 
+Postgres keeps what users create (accounts and sessions so far) in the volume
+`<env>_postgres`. The backend image carries the migrations (`backend/migrations`): every deploy
+starts with the `migrate` service, which brings the database to them and exits, and the backend
+starts only once it succeeded, so a failing migration fails the deploy before the new backend
+serves anything. Postgres is sized for a few connections (`max_connections` 20: the backend's
+pool of at most 10, the migration, the backup) with `shared_buffers` 32 MB.
+
+Memory: the container limits of one environment add up to 800 MB (backend 320, frontend 32,
+Redis 288, Postgres 128, backup 32), 1.6 GB for prod and stage on a VM with 2 GB; `migrate`
+runs only during a deploy. What runs is far below the limits: an idle Postgres of this size
+with the backend's pool connected uses about 30 MB, the backup service about 2 MB between its
+nightly runs, the backend about 120 MB.
+
 All containers of an environment run with a read-only root filesystem, no Linux capabilities
-and `no-new-privileges`.
+and `no-new-privileges`. Postgres runs as the image's `postgres` user, which owns its volume;
+the backup service as root, which owns its volume, but also without any capability.
+
+### Backups
+
+The `backup` service runs `pg_dump` every night at 00:00 UTC into the volume `<env>_backups`,
+as `last/candlestack-<date>-<time>.sql.gz` with a link `last/candlestack-latest.sql.gz`, and
+keeps the dumps of the last 7 days (`daily/candlestack-<date>.sql.gz`). The backups live on the
+VM's disk: they cover a broken migration or deleted data, not the loss of the VM. To take one
+now (SSM shell on the VM): `sudo docker exec prod-backup-1 /backup.sh`.
+
+To restore one, e.g. prod from a given night (stage: `stage-` instead of `prod-`):
+
+```sh
+sudo docker stop prod-backend-1
+sudo docker exec prod-postgres-1 dropdb --username candlestack candlestack
+sudo docker exec prod-postgres-1 createdb --username candlestack candlestack
+sudo docker exec prod-backup-1 cat /backups/daily/candlestack-<yyyymmdd>.sql.gz | gunzip |
+  sudo docker exec -i prod-postgres-1 psql -v ON_ERROR_STOP=1 --username candlestack --dbname candlestack
+sudo docker start prod-backend-1
+```
+
+`sudo docker exec prod-backup-1 ls /backups/daily` lists the dumps. A dump has the schema of
+its night: after restoring one older than the last migration, the next deploy migrates it
+again.
 
 The Docker networks:
 
 | Network | Who is on it |
 | --- | --- |
 | `edge` | the edge Caddy, the backend and frontend of prod and stage, the server agent (`vm-agent`) |
-| `<env>_default` | the backend and Redis of that environment |
+| `<env>_default` | the backend, Redis, Postgres, `migrate` and `backup` of that environment |
 | `agent_docker` (internal) | the server agent and its Docker socket proxy |
 
 Every push to `main` builds the backend, frontend and agent images once, and a release builds
@@ -149,8 +189,10 @@ workflow of `main` holds that key. Every `up` prints `images <backend@digest> <f
 at the end; the release tags those images with the version in the registry.
 
 `up` reads its stdin: the first line is a GHCR token used once for the pull, then `KEY=VALUE`
-lines with the backend's secrets. Only `ALPACA_KEY_ID`, `ALPACA_SECRET_KEY` and `SENTRY_DSN` are
-accepted (at most 256 printable characters, no spaces or quotes). The script hands them to
+lines with the environment's secrets. Only `ALPACA_KEY_ID`, `ALPACA_SECRET_KEY`,
+`LOGO_DEV_KEY`, `SENTRY_DSN`, `POSTGRES_PASSWORD`, the four `OAUTH_` keys and `BETA_ALLOWLIST`
+are accepted (at most 256 printable characters, the beta list 4096, no spaces or quotes; the
+database password only the characters the table below names). The script hands them to
 `docker compose` in its environment only: it never writes them to a file or prints them (Docker
 itself keeps them in the container's configuration, as with any container environment variable).
 The workflows send them with the `env-secrets` input of `.github/actions/deploy`. After `up` the
@@ -165,6 +207,10 @@ The other commands are `edge` and `agent <image@digest>` (stage key); the header
 | `ALPACA_KEY_ID`, `ALPACA_SECRET_KEY` | environments `production`, `staging` | Alpaca paper account keys for the backend (US stocks); each has its own account |
 | `LOGO_DEV_KEY` | environments `production`, `staging` | logo.dev publishable key for the instrument icons; one free account for both |
 | `SENTRY_DSN` | environments `production`, `staging` | where the backend sends errors, traces, profiles and logs (Sentry project `backend`) |
+| `POSTGRES_PASSWORD` | environments `production`, `staging` | password of the environment's Postgres user `candlestack`, 16 to 256 letters, digits or `. _ ~ -` (it goes into the database URL as it is), e.g. `openssl rand -hex 32`; set when its database is created (the first deploy), so changing it later needs `ALTER ROLE` in the database too |
+| `OAUTH_GITHUB_CLIENT_ID`, `OAUTH_GITHUB_CLIENT_SECRET` | environments `production`, `staging` | the environment's GitHub OAuth app, callback `https://<host>/api/v1/auth/github/callback` |
+| `OAUTH_GOOGLE_CLIENT_ID`, `OAUTH_GOOGLE_CLIENT_SECRET` | environments `production`, `staging` | the environment's Google OAuth client, callback `https://<host>/api/v1/auth/google/callback` |
+| `BETA_ALLOWLIST` | environments `production`, `staging` | comma-separated emails that may sign in with GitHub or Google; empty lets nobody in |
 | `SENTRY_AUTH_TOKEN` | environments `production`, `staging` | Sentry organization token (scope `org:ci`) that records each release |
 | `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | environments `production`, `staging` | Access service token `github-actions-deploy` |
 | `DEPLOY_KNOWN_HOSTS` | repository variable | SSH host key of the VM |
@@ -180,7 +226,7 @@ The other commands are `edge` and `agent <image@digest>` (stage key); the header
 | `vm/deploy_authorized_keys` | Public deploy keys with their scopes |
 | `cloudflared/config.yml` | Tunnel ingress: SSH for deployments, everything else to the edge |
 | `edge/` | Caddy that routes each hostname to its environment |
-| `env/compose.yaml` | One environment (prod or stage): backend, frontend and Redis |
+| `env/compose.yaml` | One environment (prod or stage): backend, frontend, Redis, Postgres with its migration and nightly backup |
 | `agent/` | Server agent for ops: host metrics and containers as JSON, read-only Docker proxy |
 | `github/` | Snapshot of the organization's GitHub settings: rulesets, environments, Actions policy, security, project |
 | `cloudflare/` | Snapshot of the Cloudflare settings: zone, DNS, Access, tunnel, Workers |
@@ -207,8 +253,9 @@ cd backend && uv run ruff check ../infra/agent && uv run ruff format --check ../
   which key may run what, that malformed images, versions and secrets are refused before
   anything runs, that prod takes only a release tag on main's history and starts
   with that tag's compose file and the images stage last ran for its commit, that only a
-  successful `up stage` adds to the stage record, that no token or secret is printed, and the
-  Docker commands of every allowed command. It touches nothing outside a temporary directory.
+  successful `up stage` adds to the stage record, that no token or secret is printed (the
+  database password and the OAuth secrets included), and the Docker commands of every allowed
+  command. It touches nothing outside a temporary directory.
 - `agent/test_agent.py` (standard library `unittest`, like the agent) pins the schema-1
   snapshot that ops reads, the order of its containers and the HTTP answers (`starting`, the
   snapshot, `stale`), with a stub Docker API and fixture files for `/proc`. The agent is linted
@@ -245,14 +292,18 @@ needs a fresh deploy afterwards.
    `sudo -u deploy tee /home/deploy/stage-images`, paste, Ctrl-D). If the old VM is gone, re-run
    the stage workflow run of the released commit before the release run in the next step, and
    the latest stage run after it.
-5. Redeploy every environment, since nothing but the edge Caddy is running yet:
+5. Take the databases along, as the deploys below start empty ones: on the old VM, take a
+   backup of prod and of stage (`sudo docker exec prod-backup-1 /backup.sh`) and copy the two
+   `last/candlestack-latest.sql.gz` files to the new VM; once step 6 deployed prod and stage
+   there, restore each as in [Backups](#backups).
+6. Redeploy every environment, since nothing but the edge Caddy is running yet:
    - stage: `stage.yml` has no manual trigger, so re-run its latest workflow run, or push to
      `main`; this also deploys the server agent.
    - prod: re-run the latest release workflow run and approve the deployment again.
-6. Two things no deploy repeats, on this VM or the next one, because cloud-init only did them
+7. Two things no deploy repeats, on this VM or the next one, because cloud-init only did them
    once at boot: after a change to `infra/cloudflared/config.yml`, restart cloudflared on the
    VM (SSM: `sudo systemctl restart cloudflared`); after a change to
    `infra/vm/deploy_authorized_keys`, reinstall it for the deploy user by hand (SSM:
    `sudo install -o deploy -g deploy -m 600 /opt/candlestack/infra/vm/deploy_authorized_keys
    /home/deploy/.ssh/authorized_keys`). cloudflared itself is also never upgraded after boot.
-7. Once the new VM is confirmed healthy, terminate the old one.
+8. Once the new VM is confirmed healthy, terminate the old one.
