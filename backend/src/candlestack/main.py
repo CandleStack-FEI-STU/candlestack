@@ -33,7 +33,7 @@ from candlestack.core import (
     setup_sentry,
 )
 from candlestack.data import DataService, build_data_service, data_router
-from candlestack.ml import models_router
+from candlestack.ml import LocalModelStorage, ModelsAccountDeletion, ModelStorage, models_router
 
 logger = logging.getLogger(__name__)
 
@@ -76,8 +76,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Opens the shared clients on ``app.state`` (``redis``, ``db``, ``http``) and builds what
     uses them: the client ``rate_limiter`` and the market ``data_service``. With
     ``STATS_REFRESH`` (prod and stage) the instrument stats are refreshed in a background task
-    while the app runs."""
+    while the app runs. The model storage is made ready, without what crashed uploads left."""
     settings: Settings = app.state.settings
+    model_storage: ModelStorage = app.state.model_storage
+    await model_storage.prepare()
     app.state.redis = create_redis(settings.redis_url)
     app.state.db = Database(settings.database_url.get_secret_value())
     app.state.rate_limiter = RateLimiter(app.state.redis)
@@ -134,9 +136,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
     )
     app.state.settings = settings
+    model_storage = LocalModelStorage(settings.model_storage_dir)
+    app.state.model_storage = model_storage
     # What other modules delete with an account (their hooks run before the user's row goes,
-    # and what they return after the commit); no module keeps data of a user yet.
-    deletion_hooks: tuple[AccountDeletionHook, ...] = ()
+    # and what they return after the commit).
+    deletion_hooks: tuple[AccountDeletionHook, ...] = (ModelsAccountDeletion(model_storage),)
     app.state.account_deletion_hooks = deletion_hooks
     app.add_middleware(RequestContextMiddleware)
     install_error_handlers(app)

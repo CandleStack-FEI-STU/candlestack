@@ -289,6 +289,29 @@ layers = [
     "models | errors | schemas",
 ]
 
+# Inside ml, the same: routes, their dependencies, the service, then the queries, the file
+# storage and the upload check, then the table and the errors, and the bodies at the bottom.
+[[tool.importlinter.contracts]]
+name = "Inside ml: HTTP -> dependencies -> service -> store, storage and check -> models"
+type = "layers"
+containers = ["candlestack.ml"]
+layers = [
+    "api",
+    "dependencies",
+    "service",
+    "store | storage | inspect",
+    "models | errors",
+    "schemas",
+]
+
+# The API checks an uploaded model by reading its file, never by loading it: a load could run
+# code from the file, and the API image has no Keras or TensorFlow (the worker will).
+[[tool.importlinter.contracts]]
+name = "The API never imports a deep learning framework"
+type = "forbidden"
+source_modules = ["candlestack.ml", "candlestack.main"]
+forbidden_modules = ["keras", "tensorflow", "torch", "jax"]
+
 # What the sources share lives in sources.base.
 [[tool.importlinter.contracts]]
 name = "Sources do not know each other"

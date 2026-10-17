@@ -1,4 +1,3 @@
-# ruff: noqa: ARG001 (scaffold: the bodies come with the implementation, which drops this line)
 """HTTP API of the ml module: the signed-in user's models under ``/api/v1/models``.
 
 An upload is the file itself as the request body (``application/octet-stream``) with its name
@@ -12,8 +11,17 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Path, Query, Request, Response
 
 from candlestack.accounts import CurrentUserDep
-from candlestack.core import Problem, require_same_origin
-from candlestack.ml.schemas import ModelOut, ModelsOut, ModelUpdate
+from candlestack.core import Problem, ProblemError, require_same_origin
+from candlestack.ml.dependencies import ModelsServiceDep
+from candlestack.ml.errors import (
+    ModelCheckFailed,
+    ModelNameTaken,
+    ModelNotFound,
+    ModelTooLarge,
+    StorageFull,
+    UnsupportedModelFormat,
+)
+from candlestack.ml.schemas import FILE_MAX_BYTES, MB, ModelOut, ModelsOut, ModelUpdate
 
 router = APIRouter(tags=["models"])
 
@@ -51,11 +59,66 @@ _UPLOAD_BODY = {
 }
 
 
+def _megabytes(size: int) -> str:
+    return f"{size / MB:.1f}".removesuffix(".0") + " MB"
+
+
+def _not_found() -> ProblemError:
+    return ProblemError(404, "not-found", "Not Found", "You have no model with this ID.")
+
+
+def _declared_size(request: Request) -> int | None:
+    """The size the client announced (Content-Length); None without a usable one."""
+    value = request.headers.get("content-length", "")
+    return int(value) if value.isdecimal() else None
+
+
+def _upload_problem(error: Exception) -> ProblemError:
+    """The problem of an upload that failed with `error`, one of the service's errors."""
+    if isinstance(error, UnsupportedModelFormat):
+        return ProblemError(
+            415,
+            "unsupported-model-format",
+            "Unsupported model format",
+            "Support for this format is coming soon. For now CandleStack takes Keras models "
+            "(.keras).",
+        )
+    if isinstance(error, ModelTooLarge):
+        return ProblemError(
+            413,
+            "model-too-large",
+            "Model too large",
+            f"The file is larger than {_megabytes(FILE_MAX_BYTES)}, the largest file an upload "
+            "takes. Upload a smaller model.",
+        )
+    if isinstance(error, StorageFull):
+        return ProblemError(
+            409,
+            "storage-full",
+            "Storage full",
+            f"The file does not fit into your storage: {_megabytes(error.used_bytes)} of "
+            f"{_megabytes(error.quota_bytes)} are taken. Delete models you no longer need and "
+            "upload it again.",
+            headers=NO_STORE,  # it tells what the user's storage holds
+            extensions={"used_bytes": error.used_bytes, "quota_bytes": error.quota_bytes},
+        )
+    assert isinstance(error, ModelCheckFailed)
+    return ProblemError(
+        422,
+        "model-check-failed",
+        "Model check failed",
+        error.detail,
+        extensions={"check": error.check.value},
+    )
+
+
 @router.get("/api/v1/models", responses=_NOT_SIGNED_IN)
-async def list_models(user: CurrentUserDep, response: Response) -> ModelsOut:
+async def list_models(
+    user: CurrentUserDep, service: ModelsServiceDep, response: Response
+) -> ModelsOut:
     """The user's uploaded models, oldest first, and the storage they take."""
     response.headers.update(NO_STORE)
-    raise NotImplementedError
+    return await service.models(user.id)
 
 
 @router.post(
@@ -85,14 +148,21 @@ async def list_models(user: CurrentUserDep, response: Response) -> ModelsOut:
     openapi_extra=_UPLOAD_BODY,
 )
 async def upload_model(
-    name: FileName, request: Request, user: CurrentUserDep, response: Response
+    name: FileName,
+    request: Request,
+    user: CurrentUserDep,
+    service: ModelsServiceDep,
+    response: Response,
 ) -> ModelOut:
     """Uploads a model file: the body is the file, `name` its file name. The file is checked
     before it is kept: `opens` (a real Keras model with no custom code inside, nothing from
     the file is executed) and `weights` (it holds trained weights). A file with a name the user
     already has gets a number, as `lstm (2).keras`."""
     response.headers.update(NO_STORE)
-    raise NotImplementedError
+    try:
+        return await service.upload(user.id, name, _declared_size(request), request.stream())
+    except (UnsupportedModelFormat, ModelTooLarge, StorageFull, ModelCheckFailed) as error:
+        raise _upload_problem(error) from None
 
 
 @router.patch(
@@ -106,11 +176,26 @@ async def upload_model(
     dependencies=[Depends(require_same_origin)],
 )
 async def update_model(
-    model_id: ModelId, body: ModelUpdate, user: CurrentUserDep, response: Response
+    model_id: ModelId,
+    body: ModelUpdate,
+    user: CurrentUserDep,
+    service: ModelsServiceDep,
+    response: Response,
 ) -> ModelOut:
     """Renames the model (the extension stays) or stars and unstars it."""
     response.headers.update(NO_STORE)
-    raise NotImplementedError
+    try:
+        return await service.update(user.id, model_id, body)
+    except ModelNotFound:
+        raise _not_found() from None
+    except ModelNameTaken as taken:
+        raise ProblemError(
+            409,
+            "model-name-taken",
+            "Model name taken",
+            f"You already have a model named {taken.name}. Choose another name.",
+            headers=NO_STORE,  # it names a model of the user
+        ) from None
 
 
 @router.delete(
@@ -119,6 +204,9 @@ async def update_model(
     responses={**_NOT_SIGNED_IN, **_CROSS_ORIGIN, **_NOT_FOUND},
     dependencies=[Depends(require_same_origin)],
 )
-async def delete_model(model_id: ModelId, user: CurrentUserDep) -> None:
+async def delete_model(model_id: ModelId, user: CurrentUserDep, service: ModelsServiceDep) -> None:
     """Deletes the model and its file, which frees its storage."""
-    raise NotImplementedError
+    try:
+        await service.delete(user.id, model_id)
+    except ModelNotFound:
+        raise _not_found() from None
