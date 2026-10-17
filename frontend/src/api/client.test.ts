@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError, del, get, parseRetryAfter, patch, post, put } from './client';
+import { ApiError, del, get, parseRetryAfter, patch, post, postFile, put } from './client';
 
 function answer(status: number, body: string | null, headers: Record<string, string> = {}) {
   vi.stubGlobal(
@@ -142,6 +142,40 @@ describe('patch and put', () => {
   it('map an error answer to an ApiError', async () => {
     answer(422, '{"title":"Unprocessable"}');
     expect(await errorOf(patch('/v1/me', {}))).toMatchObject({ status: 422, message: 'Unprocessable' });
+  });
+});
+
+describe('postFile', () => {
+  it('sends the file as the raw body and returns the JSON answer', async () => {
+    answer(201, '{"id":"mdl_a"}');
+    const file = new Blob(['weights']);
+    await expect(postFile('/v1/models?name=a.keras', file)).resolves.toEqual({ id: 'mdl_a' });
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/models?name=a.keras',
+      expect.objectContaining({
+        method: 'POST',
+        body: file,
+        headers: { Accept: 'application/json', 'Content-Type': 'application/octet-stream' },
+      }),
+    );
+  });
+
+  it('maps an error answer to an ApiError with its body', async () => {
+    const problem = { type: 'https://candlestack.tech/problems/storage-full', detail: 'Full.', used_bytes: 5 };
+    answer(409, JSON.stringify(problem));
+    const error = await errorOf(postFile('/v1/models?name=a.keras', new Blob([])));
+    expect(error).toMatchObject({ status: 409, problem: 'storage-full', body: problem });
+  });
+
+  it('passes an abort through unchanged', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const abort = new DOMException('Aborted', 'AbortError');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(abort)),
+    );
+    await expect(postFile('/v1/models?name=a.keras', new Blob([]), controller.signal)).rejects.toBe(abort);
   });
 });
 

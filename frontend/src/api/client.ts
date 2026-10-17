@@ -121,3 +121,15 @@ async function sendJson<T>(method: 'PATCH' | 'PUT', path: string, body: unknown)
 
 export const patch = <T>(path: string, body: unknown) => sendJson<T>('PATCH', path, body);
 export const put = <T>(path: string, body: unknown) => sendJson<T>('PUT', path, body);
+
+// Sends a file as the raw body, e.g. a model upload, and returns the JSON answer. Raw, not a
+// form: the API reads the body as the file and takes its name from the query.
+export async function postFile<T>(path: string, file: Blob, signal?: AbortSignal): Promise<T> {
+  const res = await send(path, {
+    method: 'POST',
+    body: file,
+    signal,
+    headers: { Accept: 'application/json', 'Content-Type': 'application/octet-stream' },
+  });
+  return readBody<T>(res);
+}

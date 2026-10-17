@@ -1,10 +1,10 @@
 import type { SVGProps } from 'react';
 
 // The design's own line icons where lucide draws a different one (mockups/app: the sidebar, the
-// account menu, the theme toggle, the cards of Settings). The icons lucide draws the same way (the
-// dashboard's grid, the API docs' brackets, sign out's door, the plus, the sun) stay lucide's.
-// Same frame as lucide's: a 24 px grid, 2 px round strokes in the text colour, 24 px unless a
-// class sizes it.
+// account menu, the theme toggle, the cards of Settings, the Models page). The icons lucide draws
+// the same way (the dashboard's grid, the API docs' brackets, sign out's door, the plus, the sun,
+// the cross) stay lucide's. Same frame as lucide's: a 24 px grid, 2 px round strokes in the text
+// colour, 24 px unless a class sizes it.
 
 type IconProps = Omit<SVGProps<SVGSVGElement>, 'children'>;
 
@@ -64,6 +64,54 @@ export function HomeIcon(props: IconProps) {
       <path d="M3 10.5L12 3l9 7.5" />
       <path d="M5 9v12h14V9" />
       <path d="M10 21v-6h4v6" />
+    </Icon>
+  );
+}
+
+// Upload model: an arrow up out of a tray.
+export function UploadIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M12 15V4M7 9l5-5 5 5" />
+      <path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4" />
+    </Icon>
+  );
+}
+
+// Rename: a pencil.
+export function PencilIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 20h4L19 9l-4-4L4 16z" />
+      <path d="M13 7l4 4" />
+    </Icon>
+  );
+}
+
+// Delete: a bin with its lid.
+export function TrashIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" />
+    </Icon>
+  );
+}
+
+// A passed check.
+export function CheckIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <path d="M5 12l4 4 10-10" />
+    </Icon>
+  );
+}
+
+// Not yet: a clock.
+export function ClockIcon(props: IconProps) {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
     </Icon>
   );
 }
