@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 
 import { ApiError, type Model } from '@/api';
+import { CancelButton, PrimaryButton } from '@/components/DialogButtons';
 import {
   Dialog,
   DialogBody,
@@ -12,9 +13,8 @@ import {
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
-import { CancelButton, PrimaryButton } from './DialogButtons';
 import { splitExtension } from './format';
-import { useRenameModel } from './useModels';
+import { isGone, useRenameModel } from './useModels';
 
 // As the API takes it: 1 to 60 characters before the extension.
 const NAME_MAX = 60;
@@ -47,7 +47,7 @@ function NameField({ value, extension, onChange }: FieldProps) {
           aria-label="Model name"
           className="h-[34px] w-full min-w-0 bg-transparent px-2.5 text-sm outline-none"
         />
-        <span className="grid place-items-center self-stretch rounded-r-[5px] border-l bg-muted px-3 font-mono text-sm/normal text-muted-foreground">
+        <span className="grid place-items-center self-stretch rounded-r-[5px] border-l bg-muted px-3 font-mono text-sm/[normal] text-muted-foreground">
           {extension}
         </span>
       </span>
@@ -68,7 +68,9 @@ function RenameForm({ model, onDone }: FormProps) {
 
   const save = (event: FormEvent) => {
     event.preventDefault();
-    if (canSave) rename.mutate({ id: model.id, name }, { onSuccess: onDone });
+    if (!canSave) return;
+    // A model deleted meanwhile has nothing left to rename: the dialog closes and the tile goes.
+    rename.mutate({ id: model.id, name }, { onSuccess: onDone, onError: (error) => isGone(error) && onDone() });
   };
 
   return (
@@ -82,7 +84,7 @@ function RenameForm({ model, onDone }: FormProps) {
             rename.reset();
           }}
         />
-        <DialogDescription className={cn(rename.isError && 'text-down')}>
+        <DialogDescription role={rename.isError ? 'alert' : undefined} className={cn(rename.isError && 'text-down')}>
           {rename.isError
             ? errorText(rename.error)
             : `The extension stays ${extension}. Backtests that used this model show the new name.`}

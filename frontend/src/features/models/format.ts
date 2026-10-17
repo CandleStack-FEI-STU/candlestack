@@ -1,35 +1,37 @@
 import { calendarDay, formatDate, formatShortDay, type DateStyle } from '@/lib/dates';
+import { formatPriceWith } from '@/lib/numbers';
 
 // How the Models part writes sizes, parameters, shapes and dates (mockups/app, the Models page
 // and the upload dialog). Megabytes are binary, as the API's limits: 1 MB = 1,048,576 bytes.
 
 const MB = 1024 * 1024;
-const ONE_DECIMAL = new Intl.NumberFormat('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-const UP_TO_ONE_DECIMAL = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
-const GROUPED = new Intl.NumberFormat('en-US');
 
 // A file that is not empty never reads 0.0 MB: it takes some of the storage.
 const megabytes = (bytes: number) => (bytes > 0 ? Math.max(bytes / MB, 0.1) : 0);
 
 // A file's size with one decimal: 14.2 MB, 3.0 MB.
 export function formatSize(bytes: number): string {
-  return `${ONE_DECIMAL.format(megabytes(bytes))} MB`;
+  return `${formatPriceWith(megabytes(bytes), 1)} MB`;
 }
 
-// Storage in MB without a trailing zero, as the mockup writes it: 0, 29.5, 100.
-export function formatMegabytes(bytes: number): string {
-  return UP_TO_ONE_DECIMAL.format(megabytes(bytes));
+// Megabytes without a trailing zero, as the mockup writes the storage: 0, 29.5, 100.
+function formatMegabytes(mb: number): string {
+  return formatPriceWith(mb, Number.isInteger(Math.round(mb * 10) / 10) ? 0 : 1);
 }
 
-// `{used} MB of {quota} MB`, the storage the user's models take.
+// `{used} MB of {quota} MB`, the storage the user's models take. Storage that is not full never
+// reads as full: what would round up to the quota is rounded down instead (99.9 MB of 100 MB).
 export function formatUsage(used: number, quota: number): string {
-  return `${formatMegabytes(used)} MB of ${formatMegabytes(quota)} MB`;
+  const quotaMb = quota / MB;
+  let usedMb = Math.round(megabytes(used) * 10) / 10;
+  if (used < quota && usedMb >= quotaMb) usedMb = Math.floor((used / MB) * 10) / 10;
+  return `${formatMegabytes(usedMb)} MB of ${formatMegabytes(quotaMb)} MB`;
 }
 
 // From 100,000 in millions with 2 decimals (1.24 M), below it the grouped digits (9,325).
 export function formatParameters(count: number): string {
-  if (count >= 100_000) return `${(count / 1_000_000).toFixed(2)} M`;
-  return GROUPED.format(count);
+  if (count >= 100_000) return `${formatPriceWith(count / 1_000_000, 2)} M`;
+  return formatPriceWith(count, 0);
 }
 
 // The shape a model reads and gives: "25×23 → 1" on a tile, "25 × 23 → 1" spaced in the upload
@@ -41,10 +43,12 @@ export function formatShape(input: number[] | null, output: number[] | null, spa
   return output === null || output.length === 0 ? text : `${text} → ${output.join(times)}`;
 }
 
-// A Sharpe ratio with 2 decimals and a real minus sign; an en dash without one.
+// A Sharpe ratio with 2 decimals and a real minus sign, taken from the rounded value (−0.004 is
+// 0.00); an en dash without one, as the mockup writes it.
 export function formatSharpe(sharpe: number | null): string {
   if (sharpe === null) return '–';
-  return `${sharpe < 0 ? '−' : ''}${Math.abs(sharpe).toFixed(2)}`;
+  const text = formatPriceWith(Math.abs(sharpe), 2);
+  return sharpe < 0 && /[1-9]/.test(text) ? `−${text}` : text;
 }
 
 // When a model was added, the day in the user's zone: "Today", or the day in the user's date
@@ -63,9 +67,4 @@ export function formatAdded(iso: string, style: Pick<DateStyle, 'timeZone' | 'da
 export function splitExtension(name: string): [string, string] {
   const dot = name.lastIndexOf('.');
   return dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
-}
-
-// A count with its noun: 1 model, 3 models; 1 backtest, 0 backtests.
-export function plural(count: number, noun: string): string {
-  return `${count} ${count === 1 ? noun : `${noun}s`}`;
 }

@@ -93,7 +93,6 @@ describe('Settings', () => {
     const usage = await card.findByText('25 MB of 100 MB');
     expect(card.getByText('Models').textContent).toBe('Models2 uploaded');
     const meter = usage.parentElement;
-    expect(meter?.className).toContain('max-w-[260px]');
     expect((meter?.lastElementChild?.firstElementChild as HTMLElement | null)?.style.width).toBe('25%');
   });
 

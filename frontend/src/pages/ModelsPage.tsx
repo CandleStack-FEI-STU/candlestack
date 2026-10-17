@@ -1,17 +1,19 @@
 import { useState } from 'react';
 
 import { PageTitle } from '@/components/PageTitle';
-import { formatUsage, ModelsGrid, plural, UploadCard, UploadDialog, useModels } from '@/features/models';
+import { formatUsage, ModelsGrid, UploadCard, UploadDialog, useModels } from '@/features/models';
 import { NewBacktestDialog } from '@/features/workspace';
+import { plural } from '@/lib/plural';
 import { usePageTitle } from '@/lib/usePageTitle';
 
 // What the line under the title says: how many models and the storage they take; why they could
-// not load; nothing while they load.
+// not load; an empty line while they load.
 function useDescription(): string | undefined {
   const { data, error } = useModels();
   if (data)
     return `${plural(data.models.length, 'model')} · ${formatUsage(data.usage.used_bytes, data.usage.quota_bytes)} used`;
-  return error?.message;
+  // A no-break space while they load keeps the line, so the title row does not move.
+  return error?.message ?? ' ';
 }
 
 // The user's uploaded models (#208, mockups/app ddModels): the title with the Upload card beside

@@ -74,6 +74,12 @@ describe('the Models page', () => {
     expect(screen.queryAllByRole('article')).toEqual([]);
   });
 
+  it('keeps the line under the title while the models load', async () => {
+    stubApi({ ...session(ARSEN), 'GET /api/v1/models': () => new Promise(() => {}) });
+    await renderApp('/models');
+    expect(subtitle()).toBe(' ');
+  });
+
   it('says why the models could not load', async () => {
     stubApi({ ...session(ARSEN), 'GET /api/v1/models': { status: 503, body: { detail: 'Down for a minute.' } } });
     await renderApp('/models');
@@ -166,11 +172,26 @@ describe('the Models page', () => {
     const star = tile('lstm-signals.keras').getByRole('button', { name: 'Star model lstm-signals.keras' });
     expect(star.textContent).toBe('★');
 
+    // Both answers wait for the test: the star must come back before the list is asked again.
+    let refuse = () => undefined as void;
+    let list = () => undefined as void;
+    const listed = modelsAnswer([LSTM])['GET /api/v1/models'];
     stubApi({
-      ...modelsAnswer([LSTM]),
-      'PATCH /api/v1/models/mdl_a2b3c4d5e6': { status: 503, body: { detail: 'Down.' } },
+      'GET /api/v1/models': () =>
+        new Promise((resolve) => {
+          list = () => listed && resolve(listed);
+        }),
+      'PATCH /api/v1/models/mdl_a2b3c4d5e6': () =>
+        new Promise((resolve) => {
+          refuse = () => resolve({ status: 503, body: { detail: 'Down.' } });
+        }),
     });
     await userEvent.setup().click(star);
+    expect(star.textContent).toBe('☆');
+
+    refuse();
+    await vi.waitFor(() => expect(star.textContent).toBe('★'));
+    list();
     await vi.waitFor(() => expect(star.textContent).toBe('★'));
   });
 });
@@ -236,11 +257,24 @@ describe('Rename model', () => {
     await user.type(input, 'lstm-signals');
     await user.click(save);
 
-    const help = await dialog.findByText('You already have a model with this name.');
-    expect(help.className).toContain('text-down');
+    const help = await dialog.findByRole('alert');
+    expect(help.textContent).toBe('You already have a model with this name.');
     expect(screen.getByRole('dialog')).toBeDefined();
     await user.type(input, '2');
-    expect(dialog.getByText(/^The extension stays/).className).not.toContain('text-down');
+    expect(dialog.queryByRole('alert')).toBeNull();
+    expect(dialog.getByText(/^The extension stays/)).toBeDefined();
+  });
+
+  it('closes and drops the tile when the model is gone already', async () => {
+    const { user, input, save } = await openRename();
+    stubApi({
+      ...modelsAnswer([LSTM]),
+      'PATCH /api/v1/models/mdl_7f3k2m9qx4': problem(404, 'not-found', 'You have no such model.'),
+    });
+    await user.type(input, '2');
+    await user.click(save);
+    await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await vi.waitFor(() => expect(tiles()).toHaveLength(1));
   });
 
   it('changes nothing on Cancel', async () => {
@@ -267,7 +301,7 @@ describe('Delete model', () => {
     const { dialog } = await openDelete();
     expect(dialog.getByText('The file goes from your models and frees 14.2 MB. This cannot be undone.')).toBeDefined();
     expect(dialog.getByRole('button', { name: 'Cancel' })).toBeDefined();
-    expect(dialog.getByRole('button', { name: 'Delete' }).className).toContain('bg-down');
+    expect(dialog.getByRole('button', { name: 'Delete' })).toBeDefined();
   });
 
   it('says the backtests that used it stay', async () => {
@@ -297,8 +331,19 @@ describe('Delete model', () => {
 
   it('stays open with the reason when the API cannot delete', async () => {
     const { user, dialog } = await openDelete();
-    stubApi({ 'DELETE /api/v1/models/mdl_7f3k2m9qx4': problem(404, 'not-found', 'You have no such model.') });
+    stubApi({ 'DELETE /api/v1/models/mdl_7f3k2m9qx4': { status: 503, body: { detail: 'Down for a minute.' } } });
     await user.click(dialog.getByRole('button', { name: 'Delete' }));
-    expect(await dialog.findByText('You have no such model.')).toBeDefined();
+    expect((await dialog.findByRole('alert')).textContent).toBe('Down for a minute.');
+  });
+
+  it('closes and drops the tile when the model is gone already', async () => {
+    const { user, dialog } = await openDelete();
+    stubApi({
+      ...modelsAnswer([LSTM, DRAFT]),
+      'DELETE /api/v1/models/mdl_7f3k2m9qx4': problem(404, 'not-found', 'You have no such model.'),
+    });
+    await user.click(dialog.getByRole('button', { name: 'Delete' }));
+    await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await vi.waitFor(() => expect(tiles()).toHaveLength(2));
   });
 });

@@ -109,17 +109,17 @@ function DialogClose({ ...props }: React.ComponentProps<typeof DialogPrimitive.C
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />;
 }
 
+// A line of the dialog in its hint style (.mdl .h): the description and the hints under a line.
+const DIALOG_HINT = 'text-[12.5px] text-muted-foreground';
+
 function DialogDescription({ className, ...props }: React.ComponentProps<typeof DialogPrimitive.Description>) {
   return (
-    <DialogPrimitive.Description
-      data-slot="dialog-description"
-      className={cn('text-[12.5px] text-muted-foreground', className)}
-      {...props}
-    />
+    <DialogPrimitive.Description data-slot="dialog-description" className={cn(DIALOG_HINT, className)} {...props} />
   );
 }
 
 export {
+  DIALOG_HINT,
   Dialog,
   DialogBody,
   DialogClose,

@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button';
 import { DialogClose } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
-// The footer buttons of the Models dialogs: .btn, .btn.pri and .btn.danger.pri, on shadcn's
-// outline and default variants.
+// The footer buttons of the app's dialogs (mockups/app, .mdl-f): .btn, .btn.pri and
+// .btn.danger.pri, on shadcn's outline and default variants.
 
 type Props = Omit<ComponentProps<typeof Button>, 'variant' | 'size'>;
 

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
-import { deleteModel, modelsQueryOptions, updateModel, uploadModel, type Model, type Models } from '@/api';
+import { ApiError, deleteModel, modelsQueryOptions, updateModel, uploadModel, type Model, type Models } from '@/api';
 
 const KEY = modelsQueryOptions().queryKey;
 
@@ -26,7 +26,14 @@ const replace = (data: Models, model: Model): Models => ({
 export function useUploadModel() {
   const queryClient = useQueryClient();
   return async (file: File, signal: AbortSignal): Promise<Model> => {
-    const model = await uploadModel(file, signal);
+    let model: Model;
+    try {
+      model = await uploadModel(file, signal);
+    } catch (error) {
+      // The file may have reached the API before the abort, which then kept it.
+      if (signal.aborted) void queryClient.invalidateQueries({ queryKey: KEY });
+      throw error;
+    }
     change(queryClient, (data) => ({
       models: [...data.models, model],
       usage: { ...data.usage, used_bytes: data.usage.used_bytes + model.size_bytes },
@@ -51,12 +58,21 @@ export function useStarModel() {
   });
 }
 
+// The model is gone already (deleted in another tab, say): the API answers 404 not-found.
+export const isGone = (error: unknown) => error instanceof ApiError && error.status === 404;
+
+// A model that is gone leaves the list: the list is asked for again.
+function forgetIfGone(queryClient: QueryClient, error: unknown) {
+  if (isGone(error)) void queryClient.invalidateQueries({ queryKey: KEY });
+}
+
 // Renames a model: `name` is the part before the extension, which stays.
 export function useRenameModel() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => updateModel(id, { name }),
     onSuccess: (model) => change(queryClient, (data) => replace(data, model)),
+    onError: (error) => forgetIfGone(queryClient, error),
   });
 }
 
@@ -70,5 +86,6 @@ export function useDeleteModel() {
         models: data.models.filter((item) => item.id !== model.id),
         usage: { ...data.usage, used_bytes: Math.max(0, data.usage.used_bytes - model.size_bytes) },
       })),
+    onError: (error) => forgetIfGone(queryClient, error),
   });
 }

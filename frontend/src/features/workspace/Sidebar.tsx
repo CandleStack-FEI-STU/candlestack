@@ -38,7 +38,7 @@ export function Sidebar() {
           <Icon className="size-4 shrink-0" />
           {label}
           {counts[to] !== undefined && (
-            <span className="ml-auto pl-2 font-mono text-xs/normal font-normal text-muted-foreground">
+            <span className="ml-auto pl-2 font-mono text-xs/[normal] font-normal text-muted-foreground">
               {counts[to]}
             </span>
           )}

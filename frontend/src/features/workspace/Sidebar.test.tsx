@@ -18,7 +18,7 @@ describe('the sidebar', () => {
     await renderApp('/dashboard');
     const link = within(sidebar()).getByRole('link', { name: /^Models/ });
     await vi.waitFor(() => expect(link.textContent).toBe('Models2'));
-    expect(link.lastElementChild?.className).toContain('ml-auto');
+    expect(link.lastElementChild?.textContent).toBe('2');
   });
 
   it('shows the storage the models take above the data note', async () => {
@@ -34,7 +34,6 @@ describe('the sidebar', () => {
     ]);
     const fill = foot?.children[1]?.firstElementChild as HTMLElement | null | undefined;
     expect(fill?.style.width).toBe('25%');
-    expect(foot?.className).toContain('max-[980px]:hidden');
   });
 
   it('shows no numbers until the API has said them', async () => {

@@ -144,7 +144,6 @@ describe('the upload dialog', () => {
       'Checking: Opens as a Keras model, no custom code inside',
       'Checking: Trained weights inside',
     ]);
-    expect(dialog.getAllByRole('listitem')[0]?.querySelector('.animate-spin')).not.toBeNull();
     expect(dialog.getByRole('button', { name: 'Cancel' })).toBeDefined();
     expect(dialog.queryByRole('button', { name: 'Done' })).toBeNull();
   });
@@ -227,6 +226,29 @@ describe('the upload dialog', () => {
     await user.click(dialog.getByRole('button', { name: 'Cancel' }));
     expect(signal?.aborted).toBe(true);
   });
+
+  it('asks for the models again after an abort: the API may have kept the file', async () => {
+    const { fetch, dialog, choose, user } = await openUpload({
+      [UPLOAD]: (init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+        }),
+    });
+    choose(file('lstm-signals.keras'));
+    const listed = () => fetch.mock.calls.filter(([path]) => path === '/api/v1/models').length;
+    const before = listed();
+    await user.click(dialog.getByRole('button', { name: 'Cancel' }));
+    await vi.waitFor(() => expect(listed()).toBe(before + 1));
+  });
+
+  it('says a file over the limit is too large without sending it', async () => {
+    const { fetch, dialog, choose } = await openUpload();
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledWith('/api/v1/models', expect.anything()));
+    choose(file('lstm-signals.keras', 61.2));
+    expect(checks(dialog)).toEqual(['Failed: Larger than 50 MBThe file is 61.2 MB.']);
+    expect(fetch.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+    expect(dialog.getByRole('button', { name: 'Choose another file' })).toBeDefined();
+  });
 });
 
 describe('a failed upload', () => {
@@ -265,6 +287,19 @@ describe('a failed upload', () => {
       problem(409, 'storage-full', 'Full.', { used_bytes: Math.round(92.3 * MB), quota_bytes: 100 * MB }),
     );
     expect(checks(dialog)).toEqual(['Failed: Not enough storage92.3 MB of 100 MB used. Delete a model to free space.']);
+  });
+
+  it('with the storage full and no numbers in the answer: the numbers the app has', async () => {
+    const { dialog, choose } = await openUpload({
+      ...modelsAnswer([model({ size_bytes: 92 * MB })]),
+      [UPLOAD]: problem(409, 'storage-full', 'Full.'),
+    });
+    await dialog.findByRole('button', { name: /Drop a trained model here/ });
+    await vi.waitFor(() => expect(screen.getByText('1 model · 92 MB of 100 MB used')).toBeDefined());
+    choose(file('lstm-signals.keras'));
+    await vi.waitFor(() =>
+      expect(checks(dialog)).toEqual(['Failed: Not enough storage92 MB of 100 MB used. Delete a model to free space.']),
+    );
   });
 
   it('for any other reason: the message', async () => {

@@ -4,13 +4,11 @@ import type { DateFormat } from '@/api';
 
 import {
   formatAdded,
-  formatMegabytes,
   formatParameters,
   formatShape,
   formatSharpe,
   formatSize,
   formatUsage,
-  plural,
   splitExtension,
 } from './format';
 import { ACCEPTED_EXTENSIONS, frameworkOfFile } from './frameworks';
@@ -30,12 +28,17 @@ describe('formatSize', () => {
   });
 });
 
-describe('formatMegabytes and formatUsage', () => {
-  it('drop a trailing zero, as the storage line writes it', () => {
-    expect(formatMegabytes(0)).toBe('0');
-    expect(formatMegabytes(29.5 * MB)).toBe('29.5');
-    expect(formatMegabytes(100 * MB)).toBe('100');
+describe('formatUsage', () => {
+  it('drops a trailing zero, as the storage line writes it', () => {
+    expect(formatUsage(0, 100 * MB)).toBe('0 MB of 100 MB');
+    expect(formatUsage(29.5 * MB, 100 * MB)).toBe('29.5 MB of 100 MB');
     expect(formatUsage(Math.round(14.2 * MB), 100 * MB)).toBe('14.2 MB of 100 MB');
+    expect(formatUsage(100 * MB, 100 * MB)).toBe('100 MB of 100 MB');
+  });
+
+  it('never reads full while it is not', () => {
+    expect(formatUsage(100 * MB - 1, 100 * MB)).toBe('99.9 MB of 100 MB');
+    expect(formatUsage(99.97 * MB, 100 * MB)).toBe('99.9 MB of 100 MB');
   });
 });
 
@@ -72,6 +75,9 @@ describe('formatSharpe', () => {
     expect(formatSharpe(1.344)).toBe('1.34');
     expect(formatSharpe(-0.18)).toBe('−0.18');
     expect(formatSharpe(0)).toBe('0.00');
+    expect(formatSharpe(-0.004)).toBe('0.00');
+    expect(formatSharpe(-0.005)).toBe('−0.01');
+    expect(formatSharpe(1234.5)).toBe('1,234.50');
     expect(formatSharpe(null)).toBe('–');
   });
 });
@@ -104,14 +110,8 @@ describe('formatAdded', () => {
   });
 });
 
-describe('plural and splitExtension', () => {
-  it('count with the right noun', () => {
-    expect(plural(1, 'model')).toBe('1 model');
-    expect(plural(0, 'model')).toBe('0 models');
-    expect(plural(3, 'backtest')).toBe('3 backtests');
-  });
-
-  it('split the stem from the last extension', () => {
+describe('splitExtension', () => {
+  it('splits the stem from the last extension', () => {
     expect(splitExtension('my-tsmixer.keras')).toEqual(['my-tsmixer', '.keras']);
     expect(splitExtension('v1.2.keras')).toEqual(['v1.2', '.keras']);
     expect(splitExtension('.keras')).toEqual(['.keras', '']);

@@ -4,6 +4,7 @@ import { PencilIcon, TrashIcon } from '@/components/icons';
 import { StarButton } from '@/components/StarButton';
 import { Button } from '@/components/ui/button';
 import { useDateStyle } from '@/features/preferences';
+import { pluralNoun } from '@/lib/plural';
 import { cn } from '@/lib/utils';
 
 import { formatAdded, formatSharpe, formatShape, formatSize } from './format';
@@ -25,12 +26,12 @@ function Stats({ model }: { model: Model }) {
   return (
     <div className="mt-auto grid grid-cols-2 gap-2 border-t pt-2.5">
       <div className="flex flex-col">
-        <b className="font-mono text-[15px]/normal font-semibold">{formatSharpe(model.best_sharpe)}</b>
+        <b className="font-mono text-[15px]/[normal] font-semibold">{formatSharpe(model.best_sharpe)}</b>
         <span className={HINT}>best Sharpe</span>
       </div>
       <div className="flex flex-col">
-        <b className="font-mono text-[15px]/normal font-semibold">{model.backtest_count}</b>
-        <span className={HINT}>{model.backtest_count === 1 ? 'backtest' : 'backtests'}</span>
+        <b className="font-mono text-[15px]/[normal] font-semibold">{model.backtest_count}</b>
+        <span className={HINT}>{pluralNoun(model.backtest_count, 'backtest')}</span>
       </div>
     </div>
   );
@@ -89,7 +90,7 @@ export function ModelTile({ model, onStar, onRename, onDelete }: Props) {
           {framework} · {formatSize(model.size_bytes)} · added {formatAdded(model.created_at, dateStyle)}
         </span>
       </div>
-      <div className="font-mono text-xs/normal text-muted-foreground">
+      <div className="font-mono text-xs/[normal] text-muted-foreground">
         {shape === null ? 'Shape not in the file' : `in ${shape}`}
       </div>
       <Stats model={model} />

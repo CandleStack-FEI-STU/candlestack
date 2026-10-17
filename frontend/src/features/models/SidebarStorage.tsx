@@ -13,7 +13,7 @@ export function SidebarStorage() {
     <>
       <Eyebrow>Storage</Eyebrow>
       <StorageMeter usage={usage} />
-      <span className="font-mono text-xs/normal">{formatUsage(usage.used_bytes, usage.quota_bytes)} models</span>
+      <span className="font-mono text-xs/[normal]">{formatUsage(usage.used_bytes, usage.quota_bytes)} models</span>
     </>
   );
 }

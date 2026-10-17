@@ -1,6 +1,7 @@
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import { useRef, useState, type ReactNode } from 'react';
 
+import { CancelButton, OutlineButton, PrimaryButton } from '@/components/DialogButtons';
 import {
   Dialog,
   DialogBody,
@@ -9,14 +10,15 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DIALOG_HINT,
 } from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
 
-import { CancelButton, OutlineButton, PrimaryButton } from './DialogButtons';
 import { DropZone } from './DropZone';
 import { formatSize } from './format';
 import { FrameworkTile } from './FrameworkMark';
 import { ACCEPTED_EXTENSIONS, frameworkOfFile } from './frameworks';
-import { ComingSoonCheck, DIALOG_HINT, FailedChecks, PassedChecks, PendingChecks } from './UploadChecks';
+import { ComingSoonCheck, FailedChecks, PassedChecks, PendingChecks } from './UploadChecks';
 import { useUpload, type UploadState } from './useUpload';
 
 // The chosen file (.up-file): its framework's mark, its name, the framework and its size. A file
@@ -29,7 +31,7 @@ function FileRow({ file }: { file: File }) {
       <span className="min-w-0">
         <b className="font-bold break-words">{file.name}</b>
         {framework && (
-          <span className={DIALOG_HINT}>
+          <span className={cn('block', DIALOG_HINT)}>
             {framework} · {formatSize(file.size)}
           </span>
         )}
@@ -49,6 +51,21 @@ function Result({ state }: { state: Exclude<UploadState, { step: 'pick' }> }) {
     case 'failed':
       return <FailedChecks failure={state.failure} />;
   }
+}
+
+// The file and its checks, in a live region mounted in every step, so screen readers hear each
+// result, the ready model too.
+function Results({ state }: { state: UploadState }) {
+  return (
+    <div aria-live="polite" className="flex flex-col gap-3.5 empty:hidden">
+      {state.step !== 'pick' && (
+        <>
+          <FileRow file={state.file} />
+          <Result state={state} />
+        </>
+      )}
+    </div>
+  );
 }
 
 type FooterProps = { state: UploadState; onAgain: () => void; onDone: () => void; onBacktest: () => void };
@@ -105,14 +122,8 @@ function UploadFlow({ onDone, onBacktest }: FlowProps) {
             if (file) choose(file);
           }}
         />
-        {state.step === 'pick' ? (
-          <DropZone onPick={pick} onDrop={choose} />
-        ) : (
-          <>
-            <FileRow file={state.file} />
-            <Result state={state} />
-          </>
-        )}
+        {state.step === 'pick' && <DropZone onPick={pick} onDrop={choose} />}
+        <Results state={state} />
       </DialogBody>
       <Footer
         state={state}

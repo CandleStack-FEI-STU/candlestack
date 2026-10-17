@@ -23,7 +23,7 @@ export function UploadCard({ className, ...props }: ComponentProps<'button'>) {
     <button
       type="button"
       className={cn(
-        'flex min-w-0 cursor-pointer items-center gap-3 rounded-[10px] border bg-card px-4 py-3.5 text-left transition-[background-color,border-color,box-shadow,transform] duration-150 outline-none hover:-translate-y-px hover:border-[color-mix(in_srgb,var(--accent)_45%,var(--rule))] hover:bg-muted hover:shadow-[0_4px_14px_var(--shadow)] focus-visible:ring-[3px] focus-visible:ring-ring/50 motion-reduce:transition-none',
+        'flex min-w-0 cursor-pointer items-center gap-3 rounded-[10px] border bg-card px-4 py-3.5 text-left transition-[background-color,border-color,box-shadow,translate] duration-150 outline-none hover:-translate-y-px hover:border-[color-mix(in_srgb,var(--accent)_45%,var(--rule))] hover:bg-muted hover:shadow-[0_4px_14px_var(--shadow)] focus-visible:ring-[3px] focus-visible:ring-ring/50 motion-reduce:transition-none',
         className,
       )}
       {...props}

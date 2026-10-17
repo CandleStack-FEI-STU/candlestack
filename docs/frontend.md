@@ -279,7 +279,9 @@ upload, rename and delete modals):
   never reaches the API: it shows that support is coming soon. While the API checks the file,
   both checks show pending in their place; then both pass (the model is ready, Backtest with it
   opens New backtest) or the one that failed says why (`check` of `model-check-failed`, 413,
-  `storage-full`, anything else). Closing the dialog aborts the upload.
+  `storage-full`, anything else); a file over the limit fails before it is sent. Closing the
+  dialog aborts the upload and asks for the list again, as the API may have kept the file. A
+  model deleted meanwhile (404) closes its Rename or Delete dialog and leaves the list.
 
 ## Instrument icons
 

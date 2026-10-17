@@ -1,4 +1,5 @@
 import type { Model } from '@/api';
+import { CancelButton, DangerButton } from '@/components/DialogButtons';
 import {
   Dialog,
   DialogBody,
@@ -8,16 +9,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { plural } from '@/lib/plural';
 
-import { CancelButton, DangerButton } from './DialogButtons';
 import { formatSize } from './format';
-import { useDeleteModel } from './useModels';
+import { isGone, useDeleteModel } from './useModels';
 
 // What happens to the backtests that used the model: they stay.
 function backtestsNote(count: number): string {
   if (count === 0) return '';
   if (count === 1) return ' The backtest that used it stays, with its results.';
-  return ` The ${count} backtests that used it stay, with their results.`;
+  return ` The ${plural(count, 'backtest')} that used it stay, with their results.`;
 }
 
 function deleteText(model: Model): string {
@@ -32,11 +33,18 @@ function DeleteForm({ model, onDone }: FormProps) {
     <>
       <DialogBody>
         <DialogDescription className="text-sm/[1.5] text-foreground">{deleteText(model)}</DialogDescription>
-        {remove.isError && <p className="text-[12.5px] text-down">{remove.error.message}</p>}
+        {remove.isError && (
+          <p role="alert" className="text-[12.5px] text-down">
+            {remove.error.message}
+          </p>
+        )}
       </DialogBody>
       <DialogFooter>
         <CancelButton />
-        <DangerButton disabled={remove.isPending} onClick={() => remove.mutate(model, { onSuccess: onDone })}>
+        <DangerButton
+          disabled={remove.isPending}
+          onClick={() => remove.mutate(model, { onSuccess: onDone, onError: (error) => isGone(error) && onDone() })}
+        >
           Delete
         </DangerButton>
       </DialogFooter>

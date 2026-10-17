@@ -97,15 +97,6 @@ export function TrashIcon(props: IconProps) {
   );
 }
 
-// A passed check.
-export function CheckIcon(props: IconProps) {
-  return (
-    <Icon {...props}>
-      <path d="M5 12l4 4 10-10" />
-    </Icon>
-  );
-}
-
 // Not yet: a clock.
 export function ClockIcon(props: IconProps) {
   return (

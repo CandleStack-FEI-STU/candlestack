@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { ApiError, type Model } from '@/api';
+import { ApiError, type Model, type StorageUsage } from '@/api';
 
 import { frameworkOfFile, type Framework } from './frameworks';
-import { useUploadModel } from './useModels';
+import { formatSize } from './format';
+import { useModels, useUploadModel } from './useModels';
 
 // Why the API did not keep a file: one of its checks failed (`opens`, `weights`), it is too
 // large, the storage is full, or something else went wrong on the way.
@@ -19,14 +20,23 @@ export type UploadState =
   | { step: 'ready'; file: File; model: Model }
   | { step: 'failed'; file: File; failure: UploadFailure };
 
-const numberIn = (body: unknown, key: string): number => {
+const numberIn = (body: unknown, key: string): number | undefined => {
   const value = typeof body === 'object' && body !== null ? (body as Record<string, unknown>)[key] : undefined;
-  return typeof value === 'number' ? value : 0;
+  return typeof value === 'number' ? value : undefined;
 };
 
 const checkOf = (body: unknown) => (typeof body === 'object' && body !== null && 'check' in body ? body.check : null);
 
-export function failureOf(error: unknown): UploadFailure {
+function storageFailure(body: unknown, usage: StorageUsage | undefined): UploadFailure {
+  return {
+    kind: 'storage',
+    used: numberIn(body, 'used_bytes') ?? usage?.used_bytes ?? 0,
+    quota: numberIn(body, 'quota_bytes') ?? usage?.quota_bytes ?? 0,
+  };
+}
+
+// `usage`: the storage as the app last heard it, for a storage-full answer without its numbers.
+export function failureOf(error: unknown, usage?: StorageUsage): UploadFailure {
   if (!(error instanceof ApiError)) {
     return { kind: 'other', detail: error instanceof Error ? error.message : String(error) };
   }
@@ -36,7 +46,7 @@ export function failureOf(error: unknown): UploadFailure {
   }
   if (error.problem === 'model-too-large' || error.status === 413) return { kind: 'large', detail };
   if (error.problem === 'storage-full') {
-    return { kind: 'storage', used: numberIn(error.body, 'used_bytes'), quota: numberIn(error.body, 'quota_bytes') };
+    return storageFailure(error.body, usage);
   }
   return { kind: 'other', detail };
 }
@@ -49,6 +59,7 @@ export function useUpload() {
   const [state, setState] = useState<UploadState>({ step: 'pick' });
   const controller = useRef<AbortController | null>(null);
   const upload = useUploadModel();
+  const usage = useModels().data?.usage;
 
   useEffect(() => () => controller.current?.abort(), []);
 
@@ -56,6 +67,11 @@ export function useUpload() {
     const framework = frameworkOfFile(file.name);
     if (framework !== 'Keras') {
       setState({ step: 'soon', file, framework });
+      return;
+    }
+    // Too large for the API to take: said at once, without sending 50 MB first.
+    if (usage && file.size > usage.file_max_bytes) {
+      setState({ step: 'failed', file, failure: { kind: 'large', detail: `The file is ${formatSize(file.size)}.` } });
       return;
     }
     controller.current?.abort();
@@ -68,7 +84,7 @@ export function useUpload() {
         if (current.signal.aborted) return;
         // The API knows the formats best: one it does not take yet is not a failed check.
         if (isUnsupported(error)) setState({ step: 'soon', file, framework: null });
-        else setState({ step: 'failed', file, failure: failureOf(error) });
+        else setState({ step: 'failed', file, failure: failureOf(error, usage) });
       },
     );
   };

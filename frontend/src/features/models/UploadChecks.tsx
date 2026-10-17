@@ -1,19 +1,18 @@
-import { LoaderCircle, XIcon } from 'lucide-react';
+import { Check, LoaderCircle, XIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import type { Model } from '@/api';
-import { CheckIcon, ClockIcon } from '@/components/icons';
+import { ClockIcon } from '@/components/icons';
+import { DIALOG_HINT } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
 import { formatParameters, formatShape, formatUsage } from './format';
 import type { UploadFailure } from './useUpload';
 
-// A hint under a line of the dialog (.mdl .h).
-export const DIALOG_HINT = 'block text-[12.5px] text-muted-foreground';
-
+const HINT = cn('block', DIALOG_HINT);
 const MUTED = 'bg-surface-2 text-muted-foreground';
 const TONES = {
-  ok: { icon: <CheckIcon />, tile: 'bg-[color-mix(in_srgb,var(--up)_15%,var(--bg))] text-up', state: 'Passed' },
+  ok: { icon: <Check />, tile: 'bg-[color-mix(in_srgb,var(--up)_15%,var(--bg))] text-up', state: 'Passed' },
   bad: { icon: <XIcon />, tile: 'bg-[color-mix(in_srgb,var(--down)_15%,var(--bg))] text-down', state: 'Failed' },
   // While the upload runs: the same row, a small spinner on a muted circle.
   pending: {
@@ -37,18 +36,14 @@ function CheckRow({ tone, title, hint }: RowProps) {
       <span className="min-w-0">
         <span className="sr-only">{state}: </span>
         <b className="font-medium">{title}</b>
-        {hint && <span className={DIALOG_HINT}>{hint}</span>}
+        {hint && <span className={HINT}>{hint}</span>}
       </span>
     </li>
   );
 }
 
 function Checks({ children }: { children: ReactNode }) {
-  return (
-    <ul aria-live="polite" className="flex flex-col gap-2.5">
-      {children}
-    </ul>
-  );
+  return <ul className="flex flex-col gap-2.5">{children}</ul>;
 }
 
 const OPENS = 'Opens as a Keras model, no custom code inside';
@@ -87,7 +82,7 @@ export function PassedChecks({ model }: { model: Model }) {
       </Checks>
       <div className="rounded-lg border border-[color-mix(in_srgb,var(--up)_35%,var(--rule))] bg-[color-mix(in_srgb,var(--up)_10%,var(--bg))] px-3.5 py-3">
         <b className="font-bold break-words">{model.name} is ready</b>
-        <span className={DIALOG_HINT}>
+        <span className={HINT}>
           Keras · {parameters}
           {shape !== null && ` · in ${shape}`}
         </span>
