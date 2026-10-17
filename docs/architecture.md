@@ -1,12 +1,14 @@
 # Architecture
 
 The CandleStack backend is one Python service: a FastAPI application that serves the HTTP API
-under `/api`. In this milestone it has three modules: `core` (configuration, logging, errors,
+under `/api`. In this milestone it has four modules: `core` (configuration, logging, errors,
 Redis, Postgres and HTTP clients, CSRF protection, health, Sentry), `data` (market data:
-instrument catalog and candles from Binance and Alpaca, see [data.md](data.md)) and `accounts`
-(users, GitHub and Google sign-in, sessions, the beta list, Settings). Postgres stores what
-users create, accounts, sessions and settings so far; market data is not stored: the sources
-are the truth and Redis is a cache that can be lost at any time. The backtest is being built next to them
+instrument catalog and candles from Binance and Alpaca, see [data.md](data.md)), `accounts`
+(users, GitHub and Google sign-in, sessions, the beta list, Settings) and `ml` (the models
+users upload: the upload and its checks, the files, the list). Postgres stores what users
+create, accounts, sessions, settings and the models so far, and a volume the files of the
+models; market data is not stored: the sources are the truth and Redis is a cache that can be
+lost at any time. The backtest is being built next to them
 (`signals`, `engine`, `metrics` and the `candlestack-bt` command in `cli`, see
 [Modules](#modules) and the contract in [engine.md](engine.md)); it runs from the command line,
 not in the service.
@@ -27,7 +29,9 @@ flowchart LR
             caddy -->|"/api/*"| backend["backend<br/>FastAPI on granian :8000"]
             caddy -->|"everything else"| frontend["frontend<br/>static page, Caddy :8080"]
             backend --> redis[("redis<br/>cache only")]
-            backend --> postgres[("postgres<br/>users, sessions, settings")]
+            backend --> postgres[("postgres<br/>users, sessions, settings, models")]
+            backend --> models[("models volume<br/>uploaded model files")]
+            modelsbackup["models-backup<br/>nightly archive"] -.->|"read-only"| models
         end
     end
     backend -->|HTTPS| binance["Binance<br/>REST + data.binance.vision"]
@@ -38,10 +42,11 @@ flowchart LR
 
 | Container | Image | Notes |
 | --- | --- | --- |
-| `backend` | `ghcr.io/candlestack-fei-stu/candlestack/backend` | calls Binance and Alpaca; gets the environment's Alpaca keys at deploy time |
+| `backend` | `ghcr.io/candlestack-fei-stu/candlestack/backend` | calls Binance and Alpaca; gets the environment's Alpaca keys at deploy time; keeps the uploaded model files in the volume `models` (`/data/models`, its only writable path) |
 | `frontend` | `ghcr.io/candlestack-fei-stu/candlestack/frontend` | the web app, static files served by Caddy |
 | `redis` | `redis:8-alpine` | private network of the environment, no persistence, `allkeys-lru` |
 | `postgres` | `postgres:18-alpine` | private network of the environment, data in a volume; migrated by a one-shot `migrate` container (the backend image, `alembic upgrade head`) before the backend starts; prod and stage dump it every night (`backup`) |
+| `models-backup` | `offen/docker-volume-backup` | archives the `models` volume (read-only) every night at 00:30 UTC into the volume `model_backups`, keeps 7 days; no network |
 
 ## HTTP surface
 
@@ -63,6 +68,10 @@ flowchart LR
 | `GET /api/v1/me/preferences` | the user's settings (backtest defaults, appearance), defaults included |
 | `PUT /api/v1/me/preferences/backtest-defaults` | replaces the backtest defaults: every field, no other (`period_start` before `period_end`), else 422 |
 | `PATCH /api/v1/me/preferences/appearance` | changes the appearance settings it is given; an unknown field is a 422 |
+| `GET /api/v1/models` | the user's uploaded models, oldest first, and the storage they take (`used_bytes`, `quota_bytes`, `file_max_bytes`) |
+| `POST /api/v1/models?name=<file name>` | uploads a model: the body is the file (`application/octet-stream`); checked before it is kept ([Models](#models)); a name the user has already gets a number (`lstm (2).keras`) |
+| `PATCH /api/v1/models/{model_id}` | renames a model (the extension stays; `409 model-name-taken`) or stars and unstars it |
+| `DELETE /api/v1/models/{model_id}` | deletes a model and its file |
 | `GET /api/v1/docs` | API reference (Scalar); public on prod |
 | `GET /api/v1/openapi.json` | OpenAPI schema; snapshot committed as [openapi.json](openapi.json) |
 
@@ -77,7 +86,12 @@ flowchart LR
   [data.md](data.md#errors). The accounts module adds `not-signed-in` (401: no session, or it
   ended), `cross-origin-request` (403: a change that does not come from the app's own
   pages) and `last-sign-in-method` (409: removing the account's only sign-in method), and uses
-  `not-found` (404) and `rate-limited` (429) too. Each `type` URI opens a page on the website
+  `not-found` (404) and `rate-limited` (429) too. The ml module adds `model-too-large` (413: a
+  file over 50 MB), `storage-full` (409: the file does not fit into the user's 100 MB, with
+  `used_bytes` and `quota_bytes`), `unsupported-model-format` (415: not `.keras`, "coming
+  soon"), `model-check-failed` (422: a check failed, `check` names it, `opens` or `weights`)
+  and `model-name-taken` (409: renaming to a name the user has), and uses `not-found` (404:
+  no model of the user with the ID, another user's included). Each `type` URI opens a page on the website
   that says what the problem means and what the client should do.
 - Every response carries `X-Request-ID` and `Server-Timing: app;dur=<ms>` (the app's time
   until the response started), so response times can be measured from outside.
@@ -136,9 +150,48 @@ flowchart LR
   None), and those run only after the commit. The account is gone by then, so one that raises
   is logged (by the error's type only, never its message) and the others still run: an
   orphaned file at worst, never a user without their files. `accounts` never imports the
-  modules that own the data. No module registers a hook yet.
+  modules that own the data. `ml` registers one: the user's models in the transaction, the
+  directory of their files after the commit.
 - Every route of the signed-in user that returns user data sends `Cache-Control: no-store`, and
   every change requires the app's own origin.
+
+## Models
+
+- **Upload**: `POST /api/v1/models?name=<file name>` with the file as the body, so the server
+  streams it to disk instead of holding a multipart form in memory (the backend has 320 MB).
+  Only Keras files (`.keras`) for now: another extension is a 415 before anything is read. A
+  `Content-Length` over 50 MB is a 413, and one that does not fit into the user's storage a
+  409, at once; without one, the stream stops at 50 MB. The file goes to an incoming file of
+  the storage while it is counted and hashed (SHA-256, which later backtests name the model
+  by), then is checked in a worker thread. A file that passed is kept in one transaction under
+  an advisory lock of the user (`pg_advisory_xact_lock`), so two uploads at once cannot both
+  pass the quota or take one name: the quota again, a free name (`lstm (2).keras`, compared in
+  any case, like the unique index on `(user_id, lower(name))`), the row, the file moved to its
+  place, the commit (the file goes again when it fails). The incoming files go whatever
+  happens; the ones a crash left are removed when the backend starts.
+- **The check** (`ml/inspect.py`) reads the file and never loads it: a `.keras` file is a zip of
+  `config.json` (the architecture), `metadata.json` (the Keras version) and
+  `model.weights.h5` (the weights), and loading it could run code from it. `opens` fails for a
+  file that is no zip, holds a path outside it or other files than those three and `assets/`,
+  unpacks to more than 200 MB (or a `config.json` over 5 MB), has no Keras version, is no
+  Functional or Sequential Keras model, or holds custom code: a `Lambda` layer, an object of
+  another package than Keras or one the user registered (`Custom>Scale`). What only shapes or
+  reports training is ignored: the `compile_config` (optimizer, loss, metrics) and the
+  `*_regularizer` and `*_constraint` objects, which the worker will load with a stub. `weights`
+  fails when the weights do not read as HDF5 (h5py, from a copy unpacked to the incoming
+  directory) or the layers hold none: `parameters` counts the datasets under `layers`, not the
+  optimizer's state. The input shape (one input) and the output shape (`Dense`, `Flatten` and
+  layers that keep their input's shape) are read from the config when it says them plainly,
+  else null.
+- **Files**: `ModelStorage` (`ml/storage.py`) is what the service uses: save a finished incoming
+  file, delete one, delete a user's, sweep what crashed uploads left. `LocalModelStorage` keeps
+  them in `MODEL_STORAGE_DIR` as `<user_id>/<model_id>.keras` and the uploads in progress as
+  `.incoming/<random>.part`, on one filesystem, so a move is an atomic rename. On the VM that is
+  the volume `models`, archived every night ([infra/README.md](../infra/README.md#backups)). The
+  files are served only through the API.
+- **Limits**: 50 MB per file, 100 MB per user (binary megabytes, as the app shows them).
+- Deleting a model deletes its row, then its file; a file that cannot be removed is a warning
+  and stays as an orphan. Another user's model is a 404, never a 403.
 
 ## Modules
 
@@ -150,7 +203,7 @@ A module is a subpackage of `candlestack` under `backend/src/candlestack/`.
 | `data` | now | instrument catalog, candles, sessions, cache, source adapters, rate limits |
 | `accounts` | now | users, GitHub and Google sign-in, sessions, the beta list, Settings (name, sign-in methods, preferences, deleting the account); `CurrentUserDep` for the routes of the signed-in user, `AccountDeletionHook` for what other modules delete with an account |
 | `preprocessing` | later | Renko, Kagi, time windows, normalization, segmentation |
-| `ml` | later | upload `.keras` models, validate input/output shapes, run inference; worker only (below) |
+| `ml` | now | the models users upload: the upload and its static check, the file storage, the list, rename, star, delete; running models later, in a worker (below) |
 | `signals` | started | turn predictions into signals: align them with the candles, thresholds, long only; later smoothing, holding period, sizing, risk limits |
 | `engine` | started | the backtest loop: candles and signals in, trades and an equity series out; `ENGINE_VERSION` names its rules ([engine.md](engine.md)) |
 | `metrics` | started | unified metrics and charts of one run |
@@ -164,7 +217,7 @@ the ones whose folder exists while their code is being written.
 ## Import rules
 
 - Dependencies point one way: `experiments` -> `preprocessing` -> `data` -> `core`, and
-  `accounts` -> `core`. `core` imports no other module.
+  `ml` -> `accounts` -> `core`. `core` imports no other module.
 - The backtest modules `signals`, `engine` and `metrics` stand alone: they import no other
   module of the project, not each other, and no server library (`fastapi`, `starlette`,
   `scalar_fastapi`, `granian`, `redis`, `httpx`, `sentry_sdk`, `pydantic_settings`,
@@ -173,19 +226,20 @@ the ones whose folder exists while their code is being written.
   `experiments` later.
 - No module imports `cli`: it is the entry point of the `candlestack-bt` command
   (`[project.scripts]` in `backend/pyproject.toml`).
-- `ml` is worker-only, so the API process never loads TensorFlow: only the worker's
-  composition root (a future `candlestack/worker.py`) imports it and wires it into the
-  experiment runs, and the API enqueues worker tasks by name instead of importing them.
-  TensorFlow and Keras go into a `worker` dependency group (or extra) that the API image does
-  not install. An import-linter `forbidden` contract will enforce this when the worker lands:
-  source `candlestack.main`, forbidden `tensorflow` and `keras`,
-  `include_external_packages = true`. The name is `ml`, not `models`, which `data/models.py`
-  and later ORM models use.
+- The API part of `ml` reads the uploaded files (zip, JSON, the HDF5 metadata with h5py) and
+  never imports a deep learning framework, so the API process never loads one and never runs
+  code from a file. An import-linter `forbidden` contract enforces it: sources `candlestack.ml`
+  and `candlestack.main`, forbidden `keras`, `tensorflow`, `torch` and `jax`
+  (`include_external_packages = true`). Running models comes later, in a worker: only its
+  composition root (a future `candlestack/worker.py`) will import the framework, which goes
+  into a `worker` dependency group (or extra) that the API image does not install, and the
+  API will enqueue worker tasks by name instead of importing them. The name is `ml`, not
+  `models`, which `data/models.py` and the ORM models use.
 - Another module is imported only through its package root:
   `from candlestack.data import DataService`, never `from candlestack.data.sources import ...`.
   The package root's `__init__.py` is the module's public API.
 - `candlestack.main` (builds the app) and `candlestack.openapi` (schema snapshot) wire the
-  modules together and may import any module root except `ml` and `cli`.
+  modules together and may import any module root except `cli`.
 - Checked by import-linter (`uv run lint-imports`, contracts in `backend/pyproject.toml`) in
   the CI `lint` job.
 
@@ -202,6 +256,7 @@ the ones whose folder exists while their code is being written.
 | Cache | Redis with `redis[hiredis]` asyncio | one store for cache blobs, locks and rate-limit counters |
 | Database | Postgres 18, SQLAlchemy 2 (asyncio) on asyncpg, Alembic migrations in `backend/migrations` | relational data with constraints; typed models; versioned schema changes that run before each deploy's backend starts |
 | Sign-in | Authlib (OAuth 2.0 messages, PKCE) over the app's httpx client | a maintained implementation of the protocol; the requests stay on the client the tests mock with respx |
+| Model files | h5py | reads the weights' metadata of an uploaded Keras file (the number of weights) without Keras |
 | HTTP client | httpx (async), timeouts always set | async calls to the sources; mocked in tests with respx |
 | API docs | scalar-fastapi at `/api/v1/docs` | readable reference with request examples; Swagger and ReDoc disabled |
 | Time zones | stdlib `zoneinfo` + `tzdata` | DST-correct New York sessions even in slim images without system tz data |
@@ -225,6 +280,7 @@ Environment variables, read by pydantic-settings without a prefix. All are docum
 | `PUBLIC_URL` | prod `https://app.candlestack.tech`, stage `https://stage.candlestack.tech`, local `http://localhost:5173`, test `http://testserver` | where the app is reached: OAuth callbacks, cookies (`Secure` and `__Host-` over https), the same-origin check |
 | `REDIS_URL` | `redis://127.0.0.1:6379/0` | |
 | `DATABASE_URL` | `postgresql+asyncpg://candlestack:candlestack@127.0.0.1:5432/candlestack` | Postgres (whitespace stripped); the pool holds at most 10 connections |
+| `MODEL_STORAGE_DIR` | `var/models` | directory of the uploaded model files, relative to the working directory; `/data/models` (a volume) on the VM; created at startup |
 | `OAUTH_GITHUB_CLIENT_ID`, `OAUTH_GITHUB_CLIENT_SECRET` | empty | GitHub OAuth app; without both, GitHub sign-in is off |
 | `OAUTH_GOOGLE_CLIENT_ID`, `OAUTH_GOOGLE_CLIENT_SECRET` | empty | Google OAuth client; without both, Google sign-in is off |
 | `BETA_ALLOWLIST` | empty | comma-separated emails that may sign in with GitHub or Google, any case; empty lets nobody in |
@@ -308,6 +364,9 @@ to check that an error reaches Sentry. The Sentry settings are recorded in
 | Changes on behalf of the user require the app's own origin (`core.require_same_origin`), the OAuth round trip a state bound to the browser (Redis and a cookie) and PKCE | every host under candlestack.tech is the same site to the browser, so SameSite cookies alone do not stop a page on another of them; the state stops login CSRF; PKCE stops a stolen code |
 | Preferences as one JSONB document per section of Settings, read through Pydantic models with defaults | a new setting needs no migration of the rows; the models validate both what is saved and what is read |
 | Account deletion through hooks that other modules register in `main.py` | `accounts` stays at the bottom of the import graph, yet the account's rows in other modules go with it in one transaction; data outside Postgres (model files) is the hook's to keep consistent with a rollback |
+| An upload is checked statically (the zip, its JSON and the HDF5 metadata), never loaded; custom code is refused | loading a Keras file can run code from it (a `Lambda` layer is pickled Python), and the API process must run no user's code and carry no framework; what a load would need code for is refused with the layer named, what only trains (regularizers, constraints, metrics, losses) is ignored |
+| Model files on a local Docker volume behind a `ModelStorage` interface, served only through the API, archived every night for 7 days | no object storage to run or pay for while the files are few and small; Cloudflare R2 can replace the volume without touching the service |
+| Quotas: 50 MB per file, 100 MB per user, checked before the file is read (`Content-Length`) and again under a lock of the user | the VM's disk is small and shared by prod and stage; the second check stops two uploads at once from both passing |
 | A dev sign-in for `APP_ENV` `local` and `test` only, fixed in code, not a setting | signed-in pages can be built and tested without OAuth keys; no setting can turn it on in stage or prod |
 | One source per market, never mixed in one series: Binance spot for crypto, Alpaca SIP for US stocks (15 minutes delayed) | consistent data; both are free |
 | Full history fetched lazily on request, catalog cached 24 h and refreshed in the background | no ingestion pipeline and no scheduler to run |
