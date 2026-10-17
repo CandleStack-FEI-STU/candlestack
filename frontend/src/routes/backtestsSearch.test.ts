@@ -1,0 +1,59 @@
+import { describe, expect, it } from 'vitest';
+
+import { validateBacktestsSearch, withSortBy } from './backtestsSearch';
+
+type RawSearch = Parameters<typeof validateBacktestsSearch>[0];
+const validate = (search: Record<string, unknown>) => validateBacktestsSearch(search as RawSearch);
+
+describe('validateBacktestsSearch', () => {
+  it('keeps every value that is valid', () => {
+    expect(
+      validate({
+        q: ' aapl ',
+        show: 'starred',
+        model: 'lstm.keras',
+        sort: 'sharpe',
+        order: 'asc',
+        page: '2',
+      }),
+    ).toEqual({ q: 'aapl', show: 'starred', model: 'lstm.keras', sort: 'sharpe', order: 'asc', page: 2 });
+  });
+
+  it('drops defaults and broken values', () => {
+    expect(validate({ q: '  ', show: 'all', model: '', sort: 'default', page: '1' })).toEqual({});
+    expect(validate({ show: 'mine', sort: 'drawdown', order: 'up', page: '-3' })).toEqual({});
+    expect(validate({ page: '1e20' })).toEqual({});
+  });
+
+  it('drops an order without a column and gives a column its first order', () => {
+    expect(validate({ order: 'asc' })).toEqual({});
+    expect(validate({ sort: 'return' })).toEqual({ sort: 'return', order: 'desc' });
+    expect(validate({ sort: 'model' })).toEqual({ sort: 'model', order: 'asc' });
+  });
+
+  it('cuts a search longer than the API takes', () => {
+    expect(validate({ q: 'a'.repeat(150) }).q).toHaveLength(100);
+  });
+});
+
+describe('withSortBy', () => {
+  it('sorts a metric down, then up, then back to newest first', () => {
+    const down = withSortBy({ q: 'aapl', page: 3 }, 'sharpe');
+    expect(down).toEqual({ q: 'aapl', page: undefined, sort: 'sharpe', order: 'desc' });
+    const up = withSortBy(down, 'sharpe');
+    expect(up).toMatchObject({ sort: 'sharpe', order: 'asc' });
+    expect(withSortBy(up, 'sharpe')).toMatchObject({ sort: undefined, order: undefined });
+  });
+
+  it('sorts the model A to Z first', () => {
+    const first = withSortBy({}, 'model');
+    expect(first).toMatchObject({ sort: 'model', order: 'asc' });
+    const second = withSortBy(first, 'model');
+    expect(second).toMatchObject({ sort: 'model', order: 'desc' });
+    expect(withSortBy(second, 'model')).toMatchObject({ sort: undefined });
+  });
+
+  it('starts another column over at its first order', () => {
+    expect(withSortBy({ sort: 'sharpe', order: 'asc' }, 'trades')).toMatchObject({ sort: 'trades', order: 'desc' });
+  });
+});

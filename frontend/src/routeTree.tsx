@@ -10,6 +10,7 @@ import { InstrumentsPage } from '@/pages/InstrumentsPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { SignInPage } from '@/pages/SignInPage';
 import { requireSignedIn, skipSignInWhenSignedIn } from '@/routes/accountGuards';
+import { validateBacktestsSearch } from '@/routes/backtestsSearch';
 import { validateInstrumentSearch } from '@/routes/instrumentSearch';
 import { validateInstrumentsSearch } from '@/routes/instrumentsSearch';
 import { FIRST_SECTION, isSettingsSection, showsPreferences, validateSettingsSearch } from '@/routes/settingsSections';
@@ -105,9 +106,11 @@ const dashboardRoute = createRoute({
   component: lazyRouteComponent(() => import('@/pages/DashboardPage'), 'DashboardPage'),
 });
 
+// /backtests?q=aapl&show=starred&sort=sharpe&order=asc&page=2; broken values are dropped.
 const backtestsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/backtests',
+  validateSearch: validateBacktestsSearch,
   component: lazyRouteComponent(() => import('@/pages/BacktestsPage'), 'BacktestsPage'),
 });
 
