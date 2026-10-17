@@ -24,6 +24,9 @@ dist/
 .claude/settings.local.json
 CLAUDE.local.md
 
+# The model files of a backend run from backend/ (MODEL_STORAGE_DIR)
+backend/var/
+
 # Redis snapshots of a local redis-server
 *.rdb
 

@@ -1,6 +1,7 @@
 """Application settings, read from environment variables (no prefix)."""
 
 from functools import cache
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import Depends, Request
@@ -94,6 +95,9 @@ class Settings(BaseSettings):
     binance_data_url: str = "https://data.binance.vision"
     logo_dev_key: SecretStr = SecretStr("")
     logo_dev_url: str = "https://img.logo.dev"
+
+    # The files of the uploaded models; relative to the working directory.
+    model_storage_dir: Path = Path("var/models")
 
     candles_max: int = Field(default=50_000, gt=0)
     client_rate_limit: int = Field(default=60, ge=0)
