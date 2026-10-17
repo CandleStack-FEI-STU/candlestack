@@ -3,7 +3,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 
 import { DashboardCard } from '@/components/DashboardCard';
-import { ApiError, connectUrl, disconnectSignInMethod, meQueryOptions, type Provider } from '@/api';
+import { ApiError, connectUrl, disconnectSignInMethod, meQueryOptions, type Provider, type SignInMethod } from '@/api';
 import { ACCENT_BUTTON, BUTTON_SIZES, OUTLINE_BUTTON } from '@/components/buttonStyles';
 import { KeyIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
@@ -30,7 +30,12 @@ function useDisconnect() {
     onSuccess: (_answer, provider) =>
       queryClient.setQueryData(
         meQueryOptions().queryKey,
-        (me) => me && { ...me, providers: me.providers.filter((connected) => connected !== provider) },
+        (me) =>
+          me && {
+            ...me,
+            providers: me.providers.filter((connected) => connected !== provider),
+            sign_in_methods: me.sign_in_methods.filter((method) => method.provider !== provider),
+          },
       ),
   });
 }
@@ -56,9 +61,8 @@ function disconnectError(error: Error | null): string | undefined {
 
 type RowProps = {
   provider: Provider;
-  // The account's email, which a connected provider signs in with.
-  email: string;
-  connected: boolean;
+  // The provider's account the user signs in with; undefined while it is not connected.
+  method: SignInMethod | undefined;
   // The user's only way in: it cannot be disconnected.
   only: boolean;
   busy: boolean;
@@ -67,7 +71,7 @@ type RowProps = {
 
 // A provider: its mark on a tile, its name over whether it is connected (and as whom), and what to
 // do about it.
-function ProviderRow({ provider, email, connected, only, busy, onDisconnect }: RowProps) {
+function ProviderRow({ provider, method, only, busy, onDisconnect }: RowProps) {
   const { name, Mark } = PROVIDER_INFO[provider];
   return (
     <div className="flex items-center gap-3 rounded-lg border px-3 py-2.5">
@@ -77,10 +81,10 @@ function ProviderRow({ provider, email, connected, only, busy, onDisconnect }: R
       <span className="flex min-w-0 flex-1 flex-col">
         <b>{name}</b>
         <span className="truncate text-xs text-muted-foreground">
-          {connected ? `Connected · ${email}` : 'Not connected'}
+          {method ? `Connected · ${method.email}` : 'Not connected'}
         </span>
       </span>
-      {connected ? (
+      {method ? (
         <Button
           type="button"
           variant="outline"
@@ -115,9 +119,8 @@ export function SignInSection() {
           <ProviderRow
             key={provider}
             provider={provider}
-            email={user.email}
-            connected={user.providers.includes(provider)}
-            only={user.providers.length === 1}
+            method={user.sign_in_methods.find((method) => method.provider === provider)}
+            only={user.sign_in_methods.length === 1}
             busy={disconnect.isPending}
             onDisconnect={() => {
               clearConnectError();

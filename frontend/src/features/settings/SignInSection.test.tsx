@@ -3,7 +3,7 @@ import { cleanup, screen, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { meQueryOptions } from '@/api';
+import { meQueryOptions, type Me } from '@/api';
 import { ARSEN, session, stubApi } from '@/test/api';
 import { renderApp, warmUpSettings } from '@/test/app';
 
@@ -14,7 +14,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const BOTH = { ...ARSEN, providers: ['github' as const, 'google' as const] };
+// Google signs in with an account of another email: each row says its own.
+const BOTH: Me = {
+  ...ARSEN,
+  providers: ['github', 'google'],
+  sign_in_methods: [...ARSEN.sign_in_methods, { provider: 'google', email: 'arsen.labovich@example.org', login: null }],
+};
 
 const card = () => within(screen.getByRole('region', { name: 'Sign-in' }));
 // The row of a provider: the box around its name.
@@ -40,6 +45,14 @@ describe('Sign-in', () => {
     expect(disconnect.getAttribute('title')).toBe('Your only way to sign in');
   });
 
+  it('shows each connected method with the email of its own account', async () => {
+    stubApi(session(BOTH));
+    await renderApp('/settings/sign-in');
+    expect(row('GitHub').getByText('Connected · arsen@example.com')).toBeDefined();
+    expect(row('Google').getByText('Connected · arsen.labovich@example.org')).toBeDefined();
+    expect(row('Google').getByRole('button', { name: 'Disconnect' })).toHaveProperty('disabled', false);
+  });
+
   it('disconnects one of two; the other then is the only one', async () => {
     const fetch = stubApi({ ...session(BOTH), 'DELETE /api/v1/me/sign-in-methods/google': { status: 204 } });
     const { queryClient } = await renderApp('/settings/sign-in');
@@ -50,7 +63,9 @@ describe('Sign-in', () => {
       '/api/v1/me/sign-in-methods/google',
       expect.objectContaining({ method: 'DELETE' }),
     );
-    expect(queryClient.getQueryData(meQueryOptions().queryKey)?.providers).toEqual(['github']);
+    const me = queryClient.getQueryData(meQueryOptions().queryKey);
+    expect(me?.providers).toEqual(['github']);
+    expect(me?.sign_in_methods).toEqual(ARSEN.sign_in_methods);
     expect(row('GitHub').getByRole('button', { name: 'Disconnect' })).toHaveProperty('disabled', true);
   });
 

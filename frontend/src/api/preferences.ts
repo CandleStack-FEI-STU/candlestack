@@ -7,6 +7,8 @@ type Schemas = components['schemas'];
 
 export type Preferences = Schemas['PreferencesOut'];
 export type BacktestDefaults = Schemas['BacktestDefaults'];
+// What Save defaults sends: every field of BacktestDefaults, and no other.
+export type BacktestDefaultsIn = Schemas['BacktestDefaultsIn'];
 export type Appearance = Schemas['Appearance'];
 type AppearanceUpdate = Schemas['AppearanceUpdate'];
 export type Theme = Schemas['Theme'];
@@ -29,8 +31,9 @@ export function preferencesQueryOptions() {
   });
 }
 
-// PUT /api/v1/me/preferences/backtest-defaults: the whole set at once (Save defaults).
-export const saveBacktestDefaults = (defaults: BacktestDefaults) =>
+// PUT /api/v1/me/preferences/backtest-defaults: the whole set at once (Save defaults); the API
+// refuses a body that leaves a field out or adds one.
+export const saveBacktestDefaults = (defaults: BacktestDefaultsIn) =>
   put<BacktestDefaults>('/v1/me/preferences/backtest-defaults', defaults);
 
 // PATCH /api/v1/me/preferences/appearance: only what changed; the API answers with all of it.

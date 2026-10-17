@@ -11,6 +11,7 @@ export {
   updateMe,
   type Me,
   type Provider,
+  type SignInMethod,
 } from './accounts';
 export { candleBridgeQueryOptions, candlePageQueryOptions, type Candles } from './candles';
 export { ApiError } from './client';
@@ -28,6 +29,7 @@ export {
   updateAppearance,
   type Appearance,
   type BacktestDefaults,
+  type BacktestDefaultsIn,
   type Benchmark,
   type DateFormat,
   type DefaultTimeframe,

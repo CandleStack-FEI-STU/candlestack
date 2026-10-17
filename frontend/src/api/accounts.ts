@@ -6,6 +6,7 @@ import type { components } from './schema';
 export type Me = components['schemas']['MeOut'];
 export type DeniedSignIn = components['schemas']['DeniedSignInOut'];
 export type Provider = components['schemas']['Provider'];
+export type SignInMethod = components['schemas']['SignInMethodOut'];
 type MeUpdate = components['schemas']['MeUpdate'];
 
 // GET /api/v1/me: the signed-in user, or null when this browser has no session. The API answers

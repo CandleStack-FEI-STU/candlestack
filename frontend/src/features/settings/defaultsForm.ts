@@ -1,4 +1,4 @@
-import type { BacktestDefaults } from '@/api';
+import type { BacktestDefaults, BacktestDefaultsIn } from '@/api';
 
 // The Backtest defaults card while it is edited: the typed fields as typed (the dates and the
 // percentages), the rest as chosen. Save sends it once every field holds what the API takes.
@@ -44,15 +44,17 @@ function periodErrors({ period_start: start, period_end: end }: DefaultsForm): T
 }
 
 // What Save sends, once every typed field holds what the API takes; until then, the fields that
-// do not.
-export function checkDefaults(form: DefaultsForm): { defaults?: BacktestDefaults; invalid: Set<TypedField> } {
+// do not. It has the nine fields and nothing else: the API refuses any other key.
+export function checkDefaults(form: DefaultsForm): { defaults?: BacktestDefaultsIn; invalid: Set<TypedField> } {
   const fees = percent(form.fees_pct);
   const slippage = percent(form.slippage_pct);
   const invalid = new Set(periodErrors(form));
   if (fees === undefined) invalid.add('fees_pct');
   if (slippage === undefined) invalid.add('slippage_pct');
   if (invalid.size > 0 || fees === undefined || slippage === undefined) return { invalid };
-  return { defaults: { ...form, fees_pct: fees, slippage_pct: slippage }, invalid };
+  const { timeframe, period_start, period_end, direction, threshold, stop_loss_pct, benchmark } = form;
+  const defaults = { timeframe, period_start, period_end, direction, threshold, stop_loss_pct, benchmark };
+  return { defaults: { ...defaults, fees_pct: fees, slippage_pct: slippage }, invalid };
 }
 
 const KEYS: readonly (keyof BacktestDefaults)[] = [
@@ -67,6 +69,6 @@ const KEYS: readonly (keyof BacktestDefaults)[] = [
   'benchmark',
 ];
 
-export function sameDefaults(a: BacktestDefaults, b: BacktestDefaults): boolean {
+export function sameDefaults(a: BacktestDefaultsIn, b: BacktestDefaults): boolean {
   return KEYS.every((key) => a[key] === b[key]);
 }

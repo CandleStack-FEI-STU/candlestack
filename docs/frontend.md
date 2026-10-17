@@ -220,16 +220,18 @@ The two sections with the account's preferences load them in the route's loader
   it changed and is not empty, an empty one is marked, the answer becomes the user in the header
   and the menu), the email and the user ID. Save is off only while it saves, as in the design.
 - Sign-in: GitHub and Google (names and marks from `src/features/signin/providers.ts`, as on the
-  sign-in page), a connected one with the account's email. Connect is a full page navigation to
+  sign-in page), a connected one with the email of its own account (`sign_in_methods` of
+  `GET /api/v1/me`). Connect is a full page navigation to
   `/api/v1/auth/{provider}/start?intent=connect&next=/settings/sign-in`; the API comes back with
   `?error=taken` or `?error=failed`, which the card says under the list. Disconnect
   (`DELETE /api/v1/me/sign-in-methods/{provider}`) is off for the last method, with the title
   "Your only way to sign in"; a 409 `last-sign-in-method` says so too.
 - Backtest defaults: every control of the design (shadcn/ui ToggleGroup for the timeframe and the
   direction cards, Slider for the threshold and the stop loss, Select for the benchmark) and Save
-  defaults, which sends the whole set (`PUT .../backtest-defaults`) once something changed and the
-  typed fields are right (`defaultsForm.ts`: real days, the period ending after it starts, 0 to
-  5 %; a wrong one is marked as it is typed).
+  defaults, which sends the whole set, the nine fields and no other (`PUT .../backtest-defaults`,
+  `BacktestDefaultsIn`), once something changed and the typed fields are right
+  (`defaultsForm.ts`: real days, the period ending after it starts, 0 to 5 %; a wrong one is
+  marked as it is typed).
 - Appearance: each control saves as it changes (`PATCH .../appearance`,
   `src/features/preferences/`): at once in the cache the page reads, then on the account, one
   change after another; a failed one goes back and the card says why (until the next change, not

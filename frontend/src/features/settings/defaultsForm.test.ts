@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_PREFERENCES } from '@/test/api';
 
-import { checkDefaults, formOf, sameDefaults } from './defaultsForm';
+import { checkDefaults, formOf, sameDefaults, type DefaultsForm } from './defaultsForm';
 
 const SAVED = DEFAULT_PREFERENCES.backtest_defaults;
 const FORM = formOf(SAVED);
@@ -42,6 +42,11 @@ describe('the Backtest defaults form', () => {
     expect(checkDefaults({ ...FORM, period_end: '2021-01-04' }).invalid).toEqual(new Set(['period_end']));
     expect(checkDefaults({ ...FORM, period_end: '2020-12-31' }).invalid).toEqual(new Set(['period_end']));
     expect(checkDefaults({ ...FORM, period_end: '2021-01-05' }).invalid.size).toBe(0);
+  });
+
+  it('sends the nine fields and nothing else, even when the form holds more', () => {
+    const form = { ...FORM, extra: 'kept out' } as DefaultsForm;
+    expect(Object.keys(checkDefaults(form).defaults ?? {}).sort()).toEqual(Object.keys(SAVED).sort());
   });
 
   it('tells a change from the saved defaults', () => {
