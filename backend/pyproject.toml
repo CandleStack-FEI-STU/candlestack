@@ -12,6 +12,7 @@ dependencies = [
     "authlib>=1.9.1",
     "fastapi>=0.141.1",
     "granian>=2.8.3",
+    "h5py>=3.16.0",
     "httpx>=0.28.1",
     "orjson>=3.12.0",
     "polars>=1.44.2",
@@ -118,6 +119,10 @@ ban-relative-imports = "all"
 "tests/**" = ["ANN", "ARG", "FBT", "PLR0913", "PLR0917", "PLR0915", "S", "SLF001", "D"]
 # The e2e stand-in for Binance and Alpaca reports on stdout.
 "tests/e2e/mock_sources.py" = ["T201"]
+
+[tool.ty.src]
+# Builds the Keras test files in a container with Keras (its docstring); the backend has none.
+exclude = ["tests/fixtures/keras/make_models.py"]
 
 [tool.ty.rules]
 # On top of ty's defaults: generics spell out their type arguments, and an overriding method
