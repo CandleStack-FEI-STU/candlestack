@@ -42,7 +42,7 @@ def test_start_sends_the_browser_to_github(browser) -> None:
 
 def test_redis_keys_hold_no_state_or_denial_id(browser, providers, auth_keys) -> None:
     start = browser.start("github")
-    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    state = browser.state_of(start)
     providers.github_account(email="grace@example.com")
 
     pending = auth_keys()
@@ -145,7 +145,7 @@ def test_an_account_not_on_the_beta_list(browser, other_browser, providers, sql)
 
 def test_a_sign_in_cancelled_at_the_provider(browser, caplog) -> None:
     start = browser.start("github")
-    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    state = browser.state_of(start)
 
     with caplog.at_level(logging.WARNING):
         callback = browser.callback("github", error="access_denied", state=state)
@@ -161,7 +161,7 @@ def test_a_sign_in_cancelled_at_the_provider(browser, caplog) -> None:
 def test_a_state_from_another_browser(browser, other_browser) -> None:
     """Login CSRF: a victim's browser must not finish the attacker's sign-in."""
     start = browser.start("github")
-    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    state = browser.state_of(start)
 
     callback = other_browser.callback("github", code="the-code", state=state)
 
@@ -180,7 +180,7 @@ def test_a_state_that_does_not_match(browser, state: str) -> None:
 
 def test_a_state_of_another_provider(browser) -> None:
     start = browser.start("github")
-    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    state = browser.state_of(start)
 
     callback = browser.callback("google", code="the-code", state=state)
 
@@ -189,7 +189,7 @@ def test_a_state_of_another_provider(browser) -> None:
 
 def test_an_expired_state(browser, forget_pending) -> None:
     start = browser.start("github")
-    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    state = browser.state_of(start)
     forget_pending()
 
     assert browser.callback("github", code="the-code", state=state).headers["location"] == (
@@ -199,7 +199,7 @@ def test_an_expired_state(browser, forget_pending) -> None:
 
 def test_a_code_the_provider_refuses(browser, providers) -> None:
     start = browser.start("github")
-    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    state = browser.state_of(start)
     providers.challenge = "another"  # the token request fails the PKCE check
 
     assert browser.callback("github", code="the-code", state=state).headers["location"] == (

@@ -4,8 +4,9 @@ Sign-in starts at ``GET /api/v1/auth/{provider}/start?next=<path>``, which redir
 or Google; the provider returns to ``/api/v1/auth/{provider}/callback``, which sets the session
 cookie and redirects to ``next`` (default ``/dashboard``), or to ``/signin?error=denied`` (not on
 the beta list: ``GET /api/v1/auth/denied`` names the account) or ``/signin?error=failed``.
-With ``intent=connect`` the same round trip adds a sign-in method to the signed-in user and
-returns to Settings (``/settings/sign-in``, with ``?error=taken`` or ``?error=failed``).
+With ``intent=connect`` the same round trip, started from a link of Settings, adds a sign-in
+method to the signed-in user and returns to Settings (``/settings/sign-in``, with
+``?error=taken`` or ``?error=failed``).
 """
 
 import logging
@@ -48,7 +49,15 @@ from candlestack.accounts.service import (
     is_connect_state,
     safe_next,
 )
-from candlestack.core import DATABASE_ERRORS, Problem, ProblemError, require_same_origin
+from candlestack.core import (
+    DATABASE_ERRORS,
+    Problem,
+    ProblemError,
+    Settings,
+    SettingsDep,
+    is_same_origin,
+    require_same_origin,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +92,9 @@ def _problem(status: int, description: str) -> dict[int | str, dict[str, Any]]:
 
 
 _NOT_SIGNED_IN = _problem(401, "Not signed in (`not-signed-in`).")
+_CROSS_ORIGIN = _problem(
+    403, "The request does not come from the app's own pages (`cross-origin-request`)."
+)
 
 
 def dev_sign_in_allowed(app_env: str) -> bool:
@@ -99,6 +111,15 @@ def _failed(provider: Provider, error: SignInFailed, page: str) -> RedirectRespo
     return _redirect(f"{page}?error={error.code}")
 
 
+def _database_failed(provider: Provider, error: Exception, page: str) -> RedirectResponse:
+    """Back to `page` with ``error=failed`` when Postgres failed: it is down, or another first
+    sign-in or connect of the same account was just saved. The browser is on its way to or back
+    from the provider, so it gets a page, not a problem. The error reaches Sentry by its type
+    only: its message and the variables of its frames may hold the account's email."""
+    logger.error("Sign-in with %s failed: Postgres failed (%s)", provider, type(error).__name__)
+    return _redirect(f"{page}?error={SignInFailed.code}")
+
+
 def _to_provider(start: SignInStart, cookies: Cookies) -> RedirectResponse:
     response = _redirect(start.url)
     cookies.set(response, STATE, start.state, TTL)
@@ -110,12 +131,13 @@ def _to_provider(start: SignInStart, cookies: Cookies) -> RedirectResponse:
     status_code=302,
     response_class=RedirectResponse,
 )
-async def start_sign_in(  # noqa: PLR0913 (the query parameters and the session cookie)
+async def start_sign_in(  # noqa: PLR0913 (the query parameters and the dependencies)
     provider: Provider,
     *,
     request: Request,
     service: AccountsServiceDep,
     cookies: CookiesDep,
+    settings: SettingsDep,
     wait: Annotated[int, Depends(sign_in_wait)],
     next: NextPath = None,  # noqa: A002 (the parameter's name in the URL)
     intent: IntentParam = SignInIntent.sign_in,
@@ -123,18 +145,24 @@ async def start_sign_in(  # noqa: PLR0913 (the query parameters and the session 
     """Redirects to the provider's sign-in page, or to `/signin?error=failed` when sign-in
     with it is not available or this address made too many sign-in requests in a minute.
 
-    With `intent=connect` (signed in, from Settings) the provider's account is added to the
-    signed-in user's sign-in methods instead: the callback returns to `next` (default
+    With `intent=connect` (signed in, a link of Settings) the provider's account is added to
+    the signed-in user's sign-in methods instead: the callback returns to `next` (default
     `/settings/sign-in`), or to `/settings/sign-in?error=taken` when that account already
-    signs in to another CandleStack user, or `/settings/sign-in?error=failed`."""
-    if intent is SignInIntent.connect:
-        return await _start_connect(provider, request, service, cookies, wait=wait, next_path=next)
+    signs in to another CandleStack user, or `/settings/sign-in?error=failed`, also right away
+    when the request does not come from the app's own pages."""
+    page = CONNECT_NEXT if intent is SignInIntent.connect else SIGN_IN_PAGE
     try:
         if wait:
             raise SignInFailed("too many sign-in requests from this address")
+        if intent is SignInIntent.connect:
+            return await _start_connect(
+                provider, request, service, cookies, settings, next_path=next
+            )
         start = await service.start_sign_in(provider, next)
     except SignInFailed as error:
-        return _failed(provider, error, SIGN_IN_PAGE)
+        return _failed(provider, error, page)
+    except DATABASE_ERRORS as error:  # a connect looks up the session
+        return _database_failed(provider, error, page)
     return _to_provider(start, cookies)
 
 
@@ -143,30 +171,26 @@ async def _start_connect(
     request: Request,
     service: AccountsService,
     cookies: Cookies,
+    settings: Settings,
     *,
-    wait: int,
     next_path: str | None,
 ) -> RedirectResponse:
-    """Starts connecting a sign-in method; a browser that is not signed in signs in first."""
+    """Starts connecting a sign-in method; a browser that is not signed in signs in first.
+
+    Raises:
+        SignInFailed: The request does not come from the app's own pages, the provider is
+            not configured, or Redis failed.
+    """
+    # A link of another site must not connect the provider's account the browser is signed in
+    # to there: SameSite=Lax sends the session cookie along on a navigation.
+    if not is_same_origin(request, settings):
+        raise SignInFailed("the connect does not come from the app's own pages")
     token = cookies.read(request, SESSION)
-    sign_in_first = _redirect(
-        f"{SIGN_IN_PAGE}?{urlencode({'next': safe_next(next_path, CONNECT_NEXT)}, safe='/')}"
-    )
-    if token is None:
-        return sign_in_first
-    try:
-        if wait:
-            raise SignInFailed("too many sign-in requests from this address")
-        signed_in = await service.signed_in(token)
-        if signed_in is None:
-            return sign_in_first
-        start = await service.start_connect(provider, signed_in.user, next_path)
-    except SignInFailed as error:
-        return _failed(provider, error, CONNECT_NEXT)
-    except DATABASE_ERRORS as error:
-        logger.error("Sign-in with %s failed: Postgres failed (%s)", provider, type(error).__name__)
-        return _redirect(f"{CONNECT_NEXT}?error=failed")
-    response = _to_provider(start, cookies)
+    signed_in = None if token is None else await service.signed_in(token)
+    if token is None or signed_in is None:
+        query = urlencode({"next": safe_next(next_path, CONNECT_NEXT)}, safe="/")
+        return _redirect(f"{SIGN_IN_PAGE}?{query}")
+    response = _to_provider(await service.start_connect(provider, token, next_path), cookies)
     if signed_in.extended:  # the session slides on, as on any request of the signed-in user
         cookies.set(response, SESSION, token, SESSION_MAX_AGE)
     return response
@@ -193,6 +217,7 @@ async def finish_sign_in(  # noqa: PLR0913 (the provider's query parameters)
             provider,
             state=state,
             browser_state=cookies.read(request, STATE),
+            session_token=cookies.read(request, SESSION),
             code=code,
             error=error,
         )
@@ -202,14 +227,7 @@ async def finish_sign_in(  # noqa: PLR0913 (the provider's query parameters)
     except SignInFailed as failed:
         response = _failed(provider, failed, page)
     except DATABASE_ERRORS as failed:
-        # Postgres is down, or another first sign-in or connect of the same account was just
-        # saved. The browser comes back from the provider, so it gets a page, not a problem.
-        # The error reaches Sentry by its type only: its message and the variables of its
-        # frames may hold the account's email.
-        logger.error(
-            "Sign-in with %s failed: Postgres failed (%s)", provider, type(failed).__name__
-        )
-        response = _redirect(f"{page}?error=failed")
+        response = _database_failed(provider, failed, page)
     else:
         response = _redirect(done.next_path)
         if done.session_token is not None:
@@ -221,9 +239,7 @@ async def finish_sign_in(  # noqa: PLR0913 (the provider's query parameters)
 @router.post(
     "/api/v1/auth/sign-out",
     status_code=204,
-    responses=_problem(
-        403, "The request does not come from the app's own pages (`cross-origin-request`)."
-    ),
+    responses=_CROSS_ORIGIN,
     dependencies=[Depends(require_same_origin)],
 )
 async def sign_out(request: Request, service: AccountsServiceDep, cookies: CookiesDep) -> Response:
@@ -268,7 +284,11 @@ async def me(user: CurrentUserDep, service: AccountsServiceDep, response: Respon
     return await service.me(user)
 
 
-@router.patch("/api/v1/me", responses=_NOT_SIGNED_IN, dependencies=[Depends(require_same_origin)])
+@router.patch(
+    "/api/v1/me",
+    responses={**_NOT_SIGNED_IN, **_CROSS_ORIGIN},
+    dependencies=[Depends(require_same_origin)],
+)
 async def update_me(
     body: MeUpdate, user: CurrentUserDep, service: AccountsServiceDep, response: Response
 ) -> MeOut:
@@ -280,7 +300,7 @@ async def update_me(
 @router.delete(
     "/api/v1/me",
     status_code=204,
-    responses=_NOT_SIGNED_IN,
+    responses={**_NOT_SIGNED_IN, **_CROSS_ORIGIN},
     dependencies=[Depends(require_same_origin)],
 )
 async def delete_me(
@@ -298,6 +318,7 @@ async def delete_me(
     status_code=204,
     responses={
         **_NOT_SIGNED_IN,
+        **_CROSS_ORIGIN,
         **_problem(404, "The account does not sign in with this provider (`not-found`)."),
         **_problem(409, "It is the account's last sign-in method (`last-sign-in-method`)."),
     },
@@ -325,7 +346,7 @@ async def disconnect(provider: Provider, user: CurrentUserDep, service: Accounts
 @router.post(
     "/api/v1/auth/sign-out-everywhere",
     status_code=204,
-    responses=_NOT_SIGNED_IN,
+    responses={**_NOT_SIGNED_IN, **_CROSS_ORIGIN},
     dependencies=[Depends(require_same_origin)],
 )
 async def sign_out_everywhere(
@@ -349,7 +370,7 @@ async def preferences(
 
 @router.put(
     "/api/v1/me/preferences/backtest-defaults",
-    responses=_NOT_SIGNED_IN,
+    responses={**_NOT_SIGNED_IN, **_CROSS_ORIGIN},
     dependencies=[Depends(require_same_origin)],
 )
 async def save_backtest_defaults(
@@ -362,7 +383,7 @@ async def save_backtest_defaults(
 
 @router.patch(
     "/api/v1/me/preferences/appearance",
-    responses=_NOT_SIGNED_IN,
+    responses={**_NOT_SIGNED_IN, **_CROSS_ORIGIN},
     dependencies=[Depends(require_same_origin)],
 )
 async def update_appearance(

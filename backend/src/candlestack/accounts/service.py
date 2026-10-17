@@ -8,9 +8,11 @@ in only when its email is on the beta list. A session is a random token in the b
 Postgres keeps only its SHA-256.
 
 Connecting a sign-in method in Settings is the same round trip, started by a signed-in user:
-the pending state remembers the user, and the callback adds the provider's account to them
-instead of signing in. Its state starts with ``connect.``, so the callback knows where to send
-the browser back even when the round trip failed before its pending state was found.
+the pending state remembers the session (its hash), and the callback adds the provider's
+account to its user instead of signing in, only while the browser is still signed in with that
+session. So a session that was signed out (everywhere, too) cannot finish a connect it started.
+Its state starts with ``connect.``, so the callback knows where to send the browser back even
+when the round trip failed before its pending state was found.
 """
 
 import hashlib
@@ -109,8 +111,9 @@ class SignInStart:
 
 @dataclass(frozen=True, slots=True)
 class SignInDone:
-    """The page to open, and the token of the new session to put in the browser's cookie; no
-    token when a sign-in method was connected (the browser stays in its session)."""
+    """The page to open, and the token of the session to put in the browser's cookie: a new
+    session's, or that of the session that connected a sign-in method when it was extended
+    (else none: the browser stays in its session)."""
 
     next_path: str
     session_token: str | None
@@ -127,8 +130,11 @@ class SignedIn:
 class AccountDeletionHook(Protocol):
     """Deletes what another module keeps for a user whose account is being deleted, e.g. their
     models or backtests. It runs in the deletion's transaction (`db`), before the user's row
-    goes; when it raises, nothing is deleted. Hooks are wired in ``candlestack.main``, so this
-    module never imports the modules that own the data."""
+    goes; when it raises, the transaction rolls back. Only Postgres rolls back: a hook that
+    touches other storage (files on disk) must leave the user's data usable when a later hook
+    or the commit fails, e.g. mark files for deletion and remove them later, instead of
+    removing them here. Hooks are wired in ``candlestack.main``, so this module never imports the
+    modules that own the data."""
 
     async def __call__(self, user_id: str, db: AsyncSession) -> None: ...
 
@@ -160,10 +166,11 @@ class AccountsService:
         )
 
     async def start_connect(
-        self, provider: Provider, user: User, next_path: str | None
+        self, provider: Provider, session_token: str, next_path: str | None
     ) -> SignInStart:
-        """Like `start_sign_in`, but the callback adds the provider's account to `user`'s
-        sign-in methods and returns to `next_path` (default ``/settings/sign-in``).
+        """Like `start_sign_in`, but the callback adds the provider's account to the sign-in
+        methods of the user of the session with `session_token`, if the browser is still signed
+        in with it then, and returns to `next_path` (default ``/settings/sign-in``).
 
         Raises:
             SignInFailed: The provider is not configured, or Redis failed.
@@ -172,7 +179,7 @@ class AccountsService:
             provider,
             _CONNECT_STATE_PREFIX + secrets.token_urlsafe(32),
             next_path=safe_next(next_path, CONNECT_NEXT),
-            connect_user_id=user.id,
+            connect_session=_hash(session_token).hex(),
         )
 
     async def _start(
@@ -181,7 +188,7 @@ class AccountsService:
         state: str,
         *,
         next_path: str,
-        connect_user_id: str | None = None,
+        connect_session: str | None = None,
     ) -> SignInStart:
         verifier = secrets.token_urlsafe(48)
         url = self._oauth.authorization_url(provider, state=state, verifier=verifier)
@@ -191,7 +198,7 @@ class AccountsService:
                 provider=provider,
                 verifier=verifier,
                 next=next_path,
-                connect_user_id=connect_user_id,
+                connect_session=connect_session,
             ),
         )
         return SignInStart(url=url, state=state)
@@ -202,6 +209,7 @@ class AccountsService:
         *,
         state: str | None,
         browser_state: str | None,
+        session_token: str | None,
         code: str | None,
         error: str | None,
     ) -> SignInDone:
@@ -209,10 +217,11 @@ class AccountsService:
         started connecting it.
 
         `state`, `code` and `error` are the callback's query parameters, `browser_state` the
-        state cookie of the browser.
+        state cookie of the browser and `session_token` its session cookie.
 
         Raises:
-            SignInFailed: The sign-in or connect was cancelled or failed.
+            SignInFailed: The sign-in or connect was cancelled or failed, or the session that
+                started the connect ended or is not this browser's any more.
             SignInMethodTaken: The account to connect signs in to another user.
             SignInDenied: The account's email is not on the beta list (sign-in only).
         """
@@ -225,10 +234,16 @@ class AccountsService:
             raise SignInFailed("the state is unknown or expired")
         if error is not None or not code:
             raise SignInFailed(f"{provider} returned no code (cancelled or refused)")
+        if pending.connect_session is not None:
+            signed_in = await self._connecting(pending.connect_session, session_token)
+            await self._connect(
+                signed_in.user,
+                await self._oauth.fetch_account(provider, code=code, verifier=pending.verifier),
+            )
+            return SignInDone(
+                next_path=pending.next, session_token=session_token if signed_in.extended else None
+            )
         account = await self._oauth.fetch_account(provider, code=code, verifier=pending.verifier)
-        if pending.connect_user_id is not None:
-            await self._connect(pending.connect_user_id, account)
-            return SignInDone(next_path=pending.next, session_token=None)
         identity = await self._store.identity(account.provider, account.subject)
         known = None if identity is None else await self._store.user(identity.user_id)
         # The beta list admits users: an account that signed in before is checked by its user's
@@ -257,25 +272,40 @@ class AccountsService:
         user.last_sign_in_at = now
         return user
 
-    async def _connect(self, user_id: str, account: ProviderAccount) -> None:
+    async def _connecting(self, connect_session: str, session_token: str | None) -> SignedIn:
+        """The session that started a connect (`connect_session`, its hash), when the browser
+        is still signed in with it (`session_token`).
+
+        Raises:
+            SignInFailed: The browser has no session, or another one (it signed out, or in as
+                someone else), or the session ended (signed out everywhere, the account
+                deleted).
+        """
+        signed_in = None
+        if session_token is not None and secrets.compare_digest(
+            _hash(session_token).hex(), connect_session
+        ):
+            signed_in = await self.signed_in(session_token)
+        if signed_in is None:
+            raise SignInFailed("the session that started the connect ended")
+        return signed_in
+
+    async def _connect(self, user: User, account: ProviderAccount) -> None:
         """Adds `account` to the user's sign-in methods. The beta list does not apply (the user
-        is in already), and the user's email stays that of their first sign-in.
+        is in already), and the user's email stays that of their first sign-in. A user deleted
+        meanwhile fails the commit (the foreign key).
 
         Raises:
             SignInMethodTaken: The account signs in to another user.
-            SignInFailed: The user was deleted meanwhile, or signs in with another account of
-                the provider already.
+            SignInFailed: The user signs in with another account of the provider already.
         """
         identity = await self._store.identity(account.provider, account.subject)
         if identity is not None:
-            if identity.user_id != user_id:
+            if identity.user_id != user.id:
                 raise SignInMethodTaken
             return  # connected already
-        await self._store.lock_user(user_id)
-        user = await self._store.user(user_id)
-        if user is None:
-            raise SignInFailed("the user was deleted while connecting")
-        if account.provider in await self._store.providers(user_id):
+        await self._store.lock_user(user.id)
+        if account.provider in await self._store.providers(user.id):
             raise SignInFailed(f"the user signs in with another {account.provider} account")
         self._add_identity(user, account, _now())
         await self._store.commit()

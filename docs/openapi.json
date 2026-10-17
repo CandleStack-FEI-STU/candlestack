@@ -1393,6 +1393,16 @@
               }
             },
             "description": "Not signed in (`not-signed-in`)."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request does not come from the app's own pages (`cross-origin-request`)."
           }
         },
         "summary": "Sign Out Everywhere",
@@ -1403,7 +1413,7 @@
     },
     "/api/v1/auth/{provider}/start": {
       "get": {
-        "description": "Redirects to the provider's sign-in page, or to `/signin?error=failed` when sign-in\nwith it is not available or this address made too many sign-in requests in a minute.\n\nWith `intent=connect` (signed in, from Settings) the provider's account is added to the\nsigned-in user's sign-in methods instead: the callback returns to `next` (default\n`/settings/sign-in`), or to `/settings/sign-in?error=taken` when that account already\nsigns in to another CandleStack user, or `/settings/sign-in?error=failed`.",
+        "description": "Redirects to the provider's sign-in page, or to `/signin?error=failed` when sign-in\nwith it is not available or this address made too many sign-in requests in a minute.\n\nWith `intent=connect` (signed in, a link of Settings) the provider's account is added to\nthe signed-in user's sign-in methods instead: the callback returns to `next` (default\n`/settings/sign-in`), or to `/settings/sign-in?error=taken` when that account already\nsigns in to another CandleStack user, or `/settings/sign-in?error=failed`, also right away\nwhen the request does not come from the app's own pages.",
         "operationId": "start_sign_in_api_v1_auth__provider__start_get",
         "parameters": [
           {
@@ -1987,6 +1997,16 @@
               }
             },
             "description": "Not signed in (`not-signed-in`)."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request does not come from the app's own pages (`cross-origin-request`)."
           }
         },
         "summary": "Delete Me",
@@ -2057,6 +2077,16 @@
               }
             },
             "description": "Not signed in (`not-signed-in`)."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request does not come from the app's own pages (`cross-origin-request`)."
           },
           "422": {
             "content": {
@@ -2142,6 +2172,16 @@
             },
             "description": "Not signed in (`not-signed-in`)."
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request does not come from the app's own pages (`cross-origin-request`)."
+          },
           "422": {
             "content": {
               "application/problem+json": {
@@ -2194,6 +2234,16 @@
             },
             "description": "Not signed in (`not-signed-in`)."
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request does not come from the app's own pages (`cross-origin-request`)."
+          },
           "422": {
             "content": {
               "application/problem+json": {
@@ -2238,6 +2288,16 @@
               }
             },
             "description": "Not signed in (`not-signed-in`)."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request does not come from the app's own pages (`cross-origin-request`)."
           },
           "404": {
             "content": {

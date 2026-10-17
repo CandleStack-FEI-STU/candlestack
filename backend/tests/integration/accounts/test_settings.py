@@ -5,7 +5,7 @@ deleting the account."""
 import json
 import logging
 from datetime import UTC, datetime, timedelta
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import urlsplit
 
 import pytest
 from sqlalchemy import text
@@ -51,10 +51,6 @@ BACKTEST = {
 def cookies_set(response) -> dict[str, str]:
     """The cookies a response sets or deletes, by name: the whole Set-Cookie line."""
     return {line.split("=", 1)[0]: line for line in response.headers.get_list("set-cookie")}
-
-
-def state_of(start) -> str:
-    return parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
 
 
 # --- Profile ---------------------------------------------------------------------------------
@@ -298,7 +294,7 @@ def test_a_connect_cancelled_at_the_provider(browser) -> None:
     browser.sign_in("github")
     start = browser.start("google", intent="connect")
 
-    callback = browser.callback("google", error="access_denied", state=state_of(start))
+    callback = browser.callback("google", error="access_denied", state=browser.state_of(start))
 
     assert callback.headers["location"] == "/settings/sign-in?error=failed"
     assert browser.me().json()["providers"] == ["github"]
@@ -309,7 +305,7 @@ def test_a_connect_whose_code_the_provider_refuses(browser, providers) -> None:
     start = browser.start("google", intent="connect")
     providers.challenge = "another"  # the token request fails the PKCE check
 
-    callback = browser.callback("google", code="the-code", state=state_of(start))
+    callback = browser.callback("google", code="the-code", state=browser.state_of(start))
 
     assert callback.headers["location"] == "/settings/sign-in?error=failed"
 
@@ -319,21 +315,107 @@ def test_an_expired_connect_returns_to_settings(browser, forget_pending) -> None
     start = browser.start("google", intent="connect")
     forget_pending()
 
-    callback = browser.callback("google", code="the-code", state=state_of(start))
+    callback = browser.callback("google", code="the-code", state=browser.state_of(start))
 
     assert callback.headers["location"] == "/settings/sign-in?error=failed"
 
 
-def test_a_connect_of_a_deleted_user(browser, caplog) -> None:
+def _connect_after(browser, provider: str, meanwhile) -> object:
+    """Starts connecting `provider`, runs `meanwhile` while the browser is at the provider, then
+    finishes the connect; the callback's response."""
+    start = browser.start(provider, intent="connect")
+    meanwhile()
+    return browser.callback(provider, code="the-code", state=browser.state_of(start))
+
+
+def _session_ended(callback, caplog) -> None:
+    assert callback.headers["location"] == "/settings/sign-in?error=failed"
+    assert "session" not in cookies_set(callback)
+    assert "the session that started the connect ended" in caplog.text
+
+
+def test_a_connect_after_signing_out(browser, sql, caplog) -> None:
     browser.sign_in("github")
-    start = browser.start("google", intent="connect")
-    browser.delete("/api/v1/me", headers=ORIGIN)
 
     with caplog.at_level(logging.WARNING):
-        callback = browser.callback("google", code="the-code", state=state_of(start))
+        callback = _connect_after(browser, "google", browser.sign_out)
 
-    assert callback.headers["location"] == "/settings/sign-in?error=failed"
-    assert "the user was deleted while connecting" in caplog.text
+    _session_ended(callback, caplog)
+    assert sql("SELECT provider FROM identities") == [("github",)]
+
+
+def test_a_connect_of_a_stolen_session_after_signing_out_everywhere(
+    browser, other_browser, providers, sql, caplog
+) -> None:
+    """Signing out everywhere also stops a connect that a stolen session started: the thief
+    cannot keep a way to sign in."""
+    browser.sign_in("github")
+    other_browser.set_cookie("session", browser.cookie("session"))
+    providers.google_account(subject="666", email="thief@example.org")
+
+    def sign_out_everywhere() -> None:
+        browser.post("/api/v1/auth/sign-out-everywhere", headers=ORIGIN)
+
+    with caplog.at_level(logging.WARNING):
+        callback = _connect_after(other_browser, "google", sign_out_everywhere)
+
+    _session_ended(callback, caplog)
+    assert sql("SELECT provider FROM identities") == [("github",)]
+
+
+def test_a_connect_after_signing_in_as_another_user(browser, sql, caplog) -> None:
+    browser.sign_in("github")
+
+    def sign_in_as_the_dev_user() -> None:
+        browser.sign_out()
+        browser.post("/api/v1/auth/dev", headers=ORIGIN)
+
+    with caplog.at_level(logging.WARNING):
+        callback = _connect_after(browser, "google", sign_in_as_the_dev_user)
+
+    _session_ended(callback, caplog)
+    assert browser.me().json()["providers"] == []
+    assert sql("SELECT provider FROM identities") == [("github",)]
+
+
+def test_a_connect_of_a_deleted_user(browser, sql, caplog) -> None:
+    browser.sign_in("github")
+
+    def delete_the_account() -> None:
+        browser.delete("/api/v1/me", headers=ORIGIN)
+
+    with caplog.at_level(logging.WARNING):
+        callback = _connect_after(browser, "google", delete_the_account)
+
+    _session_ended(callback, caplog)
+    assert sql("SELECT provider FROM identities") == []
+
+
+def test_a_connect_with_another_session_of_the_user(browser, other_browser, caplog) -> None:
+    """Only the session that started a connect finishes it."""
+    browser.sign_in("github")
+    other_browser.sign_in("github")
+    start = browser.start("google", intent="connect")
+    other_browser.set_cookie("sign_in_state", browser.cookie("sign_in_state"))
+
+    with caplog.at_level(logging.WARNING):
+        callback = other_browser.callback("google", code="the-code", state=browser.state_of(start))
+
+    _session_ended(callback, caplog)
+    assert other_browser.me().json()["providers"] == ["github"]
+
+
+def test_a_connect_slides_the_session_on_at_the_callback(browser, monkeypatch) -> None:
+    browser.sign_in("github")
+    start = browser.start("google", intent="connect")
+    moved = datetime.now(UTC) + timedelta(days=2)
+    monkeypatch.setattr(service, "_now", lambda: moved)
+
+    callback = browser.callback("google", code="the-code", state=browser.state_of(start))
+
+    assert callback.headers["location"] == "/settings/sign-in"
+    assert "Max-Age=2592000" in cookies_set(callback)["session"]
+    assert browser.me().json()["providers"] == ["github", "google"]
 
 
 def test_a_connect_that_loses_a_race_fails(browser, other_browser, monkeypatch, caplog) -> None:

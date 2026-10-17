@@ -17,6 +17,8 @@ from candlestack.main import create_app
 
 PROBLEMS = "https://candlestack.tech/problems/"
 ORIGIN = {"Origin": "http://testserver"}
+# What a browser sends with a navigation from a page of the app, e.g. the Connect link.
+LINK = {"Sec-Fetch-Site": "same-origin"}
 
 
 @dataclass
@@ -187,11 +189,44 @@ def test_connect_without_a_session_signs_in_first(
 ) -> None:
     params = {"intent": "connect"} | ({"next": next_path} if next_path else {})
 
-    response = client.get("/api/v1/auth/google/start", params=params, follow_redirects=False)
+    response = client.get(
+        "/api/v1/auth/google/start", params=params, headers=LINK, follow_redirects=False
+    )
 
     assert response.status_code == 302
     assert response.headers["location"] == location
     assert "set-cookie" not in response.headers
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {},
+        {"Sec-Fetch-Site": "cross-site"},
+        {"Sec-Fetch-Site": "same-site"},
+        {"Sec-Fetch-Site": "none"},
+        {"Origin": "https://evil.example"},
+    ],
+)
+def test_connect_from_another_site_fails(
+    client: TestClient, headers: dict[str, str], caplog: pytest.LogCaptureFixture
+) -> None:
+    """A link of another site must not connect the provider's account the browser is signed in
+    to there, even when the provider asks for no consent again."""
+    client.cookies.set("session", "some-token")
+
+    with caplog.at_level(logging.WARNING):
+        response = client.get(
+            "/api/v1/auth/github/start",
+            params={"intent": "connect"},
+            headers=headers,
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "/settings/sign-in?error=failed"
+    assert "set-cookie" not in response.headers
+    assert "the connect does not come from the app's own pages" in caplog.text
 
 
 def test_connect_over_the_rate_limit_returns_to_settings(

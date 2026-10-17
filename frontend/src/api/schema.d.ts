@@ -121,10 +121,11 @@ export interface paths {
          * @description Redirects to the provider's sign-in page, or to `/signin?error=failed` when sign-in
          *     with it is not available or this address made too many sign-in requests in a minute.
          *
-         *     With `intent=connect` (signed in, from Settings) the provider's account is added to the
-         *     signed-in user's sign-in methods instead: the callback returns to `next` (default
+         *     With `intent=connect` (signed in, a link of Settings) the provider's account is added to
+         *     the signed-in user's sign-in methods instead: the callback returns to `next` (default
          *     `/settings/sign-in`), or to `/settings/sign-in?error=taken` when that account already
-         *     signs in to another CandleStack user, or `/settings/sign-in?error=failed`.
+         *     signs in to another CandleStack user, or `/settings/sign-in?error=failed`, also right away
+         *     when the request does not come from the app's own pages.
          */
         get: operations["start_sign_in_api_v1_auth__provider__start_get"];
         put?: never;
@@ -1172,6 +1173,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The request does not come from the app's own pages (`cross-origin-request`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     start_sign_in_api_v1_auth__provider__start_get: {
@@ -1510,6 +1520,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The request does not come from the app's own pages (`cross-origin-request`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     update_me_api_v1_me_patch: {
@@ -1536,6 +1555,15 @@ export interface operations {
             };
             /** @description Not signed in (`not-signed-in`). */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not come from the app's own pages (`cross-origin-request`). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1614,6 +1642,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The request does not come from the app's own pages (`cross-origin-request`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Invalid request */
             422: {
                 headers: {
@@ -1656,6 +1693,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The request does not come from the app's own pages (`cross-origin-request`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Invalid request */
             422: {
                 headers: {
@@ -1687,6 +1733,15 @@ export interface operations {
             };
             /** @description Not signed in (`not-signed-in`). */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not come from the app's own pages (`cross-origin-request`). */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

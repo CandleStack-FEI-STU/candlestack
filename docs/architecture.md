@@ -91,14 +91,20 @@ flowchart LR
   beta list admits users: a new account by its email, an account that signed in before by the
   email of its user (that of the user's first sign-in), so a method connected in Settings signs
   in too, and a user whose email leaves the list cannot sign in with any method.
-- **Sign-in methods**: `GET /api/v1/auth/{provider}/start?intent=connect&next=<path>` starts
-  the same round trip for the signed-in user (without a session it redirects to
-  `/signin?next=/settings/sign-in`). Its pending state in Redis remembers the user, and the
-  callback adds the provider's account to them, without the beta list and without changing
-  their email, then returns to `next` (default `/settings/sign-in`). An account that signs in
-  to another user returns `/settings/sign-in?error=taken`, one connected to this user already
-  just returns, and any failure (cancelled, expired, a second account of the same provider)
-  returns `/settings/sign-in?error=failed`. A connect's state starts with `connect.`, so the
+- **Sign-in methods**: `GET /api/v1/auth/{provider}/start?intent=connect&next=<path>`, the
+  Connect link of Settings, starts the same round trip for the signed-in user (without a
+  session it redirects to `/signin?next=/settings/sign-in`). Being a navigation, it carries no
+  `Origin`, so it must come with `Sec-Fetch-Site: same-origin`: a link of another site cannot
+  connect the provider's account the browser is signed in to there. Its pending state in Redis
+  remembers the session that started it (the token's SHA-256), and the callback adds the
+  provider's account to that session's user only while the browser is still signed in with it,
+  so a connect started by a session that was signed out since (everywhere, too, after a theft)
+  or by another user of the browser fails. The callback adds the account without the beta list
+  and without changing the user's email, then returns to `next` (default `/settings/sign-in`).
+  An account that signs in to another user returns `/settings/sign-in?error=taken`, one
+  connected to this user already just returns, and any failure (cancelled, expired, the
+  session ended, a second account of the same provider) returns
+  `/settings/sign-in?error=failed`. A connect's state starts with `connect.`, so the
   callback knows where to return even when it failed before its pending state was found. The
   last sign-in method cannot be removed; changes of a user's methods lock the user's row, so
   two removals at once cannot leave none.
@@ -115,8 +121,11 @@ flowchart LR
   of a user (models, backtests) deletes it through an `AccountDeletionHook`
   (`async (user_id, db) -> None`), which `candlestack.main` puts on
   `app.state.account_deletion_hooks`: the hooks run in the deletion's transaction before the
-  user's row goes, and one that raises deletes nothing (500). `accounts` never imports
-  the modules that own the data. No module registers a hook yet.
+  user's row goes, and one that raises rolls the deletion back (500). That holds for rows in
+  Postgres only: a hook that touches storage outside the transaction (files on disk) must
+  leave it as it was when a later hook or the commit fails, e.g. mark the files for deletion
+  and remove them later, or tolerate the account staying. `accounts` never imports the modules
+  that own the data. No module registers a hook yet.
 - Every route of the signed-in user that returns user data sends `Cache-Control: no-store`, and
   every change requires the app's own origin.
 
@@ -287,7 +296,7 @@ to check that an error reaches Sentry. The Sentry settings are recorded in
 | Server-side sessions: a random token in an HttpOnly, SameSite=Lax cookie (`__Host-` over https), only its SHA-256 in Postgres, 30 days sliding | a session can be ended at once (sign-out, later admin), a database leak does not leak sessions, and no script can read the cookie |
 | Changes on behalf of the user require the app's own origin (`core.require_same_origin`), the OAuth round trip a state bound to the browser (Redis and a cookie) and PKCE | every host under candlestack.tech is the same site to the browser, so SameSite cookies alone do not stop a page on another of them; the state stops login CSRF; PKCE stops a stolen code |
 | Preferences as one JSONB document per section of Settings, read through Pydantic models with defaults | a new setting needs no migration of the rows; the models validate both what is saved and what is read |
-| Account deletion through hooks that other modules register in `main.py` | `accounts` stays at the bottom of the import graph, yet the account's models and backtests go with it in one transaction |
+| Account deletion through hooks that other modules register in `main.py` | `accounts` stays at the bottom of the import graph, yet the account's rows in other modules go with it in one transaction; data outside Postgres (model files) is the hook's to keep consistent with a rollback |
 | A dev sign-in for `APP_ENV` `local` and `test` only, fixed in code, not a setting | signed-in pages can be built and tested without OAuth keys; no setting can turn it on in stage or prod |
 | One source per market, never mixed in one series: Binance spot for crypto, Alpaca SIP for US stocks (15 minutes delayed) | consistent data; both are free |
 | Full history fetched lazily on request, catalog cached 24 h and refreshed in the background | no ingestion pipeline and no scheduler to run |
