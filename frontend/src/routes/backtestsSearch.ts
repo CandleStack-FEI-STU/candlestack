@@ -21,9 +21,13 @@ function parseText(value: unknown, max: number): string | undefined {
   return text === '' ? undefined : text;
 }
 
+const MAX_PAGE = 100_000; // the API's limit for `page`
+
+// A page the API takes: a larger one asks for page 100000, which the list then brings back to
+// its last page, instead of a request the API refuses.
 function parsePage(value: unknown): number | undefined {
   const page = Number(value);
-  return Number.isSafeInteger(page) && page > 1 ? page : undefined;
+  return Number.isSafeInteger(page) && page > 1 ? Math.min(page, MAX_PAGE) : undefined;
 }
 
 // The order a column sorts in first: down, but the model A to Z.

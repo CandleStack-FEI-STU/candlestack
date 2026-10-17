@@ -180,6 +180,35 @@ describe('the Backtests page', () => {
     expect(asked(fetch).at(-1)).toBe('/api/v1/backtests?show=starred&model=blesk-novol-8.keras');
   });
 
+  it('pops the Filters panel open from its corner, 8 px under each heading, and simply closes it', async () => {
+    stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer(PAGE) });
+    await renderApp('/backtests');
+    await screen.findByText('#12');
+    await userEvent.click(screen.getByRole('button', { name: 'Filters: All backtests' }));
+    const panel = screen.getByRole('dialog', { name: 'Filters' });
+    const classes = panel.className.split(' ');
+    expect(classes).toEqual(
+      expect.arrayContaining([
+        'origin-top-left',
+        'data-[state=open]:animate-fx-pop!',
+        'data-[state=closed]:animate-none!',
+      ]),
+    );
+    for (const heading of [within(panel).getByText('Show'), within(panel).getByText('Model')]) {
+      expect(heading.className.split(' ')).toContain('mb-2');
+      expect(heading.className).not.toMatch(/mb-1/);
+    }
+  });
+
+  it('rings a row while its opener has the keyboard focus', async () => {
+    stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer(PAGE) });
+    await renderApp('/backtests');
+    const opener = await screen.findByRole('button', { name: 'Backtest #12' });
+    expect(opener.className.split(' ')).toEqual(
+      expect.arrayContaining(['after:absolute', 'after:inset-0', 'focus-visible:after:ring-2', 'outline-none']),
+    );
+  });
+
   it('stars a backtest at once and takes the star back when the API refuses', async () => {
     stubApi({
       ...sessionWithPreferences(ARSEN),

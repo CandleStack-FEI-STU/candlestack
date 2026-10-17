@@ -47,16 +47,16 @@ export function SortButton({
   );
 }
 
+// What opens a row, stretched over it (::after). With the keyboard's focus the row gets a ring
+// inside its edge; a click shows none, as in the mockup.
+export const ROW_OPENER =
+  'cursor-pointer outline-none after:absolute after:inset-0 focus-visible:text-primary focus-visible:after:rounded-md focus-visible:after:ring-2 focus-visible:after:ring-ring/60 focus-visible:after:ring-inset';
+
 // The button that opens a row's backtest, stretched over the whole row so the row is one click
 // target and the keyboard reaches it; what else the row holds (the star) sits above it.
 export function RowOpener({ label, onOpen, children }: { label: string; onOpen: () => void; children: ReactNode }) {
   return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onOpen}
-      className="cursor-pointer outline-none after:absolute after:inset-0 focus-visible:text-primary"
-    >
+    <button type="button" aria-label={label} onClick={onOpen} className={ROW_OPENER}>
       {children}
     </button>
   );

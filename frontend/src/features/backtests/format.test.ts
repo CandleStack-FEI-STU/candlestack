@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { chipsOf, instrumentList, representationName } from './format';
+import { backtest, failedBacktest } from '@/test/api';
+
+import { chipsOf, hasResults, instrumentList, representationName } from './format';
+
+describe('hasResults', () => {
+  it('is true for a finished backtest only', () => {
+    expect(hasResults(backtest())).toBe(true);
+    expect(hasResults(failedBacktest())).toBe(false);
+    expect(hasResults(backtest({ status: 'running' }))).toBe(false);
+  });
+});
 
 describe('instrumentList', () => {
   it('writes one, a few, or the first three and how many more', () => {

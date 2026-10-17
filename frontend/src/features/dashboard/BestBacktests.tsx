@@ -2,7 +2,6 @@ import { useState } from 'react';
 
 import type { Backtest, BestMetric, Dashboard } from '@/api';
 import { TrophyIcon } from '@/components/icons';
-import { DashboardCard } from '@/components/DashboardCard';
 import {
   BacktestNumber,
   CELL,
@@ -18,7 +17,7 @@ import {
 import { formatPercent, formatSharpe, formatWinRate } from '@/lib/results';
 import { cn } from '@/lib/utils';
 
-import { Hint } from './widgets';
+import { Hint, Widget } from './widgets';
 
 // The results Best backtests ranks by, in the order of their columns (mockups/app, DD_BEST): the
 // heading, the hint's word, and how a value is written.
@@ -75,7 +74,7 @@ export function BestBacktests({ best, onOpen }: Props) {
   const [by, setBy] = useState<BestMetric>('sharpe');
   const word = METRICS.find((each) => each.metric === by)?.by;
   return (
-    <DashboardCard icon={TrophyIcon} title="Best backtests" aside={<Hint>by {word}</Hint>} className="gap-0">
+    <Widget icon={TrophyIcon} title="Best backtests" aside={<Hint>by {word}</Hint>}>
       <div className="overflow-x-auto">
         <table className={TABLE}>
           <thead>
@@ -108,6 +107,6 @@ export function BestBacktests({ best, onOpen }: Props) {
           </tbody>
         </table>
       </div>
-    </DashboardCard>
+    </Widget>
   );
 }

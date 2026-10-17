@@ -1,10 +1,9 @@
 import type { ComponentProps } from 'react';
 
-import { DashboardCard } from '@/components/DashboardCard';
 import { UploadDialog } from '@/features/models';
 import { cn } from '@/lib/utils';
 
-import { Hint } from './widgets';
+import { Hint, Widget } from './widgets';
 
 type StepProps = ComponentProps<'button'> & { step: number; title: string; hint: string };
 
@@ -43,7 +42,7 @@ function Step({ step, title, hint, className, ...props }: StepProps) {
 // the other up to 860 px.
 export function GetStarted({ onNewBacktest }: { onNewBacktest: () => void }) {
   return (
-    <DashboardCard title="Get started" aside={<Hint>2 steps</Hint>} className="gap-0">
+    <Widget title="Get started" aside={<Hint>2 steps</Hint>}>
       <div className="grid grid-cols-2 gap-2 max-[860px]:grid-cols-1">
         <Step
           step={1}
@@ -55,6 +54,6 @@ export function GetStarted({ onNewBacktest }: { onNewBacktest: () => void }) {
           <Step step={2} title="Upload your own model" hint="We check that it is a real model with trained weights" />
         </UploadDialog>
       </div>
-    </DashboardCard>
+    </Widget>
   );
 }

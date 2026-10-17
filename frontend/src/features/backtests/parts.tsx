@@ -5,7 +5,7 @@ import { formatRecentTime } from '@/lib/dates';
 import { formatPercent, MISSING } from '@/lib/results';
 import { cn } from '@/lib/utils';
 
-import { chipsOf, returnClass, symbolsOf } from './format';
+import { chipsOf, hasResults, returnClass, symbolsOf } from './format';
 
 // The small parts every list of backtests draws the same way (mockups/app).
 
@@ -74,7 +74,7 @@ export function ModelName({ name, framework }: { name: string; framework: string
 
 // A backtest's return, or the Failed badge when it has none.
 export function BacktestReturn({ backtest }: { backtest: Backtest }) {
-  const value = backtest.status === 'finished' ? backtest.total_return : null;
+  const value = hasResults(backtest) ? backtest.total_return : null;
   return value === null ? <FailedBadge /> : <ReturnValue value={value} />;
 }
 

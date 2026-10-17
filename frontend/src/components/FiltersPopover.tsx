@@ -63,12 +63,20 @@ function Option({ index, active, selected, usable, label, note, onPick, onFocus,
   );
 }
 
+type SectionProps = {
+  title: string;
+  area?: string;
+  // The space under the heading: 4 px on a phone and 8 px from sm up unless a panel says otherwise.
+  headingClassName?: string;
+  children: ReactNode;
+};
+
 // A section of the panel: its heading over its list of entries.
-export function FilterSection({ title, area, children }: { title: string; area?: string; children: ReactNode }) {
+export function FilterSection({ title, area, headingClassName = 'mb-1 sm:mb-2', children }: SectionProps) {
   const id = useId();
   return (
     <div className={area}>
-      <p id={id} className="mb-1 text-xs font-medium text-muted-foreground sm:mb-2">
+      <p id={id} className={cn('text-xs font-medium text-muted-foreground', headingClassName)}>
         {title}
       </p>
       <div role="listbox" aria-labelledby={id} className="-mx-1">

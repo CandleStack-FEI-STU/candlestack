@@ -4,13 +4,14 @@ import { useState, type FormEvent } from 'react';
 import { DashboardCard } from '@/components/DashboardCard';
 import { meQueryOptions, updateMe, type Me } from '@/api';
 import { ACCENT_BUTTON, BUTTON_SIZES } from '@/components/buttonStyles';
+import { HINT } from '@/components/ErrorNote';
 import { UserIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, useSignedInUser } from '@/features/account';
 import { cn } from '@/lib/utils';
 
-import { Code, HINT, SettingsFooter, SettingsRow } from './rows';
+import { Code, SettingsFooter, SettingsRow } from './rows';
 
 // The API's limit (MeUpdate); it trims the name, so the check does too.
 const NAME_MAX = 80;

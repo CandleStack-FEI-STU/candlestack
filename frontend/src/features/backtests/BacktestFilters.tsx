@@ -10,6 +10,14 @@ import { ModelName } from './parts';
 
 type Props = { search: BacktestsSearch; page: Pick<BacktestsPage, 'counts' | 'models'> };
 
+// The panel (.fp): 412 px, 12 px inside, its own shadow. It pops in from the button's corner
+// (fx-pop, 0.14 s) instead of the popover's own motion and is simply gone on closing; the
+// important flag wins over the popover's classes, and Less motion still turns it off.
+const PANEL =
+  'w-[min(412px,calc(100vw-2rem))] origin-top-left p-3 shadow-[0_10px_28px_var(--shadow)] data-[state=closed]:animate-none! data-[state=open]:animate-fx-pop! motion-reduce:animate-none!';
+// The headings of its sections (.fp-h) keep 8 px under them on a phone too.
+const HEADING = 'mb-2';
+
 // Show and Model behind one button (mockups/app, btFilters), the panel lined up with the button's
 // left edge: Show in its 128 px column, the models beside it with their framework's mark. A pick
 // goes to the URL (page 1, a new history entry, so Back undoes it) and leaves the panel open.
@@ -36,12 +44,16 @@ export function BacktestFilters({ search, page }: Props) {
       align="start"
       sideOffset={6}
       openBorder="data-[state=open]:border-[color-mix(in_srgb,var(--accent)_55%,var(--rule))]"
-      className="w-[min(412px,calc(100vw-2rem))] p-3 shadow-[0_10px_28px_var(--shadow)]"
+      className={PANEL}
     >
       {(render) => (
         <div className="grid grid-cols-[128px_minmax(0,1fr)] gap-4">
-          <FilterSection title="Show">{section('show', render)}</FilterSection>
-          <FilterSection title="Model">{section('model', render)}</FilterSection>
+          <FilterSection title="Show" headingClassName={HEADING}>
+            {section('show', render)}
+          </FilterSection>
+          <FilterSection title="Model" headingClassName={HEADING}>
+            {section('model', render)}
+          </FilterSection>
         </div>
       )}
     </FiltersPopover>

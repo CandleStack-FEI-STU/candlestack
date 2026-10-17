@@ -252,6 +252,23 @@ describe('the dashboard of an account with backtests', () => {
     expect(starred.queryByRole('link', { name: /More/ })).toBeNull();
   });
 
+  it('says in Starred models why the models could not load', async () => {
+    await open({ ...dashboardAnswer(FULL), 'GET /api/v1/models': { status: 503, body: { detail: 'Down.' } } });
+    const starred = within(await screen.findByRole('region', { name: 'Starred models' }));
+    expect((await starred.findByRole('alert')).textContent).toBe('Down.');
+    cleanup();
+
+    await open({ ...dashboardAnswer(), 'GET /api/v1/models': { status: 503, body: { detail: 'Down.' } } });
+    expect(await screen.findByRole('alert')).toBeDefined();
+    expect(widgets()).toEqual(['Get started', 'Starred models']);
+  });
+
+  it('lets the parts of every widget touch', async () => {
+    await open({ ...dashboardAnswer(FULL), ...modelsAnswer([]) });
+    await screen.findByRole('region', { name: 'Starred models' });
+    for (const region of screen.getAllByRole('region')) expect(region.className.split(' ')).not.toContain('gap-1');
+  });
+
   it('leads to the Models page from More past four starred models', async () => {
     const five = [1, 2, 3, 4, 5].map((n) => model({ id: `mdl_${n}`, name: `m${n}.keras`, starred: true }));
     await open({ ...dashboardAnswer(FULL), ...modelsAnswer(five) });

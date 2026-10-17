@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 
+import { ErrorNote, HINT } from '@/components/ErrorNote';
 import { cn } from '@/lib/utils';
 
 // What the cards of Settings hold (mockups/app, ddSettings): rows of a label and a control, the
@@ -8,9 +9,6 @@ import { cn } from '@/lib/utils';
 // A row's top line, except right under the card's title. The rows are the card's own children for
 // it, so a form goes around the card, not inside it.
 const RULED = 'border-t [[data-slot=card-head]+&]:border-t-0';
-
-// .hint: 12 px on an 18 px line (1.5), muted. Tailwind's text-xs would give 16 px.
-export const HINT = 'text-[12px]/[1.5] text-muted-foreground';
 
 type RowProps = { label: string; hint?: ReactNode; top?: boolean; children: ReactNode };
 
@@ -56,16 +54,6 @@ export function SettingsFooter({ error, children }: { error?: string | undefined
       {error && <ErrorNote className="mr-auto">{error}</ErrorNote>}
       {children}
     </div>
-  );
-}
-
-// What went wrong, in the design's hint style (.hint: 12 px, muted), the one it has for a line of
-// text in a card. Read out as soon as it shows.
-export function ErrorNote({ className, children }: { className?: string; children: ReactNode }) {
-  return (
-    <p role="alert" className={cn(HINT, className)}>
-      {children}
-    </p>
   );
 }
 

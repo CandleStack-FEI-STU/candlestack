@@ -3,6 +3,7 @@ import { formatCount, formatPercent, formatSharpe } from '@/lib/results';
 import { cn } from '@/lib/utils';
 import type { BacktestsColumn, BacktestsSearch } from '@/routes/backtestsSearch';
 
+import { hasResults } from './format';
 import { BacktestReturn, BacktestWhen, InstrumentChips, Missing, ModelName } from './parts';
 import { BacktestCell, CELL, HEAD, NUMBER, ROW, SortButton, TABLE } from './table';
 
@@ -58,7 +59,7 @@ type RowProps = { backtest: Backtest; onOpen: (backtest: Backtest) => void; onSt
 
 // A finished backtest shows its results; a failed one the Failed badge and dashes.
 function Row({ backtest, onOpen, onStar }: RowProps) {
-  const done = backtest.status === 'finished';
+  const done = hasResults(backtest);
   const result = (text: string) => (done ? text : <Missing />);
   return (
     <tr className={ROW}>

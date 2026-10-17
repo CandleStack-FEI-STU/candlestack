@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from 'react';
 
-import type { Dashboard, Model } from '@/api';
+import type { Dashboard } from '@/api';
 import { useBacktestDialog, useStarBacktest } from '@/features/backtests';
-import { useStarModel } from '@/features/models';
+import { useModels, useStarModel } from '@/features/models';
 import { NewBacktestDialog } from '@/features/workspace';
 import { cn } from '@/lib/utils';
 
@@ -32,12 +32,14 @@ function Columns({ left, right }: { left: ReactNode[]; right: ReactNode[] }) {
   );
 }
 
-type Props = { dashboard: Dashboard; models: readonly Model[] | undefined };
+type Props = { dashboard: Dashboard };
 
 // Everything under the greeting (mockups/app, ddDash). An account with backtests gets the quick
 // actions, Last and Best backtests and both starred lists; a new one Get started, and a starred
 // list once it has starred something.
-export function DashboardWidgets({ dashboard, models }: Props) {
+export function DashboardWidgets({ dashboard }: Props) {
+  const { data, error } = useModels();
+  const models = data?.models;
   const [newBacktest, setNewBacktest] = useState(false);
   const star = useStarBacktest();
   const starModel = useStarModel();
@@ -51,8 +53,8 @@ export function DashboardWidgets({ dashboard, models }: Props) {
   ].filter(Boolean);
   const right = [
     full && <StarredBacktests key="runs" starred={dashboard.starred} onOpen={openBacktest} onStar={onStar} />,
-    models && (full || models.some((model) => model.starred)) && (
-      <StarredModels key="models" models={models} onStar={starModel.mutate} />
+    (full || error || models?.some((model) => model.starred)) && (
+      <StarredModels key="models" models={models} error={error} onStar={starModel.mutate} />
     ),
   ].filter(Boolean);
   return (

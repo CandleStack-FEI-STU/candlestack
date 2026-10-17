@@ -2,7 +2,6 @@ import { PageTitle } from '@/components/PageTitle';
 import { useSignedInUser } from '@/features/account';
 import { useDashboard } from '@/features/backtests';
 import { DashboardWidgets } from '@/features/dashboard';
-import { useModels } from '@/features/models';
 import { usePageTitle } from '@/lib/usePageTitle';
 
 // The start page after signing in (mockups/app, ddDash). The greeting has the full name and no
@@ -13,7 +12,6 @@ export function DashboardPage() {
   const user = useSignedInUser();
   usePageTitle('Dashboard');
   const { data, error } = useDashboard();
-  const models = useModels().data?.models;
   if (!data) {
     return (
       <PageTitle
@@ -31,7 +29,7 @@ export function DashboardPage() {
         title={full ? `Welcome back, ${user.display_name}` : `Welcome, ${user.display_name}`}
         description={full ? undefined : 'Your account is ready.'}
       />
-      <DashboardWidgets dashboard={data} models={models} />
+      <DashboardWidgets dashboard={data} />
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { DashboardCard } from '@/components/DashboardCard';
+import { ErrorNote } from '@/components/ErrorNote';
 import { BUTTON_SIZES, DANGER_BUTTON, OUTLINE_BUTTON } from '@/components/buttonStyles';
 import { CancelButton, DangerButton } from '@/components/DialogButtons';
 import { WarnIcon } from '@/components/icons';
@@ -19,7 +20,7 @@ import { useModels } from '@/features/models';
 import { plural } from '@/lib/plural';
 import { cn } from '@/lib/utils';
 
-import { ActionRow, ErrorNote } from './rows';
+import { ActionRow } from './rows';
 
 // What goes with the account (mockups/app, MODALS.delAcct): "This deletes 15 backtests, 2 uploaded
 // models and your account.", in general words until the API has said how many.

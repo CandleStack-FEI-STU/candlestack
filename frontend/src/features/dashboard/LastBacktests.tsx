@@ -1,12 +1,12 @@
 import type { Backtest } from '@/api';
 import { ClockIcon } from '@/components/icons';
-import { DashboardCard } from '@/components/DashboardCard';
 import {
   BacktestCell,
   BacktestReturn,
   BacktestWhen,
   CELL,
   HEAD,
+  hasResults,
   InstrumentChips,
   Missing,
   NUMBER,
@@ -16,7 +16,7 @@ import {
 import { formatSharpe } from '@/lib/results';
 import { cn } from '@/lib/utils';
 
-import { WidgetLink } from './widgets';
+import { Widget, WidgetLink } from './widgets';
 
 const COLUMNS = [
   { label: 'Backtest', number: false },
@@ -40,7 +40,7 @@ function Row({ backtest, onOpen, onStar }: RowProps) {
       <td className={cn(CELL, NUMBER)}>
         <BacktestReturn backtest={backtest} />
       </td>
-      <td className={cn(CELL, NUMBER)}>{backtest.sharpe === null ? <Missing /> : formatSharpe(backtest.sharpe)}</td>
+      <td className={cn(CELL, NUMBER)}>{hasResults(backtest) ? formatSharpe(backtest.sharpe) : <Missing />}</td>
       <td className={cn(CELL, 'text-muted-foreground')}>
         <BacktestWhen backtest={backtest} />
       </td>
@@ -55,12 +55,7 @@ type Props = { backtests: Backtest[] } & Omit<RowProps, 'backtest'>;
 // whole list.
 export function LastBacktests({ backtests, onOpen, onStar }: Props) {
   return (
-    <DashboardCard
-      icon={ClockIcon}
-      title="Last backtests"
-      aside={<WidgetLink to="/backtests">All backtests</WidgetLink>}
-      className="gap-0"
-    >
+    <Widget icon={ClockIcon} title="Last backtests" aside={<WidgetLink to="/backtests">All backtests</WidgetLink>}>
       <div className="overflow-x-auto">
         <table className={TABLE}>
           <thead>
@@ -79,6 +74,6 @@ export function LastBacktests({ backtests, onOpen, onStar }: Props) {
           </tbody>
         </table>
       </div>
-    </DashboardCard>
+    </Widget>
   );
 }

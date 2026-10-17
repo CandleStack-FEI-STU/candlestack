@@ -180,13 +180,22 @@
   }
 }
 
-/* The dashes that run along the home page's pipeline (src/features/home/Pipeline.tsx). */
+/* The dashes that run along the home page's pipeline (src/features/home/Pipeline.tsx), and how
+   the app's panels pop open from their button (mockups/app, fx-pop: the backtests' Filters). */
 @theme {
   --animate-pipeline-flow: pipeline-flow 2.4s linear infinite;
+  --animate-fx-pop: fx-pop 0.14s ease-out;
 
   @keyframes pipeline-flow {
     to {
       left: 100%;
+    }
+  }
+
+  @keyframes fx-pop {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.98);
     }
   }
 }

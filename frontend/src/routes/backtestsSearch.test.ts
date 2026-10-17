@@ -31,6 +31,11 @@ describe('validateBacktestsSearch', () => {
     expect(validate({ sort: 'model' })).toEqual({ sort: 'model', order: 'asc' });
   });
 
+  it('caps the page at the most the API takes', () => {
+    expect(validate({ page: '100000' })).toEqual({ page: 100_000 });
+    expect(validate({ page: '250000' })).toEqual({ page: 100_000 });
+  });
+
   it('cuts a search longer than the API takes', () => {
     expect(validate({ q: 'a'.repeat(150) }).q).toHaveLength(100);
   });

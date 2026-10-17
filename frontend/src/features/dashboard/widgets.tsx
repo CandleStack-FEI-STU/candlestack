@@ -1,10 +1,17 @@
 import { Link } from '@tanstack/react-router';
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 
 import type { Backtest } from '@/api';
+import { DashboardCard } from '@/components/DashboardCard';
+
 import { sparkPaths } from './sparkline';
 
 // The parts the dashboard's widgets share (mockups/app, ddDash).
+
+// A widget: the dashboard's card with its parts touching (.dd-card).
+export function Widget(props: Omit<ComponentProps<typeof DashboardCard>, 'flush'>) {
+  return <DashboardCard {...props} flush />;
+}
 
 // The muted 12 px hint at a widget's right ("by Sharpe") or as its only line.
 export function Hint({ children }: { children: ReactNode }) {

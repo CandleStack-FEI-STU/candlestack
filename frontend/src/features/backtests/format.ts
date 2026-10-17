@@ -10,6 +10,10 @@ export function representationName(representation: Representation): string {
   return REPRESENTATIONS[representation];
 }
 
+// Whether a backtest has results to show: a finished one. A failed one shows the Failed badge and
+// dashes, with no line and no Sharpe ratio.
+export const hasResults = (backtest: Backtest) => backtest.status === 'finished';
+
 // The colour of a return, the only result with one: green from zero, red below.
 export const returnClass = (fraction: number) => (returnTone(fraction) === 'up' ? 'text-up' : 'text-down');
 
