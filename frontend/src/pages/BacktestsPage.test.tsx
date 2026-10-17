@@ -206,6 +206,22 @@ describe('the Backtests page', () => {
     expect(document.activeElement).toBe(button);
   });
 
+  it('ends a model name too long for the Filters panel in an ellipsis, its count still beside it', async () => {
+    stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer(PAGE) });
+    await renderApp('/backtests');
+    await screen.findByText('#12');
+    await userEvent.click(screen.getByRole('button', { name: 'Filters: All backtests' }));
+    const option = within(screen.getByRole('dialog', { name: 'Filters' })).getByRole('option', { name: /blesk/ });
+    const name = within(option).getByText('blesk-novol-8.keras');
+    expect(name.className.split(' ')).toEqual(expect.arrayContaining(['min-w-0', 'truncate']));
+    // The mark and the name sit in a row no wider than the entry's label, which gives way first.
+    expect(name.parentElement?.className.split(' ')).toContain('max-w-full');
+    expect(name.parentElement?.parentElement?.className.split(' ')).toEqual(
+      expect.arrayContaining(['min-w-0', 'truncate']),
+    );
+    expect(within(option).getByText('3').className.split(' ')).toContain('shrink-0');
+  });
+
   it('lights an entry of the Filters panel under the pointer, and where the focus is only once keys are used', async () => {
     stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer(PAGE) });
     await renderApp('/backtests');
