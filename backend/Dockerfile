@@ -62,7 +62,10 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     MALLOC_ARENA_MAX=2
-# Runs unprivileged and needs no writable path: fine with a read-only root filesystem.
+# The uploaded model files (MODEL_STORAGE_DIR) go to a volume mounted here; a new named volume
+# takes this directory's owner, so the app can write to it.
+RUN mkdir -p /data/models && chown 65534:65534 /data/models
+# Runs unprivileged and writes only to that volume: fine with a read-only root filesystem.
 USER 65534:65534
 EXPOSE 8000
 ARG APP_COMMIT=unknown

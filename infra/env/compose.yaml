@@ -11,8 +11,10 @@
 # <ENV_NAME>-backend:8000 (/api/*) and <ENV_NAME>-frontend:8080 (everything else). Redis and
 # Postgres are on the environment's own network only. Postgres keeps its data in the volume
 # <ENV_NAME>_postgres; the migrate service brings it to the backend image's migrations before
-# the backend starts, and the backup service dumps it every night into <ENV_NAME>_backups
-# (infra/README.md, "Backups").
+# the backend starts, and the backup service dumps it every night into <ENV_NAME>_backups. The
+# backend keeps the uploaded model files in the volume <ENV_NAME>_models, which the
+# models-backup service archives every night into <ENV_NAME>_model_backups (infra/README.md,
+# "Backups").
 services:
   backend:
     image: ${BACKEND_IMAGE:?}
@@ -31,11 +33,17 @@ services:
       OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENT_ID:-}
       OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:-}
       BETA_ALLOWLIST: ${BETA_ALLOWLIST:-}
+      MODEL_STORAGE_DIR: /data/models
     # Read by the server agent: ops tells deploys (new version) from redeploys (same version).
     labels:
       candlestack.version: ${APP_VERSION:?}
-    mem_limit: 320m
+    # The app, and the child process that checks an upload (infra/README.md, "Memory").
+    mem_limit: 384m
     read_only: true
+    # The files of the uploaded models; the image's /data/models is owned by the app's user, so
+    # a new volume is too.
+    volumes:
+      - models:/data/models
     tmpfs:
       - /tmp
     cap_drop:
@@ -169,6 +177,38 @@ services:
     networks:
       - default
 
+  # A tar.gz of the uploaded model files every night at 00:30 UTC into the volume
+  # <ENV_NAME>_model_backups, the last 7 days kept (infra/README.md, "Backups"). The models
+  # volume is mounted read-only. The archive is built in /tmp (fixed by the image) before it is
+  # copied: a volume there, as a tmpfs would hold every model file in memory. Root in the
+  # container, which owns its volumes and reads the app's world-readable files, without any
+  # capability.
+  models-backup:
+    image: offen/docker-volume-backup:v2.49.1@sha256:e1da571e739d73f633f19e7a9f324007907089ffd80b3b7a1d71de5b87f80d77
+    restart: unless-stopped
+    environment:
+      BACKUP_CRON_EXPRESSION: "30 0 * * *"
+      BACKUP_FILENAME: models-%Y-%m-%dT%H-%M-%S.{{ .Extension }}
+      BACKUP_PRUNING_PREFIX: models-
+      BACKUP_RETENTION_DAYS: "7"
+      # Uploads in progress: never whole, and removed when the backend starts.
+      BACKUP_EXCLUDE_REGEXP: '/\.incoming/'
+    # Enough to archive 300 MB of files (measured).
+    mem_limit: 32m
+    read_only: true
+    volumes:
+      - models:/backup/models:ro
+      - model_backups:/archive
+      - model_backups_work:/tmp
+    tmpfs:
+      - /var/lock
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # It reaches nothing: the archives stay on the VM.
+    network_mode: none
+
   # Cache only: no persistence, least recently used keys go first when maxmemory is reached.
   redis:
     image: redis:8-alpine@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0
@@ -195,6 +235,9 @@ services:
 volumes:
   postgres: {}
   backups: {}
+  models: {}
+  model_backups: {}
+  model_backups_work: {}
 
 networks:
   # Without EDGE_NETWORK compose fails, rather than start the environment on a network the

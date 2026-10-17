@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
 # Each module with tables declares them on Base.metadata when it is imported.
-import candlestack.accounts  # noqa: F401
+import candlestack.accounts
+import candlestack.ml  # noqa: F401
 from candlestack.core import Base, get_settings, setup_logging
 
 

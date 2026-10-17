@@ -7,6 +7,7 @@
 
 import sys
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -64,8 +65,13 @@ def anyio_backend() -> str:
 
 
 @pytest.fixture
-def settings() -> Settings:
-    return Settings(app_env="test", app_version="1.2.3", app_commit="abc1234")
+def settings(tmp_path: Path) -> Settings:
+    return Settings(
+        app_env="test",
+        app_version="1.2.3",
+        app_commit="abc1234",
+        model_storage_dir=tmp_path / "models",
+    )
 
 
 @pytest.fixture

@@ -12,6 +12,7 @@ dependencies = [
     "authlib>=1.9.1",
     "fastapi>=0.141.1",
     "granian>=2.8.3",
+    "h5py>=3.16.0",
     "httpx>=0.28.1",
     "orjson>=3.12.0",
     "polars>=1.44.2",
@@ -119,6 +120,11 @@ ban-relative-imports = "all"
 # The e2e stand-in for Binance and Alpaca reports on stdout.
 "tests/e2e/mock_sources.py" = ["T201"]
 
+[tool.ty.src]
+# Build the Keras test files and the allowlist in a container with Keras (their docstrings); the
+# backend has none.
+exclude = ["tests/fixtures/keras/*.py"]
+
 [tool.ty.rules]
 # On top of ty's defaults: generics spell out their type arguments, and an overriding method
 # says so (typing.override), so renaming the base method breaks the check, not the behaviour.
@@ -166,9 +172,9 @@ root_package = "candlestack"
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
-name = "Modules depend downwards only: accounts and data -> core"
+name = "Modules depend downwards only: ml -> accounts and data -> core"
 type = "layers"
-layers = ["candlestack.accounts | candlestack.data", "candlestack.core"]
+layers = ["candlestack.ml", "candlestack.accounts | candlestack.data", "candlestack.core"]
 
 [[tool.importlinter.contracts]]
 name = "Other modules import core only through its package root"
@@ -181,6 +187,12 @@ name = "Other modules import accounts only through its package root"
 type = "protected"
 protected_modules = ["candlestack.accounts.*"]
 allowed_importers = ["candlestack.accounts"]
+
+[[tool.importlinter.contracts]]
+name = "Other modules import ml only through its package root"
+type = "protected"
+protected_modules = ["candlestack.ml.*"]
+allowed_importers = ["candlestack.ml"]
 
 [[tool.importlinter.contracts]]
 name = "Other modules import data only through its package root"
@@ -211,7 +223,7 @@ name = "Only core uses the Sentry SDK"
 type = "forbidden"
 source_modules = [
     "candlestack.accounts", "candlestack.cli", "candlestack.data", "candlestack.main",
-    "candlestack.openapi",
+    "candlestack.ml", "candlestack.openapi",
 ]
 forbidden_modules = ["sentry_sdk"]
 # They reach Sentry through core (logging, setup_sentry), never by importing it themselves.
@@ -226,7 +238,7 @@ type = "forbidden"
 source_modules = ["candlestack.engine", "candlestack.signals", "candlestack.metrics"]
 forbidden_modules = [
     "candlestack.accounts", "candlestack.core", "candlestack.data", "candlestack.cli",
-    "candlestack.main",
+    "candlestack.main", "candlestack.ml",
     "candlestack.openapi", "fastapi", "starlette", "scalar_fastapi", "granian", "redis",
     "httpx", "sentry_sdk", "pydantic_settings", "sqlalchemy", "asyncpg", "alembic", "authlib",
 ]
@@ -243,7 +255,7 @@ name = "Nothing imports the CLI"
 type = "forbidden"
 source_modules = [
     "candlestack.accounts", "candlestack.core", "candlestack.data", "candlestack.main",
-    "candlestack.openapi",
+    "candlestack.ml", "candlestack.openapi",
 ]
 forbidden_modules = ["candlestack.cli"]
 
@@ -277,6 +289,32 @@ layers = [
     "store | pending | oauth",
     "models | errors | schemas",
 ]
+
+# Inside ml, the same: routes, their dependencies, the service, then the queries, the file
+# storage, the upload locks and the runner of the upload check, the check itself (which runs in
+# a child process with the allowlist alone), then the table, the errors and the allowlist, and
+# the bodies at the bottom.
+[[tool.importlinter.contracts]]
+name = "Inside ml: HTTP -> dependencies -> service -> store, storage and check -> models"
+type = "layers"
+containers = ["candlestack.ml"]
+layers = [
+    "api",
+    "dependencies",
+    "service",
+    "store | storage | uploads | sandbox",
+    "inspect",
+    "models | errors | allowlist",
+    "schemas",
+]
+
+# The API checks an uploaded model by reading its file, never by loading it: a load could run
+# code from the file, and the API image has no Keras or TensorFlow (the worker will).
+[[tool.importlinter.contracts]]
+name = "The API never imports a deep learning framework"
+type = "forbidden"
+source_modules = ["candlestack.ml", "candlestack.main"]
+forbidden_modules = ["keras", "tensorflow", "torch", "jax"]
 
 # What the sources share lives in sources.base.
 [[tool.importlinter.contracts]]

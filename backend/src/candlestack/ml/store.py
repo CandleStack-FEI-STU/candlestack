@@ -1,0 +1,92 @@
+"""The models table in Postgres: the queries the service needs, in the request's session.
+Nothing here commits; the service does, once a change is complete."""
+
+from sqlalchemy import delete, func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from candlestack.ml.models import Model
+
+
+class ModelStore:
+    def __init__(self, db: AsyncSession) -> None:
+        self._db = db
+
+    def add(self, model: Model) -> None:
+        self._db.add(model)
+
+    async def flush(self) -> None:
+        await self._db.flush()
+
+    async def commit(self) -> None:
+        await self._db.commit()
+
+    async def lock_user(self, user_id: str) -> None:
+        """Takes the lock of the user's models until the transaction ends, so the uploads and
+        renames of one user run one after the other: two uploads cannot both pass the quota,
+        nor take the same name. An advisory lock, as the rows to lock may not exist yet."""
+        await self._db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+            {"key": f"ml:models:{user_id}"},
+        )
+
+    async def models(self, user_id: str) -> list[Model]:
+        """The user's models, oldest first."""
+        rows = await self._db.scalars(
+            select(Model).where(Model.user_id == user_id).order_by(Model.created_at, Model.id)
+        )
+        return list(rows)
+
+    async def model(self, user_id: str, model_id: str) -> Model | None:
+        """The user's model with the ID; None also when it is another user's."""
+        return await self._db.scalar(
+            select(Model).where(Model.id == model_id, Model.user_id == user_id)
+        )
+
+    async def usage(self, user_id: str) -> tuple[int, int]:
+        """The bytes the user's models take, and how many they are."""
+        row = (
+            await self._db.execute(
+                select(func.coalesce(func.sum(Model.size_bytes), 0), func.count()).where(
+                    Model.user_id == user_id
+                )
+            )
+        ).one()
+        return int(row[0]), int(row[1])
+
+    async def lowered(self, text: str) -> str:
+        """`text` lowercased as Postgres does it, as the unique index of the names does."""
+        lowered = await self._db.scalar(select(func.lower(text)))
+        assert lowered is not None  # lower() of a string is a string
+        return lowered
+
+    async def names_starting(self, user_id: str, prefix: str) -> list[str]:
+        """The names of the user's models that start with `prefix` in any case, lowercased
+        by Postgres."""
+        pattern = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        rows = await self._db.scalars(
+            select(func.lower(Model.name)).where(
+                Model.user_id == user_id,
+                func.lower(Model.name).like(func.lower(pattern), escape="\\"),
+            )
+        )
+        return list(rows)
+
+    async def name_taken(self, user_id: str, name: str, *, other_than: str | None = None) -> bool:
+        """Whether a model of the user (other than `other_than`) has `name`, in any case. Postgres
+        compares, as its unique index does."""
+        query = select(Model.id).where(
+            Model.user_id == user_id, func.lower(Model.name) == func.lower(name)
+        )
+        if other_than is not None:
+            query = query.where(Model.id != other_than)
+        return await self._db.scalar(query.limit(1)) is not None
+
+    async def delete(self, user_id: str, model_id: str) -> bool:
+        """Deletes the user's model; False when the user has none with the ID."""
+        deleted = await self._db.scalar(
+            delete(Model).where(Model.id == model_id, Model.user_id == user_id).returning(Model.id)
+        )
+        return deleted is not None
+
+    async def delete_all(self, user_id: str) -> None:
+        await self._db.execute(delete(Model).where(Model.user_id == user_id))
