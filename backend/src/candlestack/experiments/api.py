@@ -13,6 +13,7 @@ from candlestack.core import Problem, ProblemError, require_same_origin
 from candlestack.experiments.dependencies import BacktestsServiceDep
 from candlestack.experiments.errors import BacktestNotFound
 from candlestack.experiments.schemas import (
+    MODEL_NAME_MAX,
     PAGE_SIZE,
     QUERY_MAX,
     BacktestOut,
@@ -65,13 +66,13 @@ def list_query(
     model: Annotated[
         str | None,
         Query(
-            max_length=255,
+            max_length=MODEL_NAME_MAX,
             description="Only the backtests of the model with this name, in any case",
             examples=["blesk-novol-8.keras"],
         ),
     ] = None,
     sort: Annotated[BacktestSort, Query(description="What to sort by")] = BacktestSort.default,
-    order: Annotated[SortOrder, Query(description="SetupDirection of the sort")] = SortOrder.desc,
+    order: Annotated[SortOrder, Query(description="Direction of the sort")] = SortOrder.desc,
     page: Annotated[
         int, Query(ge=1, le=PAGE_MAX, description=f"The page, from 1, of {PAGE_SIZE} backtests")
     ] = 1,

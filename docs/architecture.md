@@ -288,11 +288,17 @@ flowchart LR
   `desc`. Backtests without the sorted value (failed ones) are last in both directions, ties
   newest first. 10 a page; a page past the last is empty, with the real `pages`. The counts
   (all, starred, failed) and the models used (by count, then name) ignore the search and the
-  filters: they are the filter panel's.
+  filters: they are the filter panel's. The models used are one per name in any case, as the
+  model filter compares them (spelled as and with the framework of the newest backtest of the
+  name), so each count is what its filter returns.
+- A stored setup and equity series are read without the limits of a new backtest
+  (`BacktestSetupIn`, `EquitySeriesIn`, which check them on the way in), so a limit made
+  tighter later never fails the list.
 - **The Dashboard** (`GET /api/v1/dashboard`) is one response: the counts, the 6 newest
   backtests (failed ones too), the 5 best finished ones by Sharpe ratio, return, drawdown
   (the smallest fall first) and win rate, and the 4 starred ones with the best Sharpe ratio
-  (those without one last) with the total starred.
+  (those without one last) with the total starred. When `running` comes with the builder, the
+  newest backtests must leave out the running ones.
 - Users cannot make backtests yet: the builder comes later and will fill the same table. Until
   then, `python -m candlestack.experiments.seed --email <email>` gives one account the 15
   backtests of the mockup on stage or local ([infra/README.md](../infra/README.md#test-backtests));

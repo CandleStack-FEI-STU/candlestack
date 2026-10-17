@@ -22,9 +22,10 @@ from sqlalchemy import (
     select,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, aggregate_order_by, array_agg
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
+from sqlalchemy.sql import visitors
 
 from candlestack.accounts import User
 from candlestack.experiments.models import Backtest
@@ -128,6 +129,15 @@ def ordering(sort: BacktestSort, order: SortOrder) -> list[UnaryExpression[Any]]
     return [direction.nulls_last(), Backtest.number.desc()]
 
 
+def _reads_models(conditions: Sequence[ColumnElement[bool]]) -> bool:
+    """Whether a condition reads a column of the models table (the model's shown name)."""
+    return any(
+        getattr(element, "table", None) is Model.__table__
+        for condition in conditions
+        for element in visitors.iterate(condition)
+    )
+
+
 def _listed() -> Select[Backtest, str]:
     return select(Backtest, MODEL_NAME).outerjoin(Model, Model.id == Backtest.model_id)
 
@@ -182,26 +192,30 @@ class BacktestStore:
         return Counts(*row)
 
     async def model_counts(self, user_id: str) -> list[ModelCount]:
-        """The models the user's backtests used, by the name they show: the most used first,
-        then by name."""
+        """The models the user's backtests used, one per name they show in any case, as the
+        model filter compares them: spelled as and with the framework of the newest backtest
+        of the name, the most used first, then by name."""
+        key = func.lower(MODEL_NAME)
+        newest = (Backtest.created_at.desc(), Backtest.number.desc())
+        name = array_agg(aggregate_order_by(MODEL_NAME, *newest))[1]
+        framework = array_agg(aggregate_order_by(Backtest.model_framework, *newest))[1]
         count = func.count().label("count")
         rows = await self._db.execute(
-            select(MODEL_NAME, Backtest.model_framework, count)
+            select(name, framework, count)
             .outerjoin(Model, Model.id == Backtest.model_id)
             .where(Backtest.user_id == user_id)
-            .group_by(MODEL_NAME, Backtest.model_framework)
-            .order_by(count.desc(), MODEL_NAME, Backtest.model_framework)
+            .group_by(key)
+            .order_by(count.desc(), key)
         )
         return [ModelCount(*row) for row in rows]
 
     async def count(self, user_id: str, conditions: Sequence[ColumnElement[bool]]) -> int:
-        """The user's backtests that meet the conditions."""
-        total = await self._db.scalar(
-            select(func.count())
-            .select_from(Backtest)
-            .outerjoin(Model, Model.id == Backtest.model_id)
-            .where(Backtest.user_id == user_id, *conditions)
-        )
+        """The user's backtests that meet the conditions; models joined only when a condition
+        reads them."""
+        query = select(func.count()).select_from(Backtest)
+        if _reads_models(conditions):
+            query = query.outerjoin(Model, Model.id == Backtest.model_id)
+        total = await self._db.scalar(query.where(Backtest.user_id == user_id, *conditions))
         return int(total or 0)
 
     async def backtests(

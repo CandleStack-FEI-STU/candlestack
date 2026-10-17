@@ -8,7 +8,13 @@ from sqlalchemy.dialects import postgresql
 from candlestack.experiments.models import Backtest, new_backtest_id
 from candlestack.experiments.schemas import BacktestShow, BacktestSort, SortOrder
 from candlestack.experiments.service import pages
-from candlestack.experiments.store import escape_like, filters, ordering, search
+from candlestack.experiments.store import (
+    _reads_models,
+    escape_like,
+    filters,
+    ordering,
+    search,
+)
 
 
 def _after_from(query) -> str:
@@ -97,6 +103,14 @@ def test_a_sort_puts_nulls_last_and_ties_newest_first(
     sort: BacktestSort, order: SortOrder, expected: str
 ):
     assert order_sql(*ordering(sort, order)) == f"ORDER BY {expected}, backtests.number DESC"
+
+
+def test_only_the_search_and_the_model_filter_read_the_models() -> None:
+    assert _reads_models(filters(query="aapl")) is True
+    assert _reads_models(filters(model="lstm.keras")) is True
+    assert _reads_models(filters(show=BacktestShow.starred)) is False
+    assert _reads_models(filters(show=BacktestShow.failed)) is False
+    assert _reads_models([]) is False
 
 
 @pytest.mark.parametrize(("total", "expected"), [(0, 1), (1, 1), (10, 1), (11, 2), (23, 3)])

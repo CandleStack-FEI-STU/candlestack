@@ -3,7 +3,7 @@ stores (its instruments and setup)."""
 
 from datetime import date, datetime
 from enum import StrEnum
-from typing import Annotated, Self
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -11,6 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 PAGE_SIZE = 10
 # The longest search the list takes.
 QUERY_MAX = 100
+# The longest name of a model (models.name, backtests.model_name).
+MODEL_NAME_MAX = 255
 # The most points of a backtest's equity series: enough for a small chart.
 EQUITY_POINTS = 60
 
@@ -67,6 +69,8 @@ class BacktestInstrument(BaseModel):
     symbol: str = Field(description="Symbol as the market data API names it", examples=["AAPL"])
 
 
+# Reads what is stored without the limits of a new backtest (BacktestSetupIn), so a limit made
+# tighter later never turns away the backtests that ran before it.
 class BacktestSetup(BaseModel):
     """The settings a backtest ran with: the fields of Settings, Backtest defaults."""
 
@@ -74,13 +78,21 @@ class BacktestSetup(BaseModel):
     period_start: date = Field(description="First day of the test")
     period_end: date = Field(description="Last day of the test")
     direction: SetupDirection
-    threshold: Annotated[float, Field(ge=0, le=0.5, description="Signal strength to trade")]
-    stop_loss_pct: Annotated[
-        int, Field(ge=1, le=20, description="Exit when a trade loses this many percent")
-    ]
-    fees_pct: Annotated[float, Field(ge=0, le=5, description="Fees in percent per side")]
-    slippage_pct: Annotated[float, Field(ge=0, le=5, description="Slippage in percent")]
+    threshold: float = Field(description="Signal strength to trade")
+    stop_loss_pct: int = Field(description="Exit when a trade loses this many percent")
+    fees_pct: float = Field(description="Fees in percent per side")
+    slippage_pct: float = Field(description="Slippage in percent")
     benchmark: SetupBenchmark
+
+
+class BacktestSetupIn(BacktestSetup):
+    """The setup of a new backtest, checked against the limits of Settings, Backtest defaults:
+    what writes a backtest stores it through this model."""
+
+    threshold: float = Field(ge=0, le=0.5, description="Signal strength to trade")
+    stop_loss_pct: int = Field(ge=1, le=20, description="Exit when a trade loses this many percent")
+    fees_pct: float = Field(ge=0, le=5, description="Fees in percent per side")
+    slippage_pct: float = Field(ge=0, le=5, description="Slippage in percent")
 
     @model_validator(mode="after")
     def _period_moves_forward(self) -> Self:
@@ -89,25 +101,30 @@ class BacktestSetup(BaseModel):
         return self
 
 
+# Reads what is stored without the checks of a new series (EquitySeriesIn).
 class EquitySeries(BaseModel):
     """The equity of the strategy and of buy and hold over the test period, for a small chart:
     cumulative returns as fractions (0 at the start; 0.246 is 24.6 %), sampled at evenly spaced
     times from the first day to the last, the same times in both."""
 
-    model_config = ConfigDict(allow_inf_nan=False, extra="forbid")
-
     strategy: list[float] = Field(
-        min_length=2,
-        max_length=EQUITY_POINTS,
         description=f"Cumulative return of the strategy, 2 to {EQUITY_POINTS} points",
         examples=[[0.0, 0.031, 0.118, 0.246]],
     )
     benchmark: list[float] = Field(
-        min_length=2,
-        max_length=EQUITY_POINTS,
         description="Cumulative return of buying and holding the instruments, as many points",
         examples=[[0.0, 0.12, 0.35, 0.682]],
     )
+
+
+class EquitySeriesIn(EquitySeries):
+    """A new equity series, checked: as many points in both, 2 to ``EQUITY_POINTS`` each,
+    finite numbers."""
+
+    model_config = ConfigDict(allow_inf_nan=False, extra="forbid")
+
+    strategy: list[float] = Field(min_length=2, max_length=EQUITY_POINTS)
+    benchmark: list[float] = Field(min_length=2, max_length=EQUITY_POINTS)
 
     @model_validator(mode="after")
     def _same_times(self) -> Self:

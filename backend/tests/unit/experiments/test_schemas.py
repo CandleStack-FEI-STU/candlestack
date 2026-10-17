@@ -8,8 +8,10 @@ from candlestack.experiments.models import Backtest
 from candlestack.experiments.schemas import (
     EQUITY_POINTS,
     BacktestSetup,
+    BacktestSetupIn,
     BacktestUpdate,
     EquitySeries,
+    EquitySeriesIn,
 )
 
 SETUP = {
@@ -47,7 +49,25 @@ def test_a_setup_reads_what_settings_save() -> None:
 )
 def test_a_setup_is_checked(change: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
-        BacktestSetup.model_validate({**SETUP, **change})
+        BacktestSetupIn.model_validate({**SETUP, **change})
+
+
+def test_a_stored_setup_is_read_without_the_limits_of_a_new_one() -> None:
+    stored = {**SETUP, "stop_loss_pct": 50, "threshold": 0.9, "period_end": "2020-01-01"}
+
+    setup = BacktestSetup.model_validate(stored)
+
+    assert (setup.stop_loss_pct, setup.threshold) == (50, 0.9)
+    with pytest.raises(ValidationError):
+        BacktestSetupIn.model_validate(stored)
+
+
+def test_a_stored_equity_series_is_read_without_the_checks_of_a_new_one() -> None:
+    stored = {"strategy": [0.0] * 80, "benchmark": [0.0] * 80}
+
+    assert len(EquitySeries.model_validate(stored).strategy) == 80
+    with pytest.raises(ValidationError):
+        EquitySeriesIn.model_validate(stored)
 
 
 def test_a_backtest_keeps_a_checked_equity_series() -> None:
@@ -80,7 +100,7 @@ def test_an_equity_series_is_checked(strategy: list[object], benchmark: list[obj
 
 
 def test_sixty_points_fit() -> None:
-    series = EquitySeries(strategy=[0.0] * 60, benchmark=[0.0] * 60)
+    series = EquitySeriesIn(strategy=[0.0] * 60, benchmark=[0.0] * 60)
 
     assert len(series.strategy) == EQUITY_POINTS == 60
 

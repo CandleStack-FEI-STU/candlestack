@@ -105,6 +105,11 @@ def test_the_numbers_continue_after_the_users_own() -> None:
     assert by_number(backtests)[22].representation == "windows"  # the mockup's #15
 
 
+def test_todays_last_run_ends_when_the_mockups_newest_ends() -> None:
+    # The mockup's #15 starts at 16:05 and takes 162 s; #14 ends at 15:51:22.
+    assert timedelta(hours=16, minutes=5, seconds=162) == seed_module._TODAY_LAST_END
+
+
 def test_early_in_the_day_todays_runs_move_back_but_keep_their_gaps() -> None:
     morning = datetime(2026, 10, 17, 9, 0, tzinfo=UTC)
     today = [run for run in RUNS if run.days_ago == 0]

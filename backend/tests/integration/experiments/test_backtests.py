@@ -195,6 +195,46 @@ def test_the_model_filter_and_the_models_list(ada) -> None:
     assert numbers(ada.backtests(model="b.keras", q="#5")) == [5]
 
 
+def test_the_models_list_has_one_entry_per_name_in_any_case(ada, sql) -> None:
+    ada.backtest(1, model_name="lstm.keras")
+    ada.backtest(2, model_name="LSTM.keras")
+    ada.backtest(3, model_name="lstm.keras")
+    ada.backtest(4, model_name="gru.keras")
+
+    first = ada.backtests().json()["models"]
+    ada.backtest(5, model_name="LSTM.keras")
+    sql("UPDATE backtests SET model_framework = 'onnx' WHERE number = 5")
+    then = ada.backtests().json()["models"]
+
+    # Spelled as and with the framework of the newest backtest of the name.
+    assert first == [
+        {"name": "lstm.keras", "framework": "keras", "count": 3},
+        {"name": "gru.keras", "framework": "keras", "count": 1},
+    ]
+    assert then[0] == {"name": "LSTM.keras", "framework": "onnx", "count": 4}
+    for name in ("lstm.keras", "LSTM.keras"):
+        assert ada.backtests(model=name).json()["total"] == 4  # what the entry counts
+
+
+def test_a_stored_setup_beyond_todays_limits_still_lists(ada, sql) -> None:
+    ada.backtest(1)
+    sql(
+        "UPDATE backtests SET setup = setup || CAST(:change AS jsonb)",
+        change='{"stop_loss_pct": 50, "threshold": 0.9, "period_end": "2020-01-01"}',
+    )
+
+    response = ada.backtests()
+
+    assert response.status_code == 200
+    setup = response.json()["backtests"][0]["setup"]
+    assert (setup["stop_loss_pct"], setup["threshold"], setup["period_end"]) == (
+        50,
+        0.9,
+        "2020-01-01",
+    )
+    assert ada.dashboard().status_code == 200
+
+
 @pytest.fixture
 def results(ada) -> None:
     """Backtests with results in another order than their numbers, a tie and two failed ones."""
@@ -417,12 +457,6 @@ def test_a_deleted_models_backtests_stay_with_its_name(ada, sql) -> None:
     [backtest] = ada.backtests().json()["backtests"]
     assert backtest["model"] == {"id": None, "name": "gone.keras", "framework": "keras"}
     assert sql("SELECT model_id, model_name FROM backtests") == [(None, "gone.keras")]
-
-
-def _keras_file() -> bytes:
-    from pathlib import Path  # noqa: PLC0415
-
-    return (Path(__file__).parents[2] / "fixtures" / "keras" / "functional.keras").read_bytes()
 
 
 # --- Deleting the account --------------------------------------------------------------------

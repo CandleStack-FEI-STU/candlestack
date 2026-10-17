@@ -24,7 +24,7 @@ from candlestack.experiments.errors import UnknownUser
 from candlestack.experiments.models import Backtest, new_backtest_id
 from candlestack.experiments.schemas import (
     EQUITY_POINTS,
-    BacktestSetup,
+    BacktestSetupIn,
     BacktestStatus,
     InstrumentMarket,
     Representation,
@@ -172,8 +172,16 @@ RUNS: tuple[SeedRun, ...] = (
     ),
 )
 
-# When today's last run of the mockup ends (UTC); before then, today's runs move back.
-_TODAY_LAST_END = (time(16, 5), timedelta(seconds=162))
+
+def _since_midnight(at: time) -> timedelta:
+    return timedelta(hours=at.hour, minutes=at.minute, seconds=at.second)
+
+
+# When the last of today's runs of the mockup ends, after midnight (UTC); before then, today's
+# runs move back.
+_TODAY_LAST_END = max(
+    _since_midnight(run.at) + timedelta(seconds=run.duration_s) for run in RUNS if run.days_ago == 0
+)
 
 
 def started_at(run: SeedRun, now: datetime) -> datetime:
@@ -183,8 +191,7 @@ def started_at(run: SeedRun, now: datetime) -> datetime:
     day = now.date() - timedelta(days=run.days_ago)
     start = datetime.combine(day, run.at, tzinfo=UTC)
     if run.days_ago == 0:
-        last_at, last_duration = _TODAY_LAST_END
-        last_end = datetime.combine(day, last_at, tzinfo=UTC) + last_duration
+        last_end = datetime.combine(day, time(), tzinfo=UTC) + _TODAY_LAST_END
         start -= max(timedelta(0), last_end - now)
     return start
 
@@ -262,8 +269,8 @@ def _framework(model_name: str) -> str:
     return model_name.rsplit(".", 1)[-1]
 
 
-def _setup(run: SeedRun) -> BacktestSetup:
-    return BacktestSetup(
+def _setup(run: SeedRun) -> BacktestSetupIn:
+    return BacktestSetupIn(
         timeframe=SetupTimeframe.m30,
         period_start=date(2021, 1, 4),
         period_end=date(2024, 12, 31),

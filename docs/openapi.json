@@ -506,8 +506,6 @@
           },
           "fees_pct": {
             "description": "Fees in percent per side",
-            "maximum": 5.0,
-            "minimum": 0.0,
             "title": "Fees Pct",
             "type": "number"
           },
@@ -525,22 +523,16 @@
           },
           "slippage_pct": {
             "description": "Slippage in percent",
-            "maximum": 5.0,
-            "minimum": 0.0,
             "title": "Slippage Pct",
             "type": "number"
           },
           "stop_loss_pct": {
             "description": "Exit when a trade loses this many percent",
-            "maximum": 20.0,
-            "minimum": 1.0,
             "title": "Stop Loss Pct",
             "type": "integer"
           },
           "threshold": {
             "description": "Signal strength to trade",
-            "maximum": 0.5,
-            "minimum": 0.0,
             "title": "Threshold",
             "type": "number"
           },
@@ -1033,7 +1025,6 @@
         "type": "string"
       },
       "EquitySeries": {
-        "additionalProperties": false,
         "description": "The equity of the strategy and of buy and hold over the test period, for a small chart:\ncumulative returns as fractions (0 at the start; 0.246 is 24.6 %), sampled at evenly spaced\ntimes from the first day to the last, the same times in both.",
         "properties": {
           "benchmark": {
@@ -1049,8 +1040,6 @@
             "items": {
               "type": "number"
             },
-            "maxItems": 60,
-            "minItems": 2,
             "title": "Benchmark",
             "type": "array"
           },
@@ -1067,8 +1056,6 @@
             "items": {
               "type": "number"
             },
-            "maxItems": 60,
-            "minItems": 2,
             "title": "Strategy",
             "type": "array"
           }
@@ -2618,14 +2605,14 @@
             }
           },
           {
-            "description": "SetupDirection of the sort",
+            "description": "Direction of the sort",
             "in": "query",
             "name": "order",
             "required": false,
             "schema": {
               "$ref": "#/components/schemas/SortOrder",
               "default": "desc",
-              "description": "SetupDirection of the sort"
+              "description": "Direction of the sort"
             }
           },
           {

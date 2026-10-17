@@ -1915,7 +1915,7 @@ export interface operations {
                 model?: string | null;
                 /** @description What to sort by */
                 sort?: components["schemas"]["BacktestSort"];
-                /** @description SetupDirection of the sort */
+                /** @description Direction of the sort */
                 order?: components["schemas"]["SortOrder"];
                 /** @description The page, from 1, of 10 backtests */
                 page?: number;

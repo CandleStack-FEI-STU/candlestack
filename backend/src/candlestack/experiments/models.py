@@ -22,7 +22,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from candlestack.core import Base
-from candlestack.experiments.schemas import EquitySeries
+from candlestack.experiments.schemas import MODEL_NAME_MAX, EquitySeriesIn
 
 # The alphabet of the user and model IDs (lowercase RFC 4648 base32: no 0, 1, 8 or 9), so the
 # IDs of the app read alike.
@@ -60,7 +60,7 @@ class Backtest(Base):
     model_id: Mapped[str | None] = mapped_column(
         ForeignKey("models.id", ondelete="SET NULL"), index=True
     )
-    model_name: Mapped[str] = mapped_column(String(255))
+    model_name: Mapped[str] = mapped_column(String(MODEL_NAME_MAX))
     model_framework: Mapped[str] = mapped_column(String(16))
     # The settings it ran with (schemas.BacktestSetup).
     setup: Mapped[dict[str, Any]] = mapped_column(JSONB)
@@ -90,7 +90,7 @@ class Backtest(Base):
             pydantic.ValidationError: The series differ in length, have fewer than 2 or more
                 than ``EQUITY_POINTS`` points, or a value that is not a finite number.
         """
-        series = EquitySeries(strategy=list(strategy), benchmark=list(benchmark))
+        series = EquitySeriesIn(strategy=list(strategy), benchmark=list(benchmark))
         self.equity = series.model_dump()
 
 
