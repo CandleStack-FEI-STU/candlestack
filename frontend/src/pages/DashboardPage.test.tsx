@@ -252,6 +252,17 @@ describe('the dashboard of an account with backtests', () => {
     expect(starred.queryByRole('link', { name: /More/ })).toBeNull();
   });
 
+  it('keeps Starred models hidden while the models load', async () => {
+    await open({ ...dashboardAnswer(FULL), 'GET /api/v1/models': () => new Promise(() => {}) });
+    await vi.waitFor(() => expect(widgets()).toEqual(['Last backtests', 'Best backtests', 'Starred backtests']));
+  });
+
+  it('writes the widgets’ hints in the design’s hint style', async () => {
+    await open({ ...dashboardAnswer(FULL), ...modelsAnswer([]) });
+    const hint = within(await screen.findByRole('region', { name: 'Best backtests' })).getByText('by Sharpe');
+    expect(hint.className.split(' ')).toEqual(['text-[12px]/[1.5]', 'text-muted-foreground']);
+  });
+
   it('says in Starred models why the models could not load', async () => {
     await open({ ...dashboardAnswer(FULL), 'GET /api/v1/models': { status: 503, body: { detail: 'Down.' } } });
     const starred = within(await screen.findByRole('region', { name: 'Starred models' }));

@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router';
 
 import type { Model } from '@/api';
 import { ErrorNote } from '@/components/ErrorNote';
+import { Hint } from '@/components/Hint';
 import { ModelsIcon } from '@/components/icons';
 import { ROW_OPENER, RowStar } from '@/features/backtests';
 import { formatShape, FrameworkTile, frameworkOf } from '@/features/models';
@@ -10,7 +11,7 @@ import { formatSharpe } from '@/lib/results';
 import { cn } from '@/lib/utils';
 
 import { starredModels } from './order';
-import { Hint, MoreRow, STARRED_ROW, TOP, Widget } from './widgets';
+import { MoreRow, STARRED_ROW, TOP, Widget } from './widgets';
 
 // The framework's tile, the name over what it reads and its framework ("in 25×23 → 1 · Keras"),
 // and at the right its best Sharpe ratio over how many backtests used it. The row opens the

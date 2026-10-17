@@ -11,6 +11,7 @@ import { GetStarted } from './GetStarted';
 import { LastBacktests } from './LastBacktests';
 import { QuickActions } from './QuickActions';
 import { StarredBacktests } from './StarredBacktests';
+import { showsStarredModels } from './order';
 import { StarredModels } from './StarredModels';
 
 // The two columns (.dd-cols): the backtests on the left, the starred ones in 356 px on the right;
@@ -53,7 +54,7 @@ export function DashboardWidgets({ dashboard }: Props) {
   ].filter(Boolean);
   const right = [
     full && <StarredBacktests key="runs" starred={dashboard.starred} onOpen={openBacktest} onStar={onStar} />,
-    (full || error || models?.some((model) => model.starred)) && (
+    showsStarredModels(models, error !== null, full) && (
       <StarredModels key="models" models={models} error={error} onStar={starModel.mutate} />
     ),
   ].filter(Boolean);

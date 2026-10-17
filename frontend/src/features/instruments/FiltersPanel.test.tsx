@@ -30,6 +30,8 @@ describe('the Filters panel of the instrument list', () => {
     const panel = await open();
     expect(panel.className).not.toMatch(/fx-pop/);
     expect(panel.className.split(' ')).toContain('data-[state=open]:animate-in');
-    expect(screen.getByText('Type').className.split(' ')).toEqual(expect.arrayContaining(['mb-1', 'sm:mb-2']));
+    const list = screen.getByRole('listbox', { name: 'Type' });
+    const heading = document.getElementById(list.getAttribute('aria-labelledby') ?? '');
+    expect(heading?.className.split(' ')).toEqual(expect.arrayContaining(['mb-1', 'sm:mb-2']));
   });
 });

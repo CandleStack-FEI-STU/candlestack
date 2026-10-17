@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
-import { ErrorNote, HINT } from '@/components/ErrorNote';
+import { ErrorNote } from '@/components/ErrorNote';
+import { HINT } from '@/components/Hint';
 import { cn } from '@/lib/utils';
 
 // What the cards of Settings hold (mockups/app, ddSettings): rows of a label and a control, the

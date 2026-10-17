@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { LayoutGrid } from 'lucide-react';
 
+import { HINT } from '@/components/Hint';
 import { BacktestsIcon, ModelsIcon, SettingsIcon } from '@/components/icons';
 import { useDashboard } from '@/features/backtests';
 import { SidebarStorage, useModels } from '@/features/models';
@@ -49,7 +50,7 @@ export function Sidebar() {
       ))}
       <div className="mt-2.5 flex flex-col gap-1.5 border-t px-2.5 pt-3 pb-1 max-[980px]:hidden">
         <SidebarStorage />
-        <p className="text-xs/[1.5] text-muted-foreground">Market data delayed 15 min</p>
+        <p className={HINT}>Market data delayed 15 min</p>
       </div>
     </nav>
   );

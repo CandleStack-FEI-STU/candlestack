@@ -1,4 +1,5 @@
 import type { Backtest, Dashboard } from '@/api';
+import { Hint } from '@/components/Hint';
 import { BacktestsIcon } from '@/components/icons';
 import {
   BacktestNumber,
@@ -12,7 +13,7 @@ import {
 import { formatSharpe } from '@/lib/results';
 import { cn } from '@/lib/utils';
 
-import { Hint, MoreRow, STARRED_ROW, Sparkline, Widget } from './widgets';
+import { MoreRow, STARRED_ROW, Sparkline, Widget } from './widgets';
 
 type RowProps = { backtest: Backtest; onOpen: (backtest: Backtest) => void; onStar: (backtest: Backtest) => void };
 

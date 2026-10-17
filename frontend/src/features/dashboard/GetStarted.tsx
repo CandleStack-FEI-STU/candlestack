@@ -1,9 +1,10 @@
 import type { ComponentProps } from 'react';
 
+import { Hint } from '@/components/Hint';
 import { UploadDialog } from '@/features/models';
 import { cn } from '@/lib/utils';
 
-import { Hint, Widget } from './widgets';
+import { Widget } from './widgets';
 
 type StepProps = ComponentProps<'button'> & { step: number; title: string; hint: string };
 

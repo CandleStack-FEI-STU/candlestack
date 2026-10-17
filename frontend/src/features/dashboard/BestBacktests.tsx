@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import type { Backtest, BestMetric, Dashboard } from '@/api';
+import { Hint } from '@/components/Hint';
 import { TrophyIcon } from '@/components/icons';
 import {
   BacktestNumber,
@@ -17,7 +18,7 @@ import {
 import { formatPercent, formatSharpe, formatWinRate } from '@/lib/results';
 import { cn } from '@/lib/utils';
 
-import { Hint, Widget } from './widgets';
+import { Widget } from './widgets';
 
 // The results Best backtests ranks by, in the order of their columns (mockups/app, DD_BEST): the
 // heading, the hint's word, and how a value is written.

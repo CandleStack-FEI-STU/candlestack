@@ -1,5 +1,6 @@
 import type { Model } from '@/api';
 import { BUTTON_SIZES, GHOST_BUTTON } from '@/components/buttonStyles';
+import { HINT } from '@/components/Hint';
 import { PencilIcon, TrashIcon } from '@/components/icons';
 import { StarButton } from '@/components/StarButton';
 import { Button } from '@/components/ui/button';
@@ -13,7 +14,6 @@ import { formatShape, formatSize } from './format';
 import { FrameworkTile } from './FrameworkMark';
 import { API_FRAMEWORKS } from './frameworks';
 
-const HINT = 'text-xs/[1.5] text-muted-foreground';
 const ACTION = cn(BUTTON_SIZES.sm, GHOST_BUTTON, 'font-medium');
 
 type Props = {

@@ -4,7 +4,7 @@ import { useState, type FormEvent } from 'react';
 import { DashboardCard } from '@/components/DashboardCard';
 import { meQueryOptions, updateMe, type Me } from '@/api';
 import { ACCENT_BUTTON, BUTTON_SIZES } from '@/components/buttonStyles';
-import { HINT } from '@/components/ErrorNote';
+import { HINT } from '@/components/Hint';
 import { UserIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

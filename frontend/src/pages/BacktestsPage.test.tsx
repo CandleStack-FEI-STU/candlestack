@@ -180,35 +180,46 @@ describe('the Backtests page', () => {
     expect(asked(fetch).at(-1)).toBe('/api/v1/backtests?show=starred&model=blesk-novol-8.keras');
   });
 
-  it('pops the Filters panel open from its corner, 8 px under each heading, and simply closes it', async () => {
+  it('pops the Filters panel open from its corner and closes it at once, 8 px under each heading', async () => {
     stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer(PAGE) });
     await renderApp('/backtests');
     await screen.findByText('#12');
-    await userEvent.click(screen.getByRole('button', { name: 'Filters: All backtests' }));
+    const button = screen.getByRole('button', { name: 'Filters: All backtests' });
+    await userEvent.click(button);
     const panel = screen.getByRole('dialog', { name: 'Filters' });
-    const classes = panel.className.split(' ');
-    expect(classes).toEqual(
+    expect(panel.className.split(' ')).toEqual(
       expect.arrayContaining([
         'origin-top-left',
         'data-[state=open]:animate-fx-pop!',
         'data-[state=closed]:animate-none!',
       ]),
     );
-    for (const heading of [within(panel).getByText('Show'), within(panel).getByText('Model')]) {
-      expect(heading.className.split(' ')).toContain('mb-2');
-      expect(heading.className).not.toMatch(/mb-1/);
+    for (const name of ['Show', 'Model']) {
+      const list = within(panel).getByRole('listbox', { name });
+      const heading = document.getElementById(list.getAttribute('aria-labelledby') ?? '');
+      expect(heading?.className.split(' ')).toContain('mb-2');
+      expect(heading?.className).not.toMatch(/mb-1/);
     }
+    // Nothing plays on closing: the panel is gone right after Escape, the focus back on the button.
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Filters' })).toBeNull();
+    expect(document.activeElement).toBe(button);
   });
 
-  it('rings a row while its opener has the keyboard focus', async () => {
+  it('opens a row from the keyboard, ringing the row while its opener has the focus', async () => {
     stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer(PAGE) });
     await renderApp('/backtests');
-    const opener = await screen.findByRole('button', { name: 'Backtest #12' });
+    const star = await screen.findByRole('button', { name: 'Star backtest 12' });
+    star.focus();
+    await userEvent.tab();
+    const opener = screen.getByRole('button', { name: 'Backtest #12' });
+    expect(document.activeElement).toBe(opener);
     expect(opener.className.split(' ')).toEqual(
-      expect.arrayContaining(['after:absolute', 'after:inset-0', 'focus-visible:after:ring-2', 'outline-none']),
+      expect.arrayContaining(['after:absolute', 'after:inset-0', 'focus-visible:after:ring-2']),
     );
+    await userEvent.keyboard('{Enter}');
+    expect(await screen.findByRole('dialog', { name: 'Backtest #12' })).toBeDefined();
   });
-
   it('stars a backtest at once and takes the star back when the API refuses', async () => {
     stubApi({
       ...sessionWithPreferences(ARSEN),
