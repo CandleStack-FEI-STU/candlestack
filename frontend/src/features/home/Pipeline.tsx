@@ -33,7 +33,7 @@ function PipelineStep({ step }: { step: Step }) {
       <div
         className={cn(
           'rounded-lg border bg-card px-3 py-2.5 font-semibold',
-          step.layer && 'border-primary bg-[color-mix(in_srgb,var(--accent)_12%,var(--bg))] text-primary',
+          step.layer && 'border-primary bg-accent-soft text-primary',
         )}
       >
         {step.name}

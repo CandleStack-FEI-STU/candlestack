@@ -13,7 +13,7 @@ const TONES = {
 type BarProps = { width: number; faint?: boolean; tone?: keyof typeof TONES | undefined };
 
 export function Bar({ width, faint = false, tone }: BarProps) {
-  const fill = tone ? TONES[tone] : faint ? 'bg-muted' : 'bg-[color-mix(in_srgb,var(--ink)_9%,var(--bg))]';
+  const fill = tone ? TONES[tone] : faint ? 'bg-muted' : 'bg-surface-2';
   return (
     <span className={cn('block rounded-[5px]', faint ? 'h-[7px]' : 'h-[9px]', fill)} style={{ width: `${width}%` }} />
   );

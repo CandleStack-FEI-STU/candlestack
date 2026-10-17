@@ -87,4 +87,16 @@ describe('Sign-in', () => {
     await renderApp('/settings/sign-in?error=nope');
     expect(card().queryByRole('alert')).toBeNull();
   });
+
+  it('drops the error from the address but keeps saying it until the next action goes through', async () => {
+    stubApi({ ...session(BOTH), 'DELETE /api/v1/me/sign-in-methods/google': { status: 204 } });
+    const { router } = await renderApp('/settings/sign-in?error=taken');
+    await vi.waitFor(() => expect(router.state.location.searchStr).toBe(''));
+    expect(router.state.location.pathname).toBe('/settings/sign-in');
+    expect(card().getByRole('alert').textContent).toBe('That account already signs in to another CandleStack user.');
+
+    await userEvent.setup().click(row('Google').getByRole('button', { name: 'Disconnect' }));
+    await vi.waitFor(() => expect(row('Google').getByText('Not connected')).toBeDefined());
+    expect(card().queryByRole('alert')).toBeNull();
+  });
 });

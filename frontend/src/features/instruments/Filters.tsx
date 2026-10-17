@@ -185,7 +185,7 @@ function Trigger({ summary, onOpen, ref }: TriggerProps) {
         event.preventDefault();
         onOpen();
       }}
-      className={cn(DROPDOWN_TRIGGER, 'w-[200px] shrink-0')}
+      className={cn(DROPDOWN_TRIGGER, 'w-[200px] shrink-0 data-[state=open]:border-ring')}
     >
       <SlidersHorizontal aria-hidden className="size-4 shrink-0" />
       <span className="min-w-0 flex-1 truncate text-foreground">{summary}</span>

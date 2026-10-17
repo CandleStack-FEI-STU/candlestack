@@ -1,6 +1,7 @@
 import { Search } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
+import { Input } from '@/components/ui/input';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 
 // How long typing has to pause before the search runs: one request for "btc", not three.
@@ -36,14 +37,14 @@ export function SearchBox({ query, onSearch }: Props) {
   return (
     <div className="relative w-full sm:max-w-sm">
       <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-      <input
+      <Input
         type="search"
         value={text}
         onChange={(event) => setText(event.target.value)}
         maxLength={50}
         placeholder="Symbol or name, e.g. btc or apple"
         aria-label="Search instruments by symbol or name"
-        className="h-9 w-full rounded-md border bg-background pr-3 pl-9 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        className="h-9 pr-3 pl-9"
       />
     </div>
   );

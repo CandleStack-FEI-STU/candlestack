@@ -18,7 +18,7 @@ function Slider({
       className={cn('relative flex h-4 cursor-pointer touch-none items-center select-none', className)}
       {...props}
     >
-      <SliderPrimitive.Track className="relative h-1.5 grow overflow-hidden rounded-[3px] bg-[color-mix(in_srgb,var(--ink)_9%,var(--bg))]">
+      <SliderPrimitive.Track className="relative h-1.5 grow overflow-hidden rounded-[3px] bg-surface-2">
         <SliderPrimitive.Range className="absolute h-full bg-primary" />
       </SliderPrimitive.Track>
       <SliderPrimitive.Thumb

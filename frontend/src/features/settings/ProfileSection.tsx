@@ -6,10 +6,10 @@ import { meQueryOptions, updateMe, type Me } from '@/api';
 import { ACCENT_BUTTON, BUTTON_SIZES } from '@/components/buttonStyles';
 import { UserIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Avatar, useSignedInUser } from '@/features/account';
 import { cn } from '@/lib/utils';
 
-import { INPUT } from './controls';
 import { Code, SettingsFooter, SettingsRow } from './rows';
 
 // The API's limit (MeUpdate); it trims the name, so the check does too.
@@ -54,8 +54,8 @@ export function ProfileSection() {
       <DashboardCard icon={UserIcon} title="Profile">
         <Who user={user} />
         <SettingsRow label="Display name">
-          <input
-            className={INPUT}
+          <Input
+            className="max-w-[260px]"
             value={name}
             onChange={(event) => setName(event.target.value)}
             maxLength={NAME_MAX}

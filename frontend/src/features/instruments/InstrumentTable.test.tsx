@@ -3,8 +3,9 @@ import { RouterProvider, createMemoryHistory, createRootRoute, createRouter } fr
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
-import type { Instrument } from '@/api';
+import { meQueryOptions, type Instrument } from '@/api';
 import type { ListSort } from '@/routes/instrumentsSearch';
+import { ARSEN } from '@/test/api';
 import { classes } from '@/test/markup';
 
 import { InstrumentTable } from './InstrumentTable';
@@ -75,13 +76,18 @@ const NEW: Instrument = {
 };
 const FLAT: Instrument = { ...AAPL, id: 'stock:SPY', symbol: 'SPY', change_24h: 0.001 };
 
-// The rows' links need a router; a one-route router on "/", loaded first, is enough.
-async function render(sort?: ListSort, items: Instrument[] = [BTC, AAPL, NEW, FLAT]): Promise<string> {
+// The rows' links need a router; a one-route router on "/", loaded first, is enough. The hover
+// texts ask whether someone is signed in: a visitor, unless the client says otherwise.
+async function render(
+  sort?: ListSort,
+  items: Instrument[] = [BTC, AAPL, NEW, FLAT],
+  queryClient = new QueryClient(),
+): Promise<string> {
   const rootRoute = createRootRoute({ component: () => <InstrumentTable items={items} sort={sort} /> });
   const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ['/'] }) });
   await router.load();
   return renderToString(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
@@ -115,7 +121,7 @@ describe('InstrumentTable', () => {
       '83,249.35+1.51%',
       '1.51%',
       // for screen readers, then the hover text of each day
-      expect.stringMatching(/^10 daily candles, \+1\.25%4 Oct 2025 · close 80,100.00.*13 Oct 2025 · close 81,000.00$/),
+      expect.stringMatching(/^10 daily candles, \+1\.25%Oct 4 · close 80,100.00.*Oct 13 · close 81,000.00$/),
       '$1.26B',
       'Bitcoin / TetherUS',
       'Crypto',
@@ -126,7 +132,7 @@ describe('InstrumentTable', () => {
       '2 daily candles, −0.60%',
       '247.85−0.71%',
       '0.71%',
-      '2 daily candles, −0.60%4 Oct 2025 · close 248.006 Oct 2025 · close 248.50',
+      '2 daily candles, −0.60%Oct 4 · close 248.00Oct 6 · close 248.50',
       '$341M',
       'Apple Inc.',
       'Stock',
@@ -245,8 +251,15 @@ describe('InstrumentTable candles', () => {
     expect(cells(btc)[4]).toMatch(
       /<a [^>]*tabindex="-1"[^>]*aria-hidden="true"[^>]*href="\/instrument\/crypto%3ABTCUSDT"/,
     );
-    expect(cells(btc)[4]).toContain('group-hover/day:block">9 Oct 2025 · close 80,600.00</span>');
+    expect(cells(btc)[4]).toContain('group-hover/day:block">Oct 9 · close 80,600.00</span>');
     expect(cells(btc)[1]).not.toContain('<a ');
+  });
+
+  it("writes the day as the chart's axis does for a signed-in user", async () => {
+    const signedIn = new QueryClient();
+    signedIn.setQueryData(meQueryOptions().queryKey, ARSEN);
+    const [btc = ''] = rows(await render(undefined, [BTC], signedIn));
+    expect(cells(btc)[4]).toContain('group-hover/day:block">9 Oct · close 80,600.00</span>');
   });
 
   it('draws a dashed line without candles', async () => {

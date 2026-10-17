@@ -81,6 +81,13 @@ export function formatDate(date: Date, { timeZone, dateFormat }: Pick<DateStyle,
   return `${Number(day)} ${monthName(month)} ${year}`;
 }
 
+// A day without its year, short enough for the chart's axis between its ticks: 3 Jun, the day in
+// `timeZone`, the same in every date format.
+export function formatShortDay(date: Date, { timeZone }: Pick<DateStyle, 'timeZone'>): string {
+  const { month, day } = calendarDay(date, timeZone);
+  return `${Number(day)} ${monthName(month)}`;
+}
+
 // 16:05 (24) or 4:05 PM (12), in `timeZone`. A plain space before AM and PM: newer browsers put a
 // narrow one there, which some fonts draw too thin.
 export function formatTime(date: Date, { timeZone, timeFormat }: Pick<DateStyle, 'timeZone' | 'timeFormat'>): string {

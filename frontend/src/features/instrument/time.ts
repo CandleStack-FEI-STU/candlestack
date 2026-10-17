@@ -1,5 +1,14 @@
 import type { Market } from '@/api';
-import { NEW_YORK, calendarDay, formatDate, formatTime, monthName, viewerTimeZone, type DateStyle } from '@/lib/dates';
+import {
+  NEW_YORK,
+  calendarDay,
+  formatDate,
+  formatShortDay,
+  formatTime,
+  monthName,
+  viewerTimeZone,
+  type DateStyle,
+} from '@/lib/dates';
 
 // The chart's zone for a visitor, who has no time zone setting (signed in, the setting decides).
 // Stocks trade on New York time (the session opens at 09:30 there all year). Crypto trades around
@@ -24,10 +33,9 @@ export function tickFormatter(style: DateStyle) {
   return (seconds: number, tick: number): string => {
     const date = new Date(seconds * 1000);
     if (tick === Tick.Time || tick === Tick.TimeWithSeconds) return formatTime(date, style);
-    const { year, month, day } = calendarDay(date, style.timeZone);
-    if (tick === Tick.Year) return year;
-    if (tick === Tick.Month) return monthName(month);
-    return `${Number(day)} ${monthName(month)}`;
+    if (tick === Tick.Day) return formatShortDay(date, style);
+    const { year, month } = calendarDay(date, style.timeZone);
+    return tick === Tick.Year ? year : monthName(month);
   };
 }
 

@@ -15,7 +15,7 @@ const ORDER: readonly Benchmark[] = ['bh', 'SPY', 'QQQ', 'DIA'];
 // .st-bk: the short name in mono on the darker surface.
 function Tag({ children }: { children: string }) {
   return (
-    <span className="min-w-10 flex-none rounded-[5px] bg-[color-mix(in_srgb,var(--ink)_9%,var(--bg))] px-1.5 py-0.5 text-center font-mono text-[11.5px]/[normal] font-semibold text-foreground">
+    <span className="min-w-10 flex-none rounded-[5px] bg-surface-2 px-1.5 py-0.5 text-center font-mono text-[11.5px]/[normal] font-semibold text-foreground">
       {children}
     </span>
   );

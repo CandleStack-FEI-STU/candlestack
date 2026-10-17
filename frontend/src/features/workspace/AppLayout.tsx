@@ -32,7 +32,7 @@ export function AppLayout() {
   if (!user) return null;
   return (
     <SignedInUserContext value={user}>
-      <PageFrame header={<AppHeader />}>
+      <PageFrame header={<AppHeader />} app>
         <Workspace />
       </PageFrame>
     </SignedInUserContext>

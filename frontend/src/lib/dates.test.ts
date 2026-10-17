@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { cityOf, dateStyleOf, formatDate, formatTime, viewerTimeZone, zoneOf } from './dates';
+import { cityOf, dateStyleOf, formatDate, formatShortDay, formatTime, viewerTimeZone, zoneOf } from './dates';
 
 // 2024-10-12 16:05 UTC: 12:05 in New York, 18:05 in Bratislava.
 const MOMENT = new Date(Date.UTC(2024, 9, 12, 16, 5));
@@ -50,6 +50,14 @@ describe('formatDate', () => {
 
   it('takes the day in the zone', () => {
     expect(formatDate(LATE, { timeZone: 'America/New_York', dateFormat: 'iso' })).toBe('2024-01-03');
+  });
+});
+
+describe('formatShortDay', () => {
+  it('writes the day and the month, without padding, in the zone', () => {
+    expect(formatShortDay(MOMENT, { timeZone: 'UTC' })).toBe('12 Oct');
+    expect(formatShortDay(LATE, { timeZone: 'UTC' })).toBe('4 Jan');
+    expect(formatShortDay(LATE, { timeZone: 'America/New_York' })).toBe('3 Jan');
   });
 });
 

@@ -31,9 +31,7 @@ export function DashboardCard({ icon: Icon, title, aside, danger = false, childr
           <span
             className={cn(
               'grid size-[26px] flex-none place-items-center rounded-[7px]',
-              danger
-                ? 'bg-[color-mix(in_srgb,var(--down)_12%,var(--bg))] text-down'
-                : 'bg-[color-mix(in_srgb,var(--accent)_12%,var(--bg))] text-primary',
+              danger ? 'bg-down-soft text-down' : 'bg-accent-soft text-primary',
             )}
           >
             <Icon className="size-[15px]" />

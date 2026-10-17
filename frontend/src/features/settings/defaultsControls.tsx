@@ -1,10 +1,9 @@
 import type { Direction } from '@/api';
 import { ArrowDownIcon, ArrowUpIcon } from '@/components/icons';
+import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
-
-import { INPUT } from './controls';
 
 // The controls of the Backtest defaults card (mockups/app, ddSettings).
 
@@ -71,8 +70,8 @@ export function UnitInput({
         invalid && 'border-down focus-within:border-down',
       )}
     >
-      <input
-        className="h-[34px] w-full min-w-0 bg-transparent px-2.5 font-mono text-sm text-foreground outline-none"
+      <Input
+        className="border-0 bg-transparent font-mono focus-visible:ring-0"
         value={value}
         inputMode="decimal"
         aria-label={label}
@@ -99,7 +98,7 @@ export function DirectionCards({ value, onChange }: { value: Direction; onChange
         <ToggleGroupItem
           key={direction}
           value={direction}
-          className="flex h-auto flex-col items-start gap-[3px] rounded-lg bg-background px-3 py-2.5 text-left text-sm font-normal text-foreground transition-[border-color,background-color,translate] duration-150 hover:-translate-y-px hover:not-data-[state=on]:border-[color-mix(in_srgb,var(--accent)_45%,var(--rule))] hover:text-foreground data-[state=on]:bg-[color-mix(in_srgb,var(--accent)_12%,var(--bg))] data-[state=on]:text-foreground"
+          className="flex h-auto flex-col items-start gap-[3px] rounded-lg bg-background px-3 py-2.5 text-left text-sm font-normal text-foreground transition-[border-color,background-color,translate] duration-150 hover:-translate-y-px hover:not-data-[state=on]:border-[color-mix(in_srgb,var(--accent)_45%,var(--rule))] hover:text-foreground data-[state=on]:bg-accent-soft data-[state=on]:text-foreground"
         >
           <span className="mb-0.5 flex gap-0.5">
             <ArrowUpIcon className="size-4 text-up" />
@@ -126,8 +125,8 @@ export function PeriodInput({
   onChange: (value: string) => void;
 }) {
   return (
-    <input
-      className={cn(INPUT, 'max-w-[120px] font-mono text-[13px]')}
+    <Input
+      className="max-w-[120px] font-mono text-[13px]"
       value={value}
       placeholder="YYYY-MM-DD"
       aria-label={label}

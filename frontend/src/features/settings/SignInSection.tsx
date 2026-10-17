@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearch } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
+import { useEffect, useState } from 'react';
 
 import { DashboardCard } from '@/components/DashboardCard';
 import { ApiError, connectUrl, disconnectSignInMethod, meQueryOptions, type Provider } from '@/api';
@@ -32,6 +33,19 @@ function useDisconnect() {
         (me) => me && { ...me, providers: me.providers.filter((connected) => connected !== provider) },
       ),
   });
+}
+
+// How connecting ended, from ?error= when the API sent the browser back here. The address drops
+// it at once, so a reload or a shared link does not say it again; the message stays until the
+// user does something else here.
+function useConnectError() {
+  const { error } = useSearch({ from: '/_app/settings/$section' });
+  const navigate = useNavigate({ from: '/settings/$section' });
+  const [shown, setShown] = useState(error);
+  useEffect(() => {
+    if (error !== undefined) void navigate({ search: {}, replace: true });
+  }, [error, navigate]);
+  return { connectError: shown, clearConnectError: () => setShown(undefined) };
 }
 
 function disconnectError(error: Error | null): string | undefined {
@@ -90,7 +104,7 @@ function ProviderRow({ provider, email, connected, only, busy, onDisconnect }: R
 // Disconnect removes it, except the last one.
 export function SignInSection() {
   const user = useSignedInUser();
-  const { error: connectError } = useSearch({ from: '/_app/settings/$section' });
+  const { connectError, clearConnectError } = useConnectError();
   const disconnect = useDisconnect();
   const error = disconnectError(disconnect.error) ?? (connectError && CONNECT_ERRORS[connectError]);
   return (
@@ -105,7 +119,10 @@ export function SignInSection() {
             connected={user.providers.includes(provider)}
             only={user.providers.length === 1}
             busy={disconnect.isPending}
-            onDisconnect={() => disconnect.mutate(provider)}
+            onDisconnect={() => {
+              clearConnectError();
+              disconnect.mutate(provider);
+            }}
           />
         ))}
       </div>

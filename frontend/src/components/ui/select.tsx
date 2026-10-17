@@ -15,10 +15,18 @@ function Select({ ...props }: React.ComponentProps<typeof SelectPrimitive.Root>)
 }
 
 // The children show the choice (Radix's Value would only copy the entry's name); the chevron
-// comes last.
+// comes last. While open, the border takes on the accent.
 function SelectTrigger({ className, children, ...props }: React.ComponentProps<typeof SelectPrimitive.Trigger>) {
   return (
-    <SelectPrimitive.Trigger data-slot="select-trigger" className={cn(DROPDOWN_TRIGGER, className)} {...props}>
+    <SelectPrimitive.Trigger
+      data-slot="select-trigger"
+      className={cn(
+        DROPDOWN_TRIGGER,
+        'cursor-pointer data-[state=open]:border-[color-mix(in_srgb,var(--accent)_55%,var(--rule))]',
+        className,
+      )}
+      {...props}
+    >
       {children}
       <SelectPrimitive.Icon asChild>
         <ChevronDown className={DROPDOWN_CHEVRON} />
