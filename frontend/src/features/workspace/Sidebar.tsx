@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router';
 import { LayoutGrid } from 'lucide-react';
 
 import { BacktestsIcon, ModelsIcon, SettingsIcon } from '@/components/icons';
+import { SidebarStorage, useModels } from '@/features/models';
 
 const SECTIONS = [
   { to: '/dashboard', label: 'Dashboard', Icon: LayoutGrid },
@@ -16,10 +17,17 @@ const SECTIONS = [
 const ITEM =
   'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm/[normal] whitespace-nowrap text-muted-foreground transition-colors duration-150 hover:text-foreground hover:not-data-[status=active]:bg-muted data-[status=active]:bg-surface-2 data-[status=active]:font-medium data-[status=active]:text-foreground motion-reduce:transition-none max-[980px]:w-auto max-[980px]:flex-none';
 
-// The workspace's sections beside the page (mockups/app, direction D): a 200 px card, the data
-// note under a line at its foot. Up to 980 px wide it lies above the page as a row that scrolls
-// sideways, without a scrollbar and without the note.
+// How many there are in a section, at the row's right (.dd-n): the models once the API has said.
+function useCounts(): Partial<Record<(typeof SECTIONS)[number]['to'], number>> {
+  const models = useModels().data?.models;
+  return models ? { '/models': models.length } : {};
+}
+
+// The workspace's sections beside the page (mockups/app, direction D): a 200 px card, the storage
+// and the data note under a line at its foot. Up to 980 px wide it lies above the page as a row
+// that scrolls sideways, without a scrollbar and without the foot.
 export function Sidebar() {
+  const counts = useCounts();
   return (
     <nav
       aria-label="Workspace"
@@ -29,11 +37,17 @@ export function Sidebar() {
         <Link key={to} to={to} className={ITEM}>
           <Icon className="size-4 shrink-0" />
           {label}
+          {counts[to] !== undefined && (
+            <span className="ml-auto pl-2 font-mono text-xs/[normal] font-normal text-muted-foreground">
+              {counts[to]}
+            </span>
+          )}
         </Link>
       ))}
-      <p className="mt-2.5 border-t px-2.5 pt-3 pb-1 text-xs/[1.5] text-muted-foreground max-[980px]:hidden">
-        Market data delayed 15 min
-      </p>
+      <div className="mt-2.5 flex flex-col gap-1.5 border-t px-2.5 pt-3 pb-1 max-[980px]:hidden">
+        <SidebarStorage />
+        <p className="text-xs/[1.5] text-muted-foreground">Market data delayed 15 min</p>
+      </div>
     </nav>
   );
 }

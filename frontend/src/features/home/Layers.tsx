@@ -1,4 +1,6 @@
-import { Eyebrow, Section, SectionIntro } from './Section';
+import { Eyebrow } from '@/components/Eyebrow';
+
+import { Section, SectionIntro } from './Section';
 
 type Layer = { eyebrow: string; title: string; text: string; badges: string[] };
 

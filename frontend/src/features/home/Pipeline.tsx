@@ -1,8 +1,7 @@
 import { Fragment } from 'react';
 
+import { Eyebrow } from '@/components/Eyebrow';
 import { cn } from '@/lib/utils';
-
-import { Eyebrow } from './Section';
 
 type Step = { eyebrow: string; name: string; layer?: boolean; items: string[] };
 

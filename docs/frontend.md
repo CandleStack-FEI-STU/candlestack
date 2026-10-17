@@ -183,9 +183,9 @@ names the layout: `useSearch({ from: '/_public/instruments' })`.
 
 The app shell (`src/features/workspace/`) follows `mockups/app`: the app header (logo to the
 dashboard, no nav, New backtest, the theme toggle, the avatar), a 200 px sidebar (Dashboard,
-Backtests, Models, Settings, then the note that market data is delayed 15 min; up to 980 px
-above the page as a row that scrolls sideways without a scrollbar, the note left out) and the
-footer.
+Backtests, Models with the model count, Settings, then the storage the models take and the note
+that market data is delayed 15 min; up to 980 px above the page as a row that scrolls sideways
+without a scrollbar, the foot left out) and the footer.
 The avatar is the user's initials (`initials.ts`), never a provider picture; its menu
 (`src/features/account/AccountMenu.tsx`) is a shadcn/ui DropdownMenu with Settings, Home page,
 API docs and, in red, Sign out. New backtest opens `ComingSoonDialog`: a shadcn/ui Dialog with
@@ -252,11 +252,36 @@ The two sections with the account's preferences load them in the route's loader
   their rows in `src/features/settings/rows.tsx` and their text field and segments in
   `controls.tsx`. A failure is a line in the design's hint style (12 px, muted) with
   `role="alert"`.
-- Data and storage shows the market data; the backtests and models rows come with those pages.
+- Data and storage shows the market data and the storage the models take (the sidebar's meter
+  and numbers, how many were uploaded); the backtests row comes with that page.
   API and MCP shows both cards as Coming soon, with the API docs of the same host.
 - Account: Sign out everywhere (`POST /api/v1/auth/sign-out-everywhere`) and Delete account
   (`DELETE /api/v1/me`, after the app's dialog). Both then forget the user and their data and go
   to the home page, as Sign out does (`useLeaveAccount.ts`).
+
+## Models
+
+`/models` (`src/features/models/`, #208) follows `mockups/app` (`ddModels`, `mdTile`, the
+upload, rename and delete modals):
+
+- One query, `modelsQueryOptions()` in `src/api/models.ts` under `['account', 'models']`, feeds
+  the page and the sidebar's count and storage. Every change writes the API's answer into it at
+  once and then asks again; the star changes before the API answers and goes back when it
+  refuses.
+- A tile per model, oldest first: the framework's mark (Simple Icons paths and brand colours in
+  `frameworks.ts`, a quarter lighter in the dark theme), the star (`src/components/StarButton.tsx`,
+  shared with the backtests later), the name, `Keras · size · added day`, the shape it reads, the
+  best Sharpe and the backtest count, Rename and Delete. Sizes are binary MB like the API's
+  limits. The day goes through `src/lib/dates.ts` in the account's zone and date format: "Today",
+  else `13 Oct` in the default format while it is this year's, else the whole date.
+- Upload model (`UploadDialog`, exported for the dashboard): the file goes to
+  `POST /api/v1/models?name=…` as the raw body. A file of another format (by its extension)
+  never reaches the API: it shows that support is coming soon. While the API checks the file,
+  both checks show pending in their place; then both pass (the model is ready, Backtest with it
+  opens New backtest) or the one that failed says why (`check` of `model-check-failed`, 413,
+  `storage-full`, anything else); a file over the limit fails before it is sent. Closing the
+  dialog aborts the upload and asks for the list again, as the API may have kept the file. A
+  model deleted meanwhile (404) closes its Rename or Delete dialog and leaves the list.
 
 ## Instrument icons
 

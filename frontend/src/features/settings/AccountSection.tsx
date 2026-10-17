@@ -1,11 +1,11 @@
 import { DashboardCard } from '@/components/DashboardCard';
-import { BUTTON_SIZES, DANGER_ACCENT_BUTTON, DANGER_BUTTON, OUTLINE_BUTTON } from '@/components/buttonStyles';
+import { BUTTON_SIZES, DANGER_BUTTON, OUTLINE_BUTTON } from '@/components/buttonStyles';
+import { CancelButton, DangerButton } from '@/components/DialogButtons';
 import { WarnIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogBody,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -33,19 +33,10 @@ function DeleteAccountQuestion() {
         {remove.error && <ErrorNote>{remove.error.message}</ErrorNote>}
       </DialogBody>
       <DialogFooter>
-        <DialogClose asChild>
-          <Button type="button" variant="outline" className={cn(BUTTON_SIZES.default, OUTLINE_BUTTON)}>
-            Cancel
-          </Button>
-        </DialogClose>
-        <Button
-          type="button"
-          className={cn(BUTTON_SIZES.default, DANGER_ACCENT_BUTTON)}
-          disabled={remove.isPending}
-          onClick={() => remove.mutate()}
-        >
+        <CancelButton />
+        <DangerButton disabled={remove.isPending} onClick={() => remove.mutate()}>
           Delete account
-        </Button>
+        </DangerButton>
       </DialogFooter>
     </>
   );

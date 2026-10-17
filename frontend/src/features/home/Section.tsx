@@ -1,15 +1,7 @@
 import type { ReactNode } from 'react';
 
+import { Eyebrow } from '@/components/Eyebrow';
 import { cn } from '@/lib/utils';
-
-// The small uppercase label above a heading or a pipeline step.
-export function Eyebrow({ children }: { children: ReactNode }) {
-  return (
-    <span className="font-mono text-[11px]/4 font-medium tracking-[0.06em] text-muted-foreground uppercase">
-      {children}
-    </span>
-  );
-}
 
 type SectionProps = { id: string; split?: boolean; children: ReactNode };
 

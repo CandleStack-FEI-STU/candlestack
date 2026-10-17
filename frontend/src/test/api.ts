@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 
-import type { Me, Preferences } from '@/api';
+import type { Me, Model, Preferences } from '@/api';
 
 // A signed-in user as GET /api/v1/me sends it.
 export const ARSEN: Me = {
@@ -25,16 +25,20 @@ export const NOT_SIGNED_IN: Answer = {
   },
 };
 
+// An answer the test gives when it wants: a request still running, or one that is aborted.
+type Later = (init: RequestInit | undefined) => Promise<Answer>;
+
 // Stubs fetch with the given answers, by method and path ("GET /api/v1/me", as src/api/client.ts
 // calls it); anything else is a 404. Returns the stub, to check what was asked.
-export function stubApi(answers: Record<string, Answer>) {
-  const fetch = vi.fn((path: string, init?: RequestInit) => {
-    const answer = answers[`${init?.method ?? 'GET'} ${path}`] ?? {
+export function stubApi(answers: Record<string, Answer | Later>) {
+  const fetch = vi.fn(async (path: string, init?: RequestInit) => {
+    const given = answers[`${init?.method ?? 'GET'} ${path}`] ?? {
       status: 404,
       body: { title: 'Not found' },
     };
+    const answer = typeof given === 'function' ? await given(init) : given;
     const body = answer.body === undefined ? null : JSON.stringify(answer.body);
-    return Promise.resolve(new Response(body, { status: answer.status }));
+    return new Response(body, { status: answer.status });
   });
   vi.stubGlobal('fetch', fetch);
   return fetch;
@@ -74,3 +78,42 @@ export function sentBody(fetch: ReturnType<typeof stubApi>, request: string): un
   const body = call?.[1]?.body;
   return typeof body === 'string' ? JSON.parse(body) : undefined;
 }
+
+// A problem+json answer of the API, with its extensions (`check`, `used_bytes`, ...).
+export const problem = (status: number, slug: string, detail: string, extensions: object = {}): Answer => ({
+  status,
+  body: { type: `https://candlestack.tech/problems/${slug}`, title: slug, status, detail, ...extensions },
+});
+
+export const MB = 1024 * 1024;
+
+// An uploaded model as the API sends it: 25 candles by 23 features in, one number out.
+export const model = (fields: Partial<Model> = {}): Model => ({
+  id: 'mdl_7f3k2m9qx4',
+  name: 'my-tsmixer.keras',
+  framework: 'keras',
+  size_bytes: Math.round(14.2 * MB),
+  parameters: 1_240_000,
+  input_shape: [25, 23],
+  output_shape: [1],
+  starred: false,
+  backtest_count: 0,
+  best_sharpe: null,
+  created_at: '2026-10-13T09:00:00Z',
+  ...fields,
+});
+
+// GET /api/v1/models with these models; the storage they take is the sum of their sizes.
+export const modelsAnswer = (list: Model[]): Record<string, Answer> => ({
+  'GET /api/v1/models': {
+    status: 200,
+    body: {
+      models: list,
+      usage: {
+        used_bytes: list.reduce((sum, item) => sum + item.size_bytes, 0),
+        quota_bytes: 100 * MB,
+        file_max_bytes: 50 * MB,
+      },
+    },
+  },
+});
