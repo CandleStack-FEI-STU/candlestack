@@ -485,6 +485,30 @@ def test_disconnect(browser) -> None:
     assert browser.me().json()["providers"] == ["google"]
 
 
+def test_a_removed_sign_in_method_does_not_come_back(browser, sql) -> None:
+    """Signing in with a removed method fails, though its email is the user's: the user
+    removed it because they do not trust that account any more."""
+    browser.sign_in("github")
+    me = browser.me().json()
+    browser.connect("google")
+    browser.delete("/api/v1/me/sign-in-methods/github", headers=ORIGIN)
+    browser.sign_out()
+
+    callback = browser.sign_in("github")
+
+    assert callback.headers["location"] == "/signin?error=connect-first"
+    assert "session" not in cookies_set(callback)
+    assert sql("SELECT provider FROM identities") == [("google",)]
+    browser.sign_in("google")
+    assert browser.me().json()["id"] == me["id"]
+    assert browser.me().json()["providers"] == ["google"]
+    # Connected again in Settings, it signs in again.
+    browser.connect("github")
+    browser.sign_out()
+    browser.sign_in("github")
+    assert browser.me().json()["providers"] == ["github", "google"]
+
+
 def test_the_last_sign_in_method_stays(browser) -> None:
     browser.sign_in("github")
 

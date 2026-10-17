@@ -15,7 +15,7 @@ from candlestack.core import Base
 # similar characters.
 _ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567"
 _ID_LENGTH = 10
-# Longer names from a provider are cut.
+# The column's room; a name is at most ``schemas.DISPLAY_NAME_MAX`` long.
 DISPLAY_NAME_LENGTH = 200
 
 
@@ -29,7 +29,7 @@ class User(Base):
 
     id: Mapped[str] = mapped_column(String(14), primary_key=True)
     display_name: Mapped[str] = mapped_column(String(DISPLAY_NAME_LENGTH))
-    # Lowercased, so the same address from another provider finds the account.
+    # Lowercased, like the providers' emails it is compared with.
     email: Mapped[str] = mapped_column(String(320), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_sign_in_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

@@ -4,8 +4,10 @@ Settings (name, sign-in methods, preferences, deleting the account).
 A sign-in starts with a random ``state`` kept in Redis (with the PKCE verifier and where to go
 next) and in a cookie of the browser; the callback must bring back both, so nobody can finish a
 sign-in that another browser started (login CSRF). The account the provider vouches for signs
-in only when its email is on the beta list. A session is a random token in the browser's cookie;
-Postgres keeps only its SHA-256.
+in only when its email is on the beta list. A provider account signs in to the user it was
+first added to; a new one whose email is a user's already does not sign in (the user connects
+it in Settings), so a sign-in method the user removed does not come back by its email. A
+session is a random token in the browser's cookie; Postgres keeps only its SHA-256.
 
 Connecting a sign-in method in Settings is the same round trip, started by a signed-in user:
 the pending state remembers the session (its hash), and the callback adds the provider's
@@ -26,6 +28,7 @@ from typing import Protocol
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from candlestack.accounts.errors import (
+    AccountNotConnected,
     LastSignInMethod,
     NoSuchSignInMethod,
     SignInDenied,
@@ -33,7 +36,6 @@ from candlestack.accounts.errors import (
     SignInMethodTaken,
 )
 from candlestack.accounts.models import (
-    DISPLAY_NAME_LENGTH,
     Identity,
     User,
     UserSession,
@@ -42,6 +44,7 @@ from candlestack.accounts.models import (
 from candlestack.accounts.oauth import OAuthClient, ProviderAccount
 from candlestack.accounts.pending import PendingSignIn, PendingStore
 from candlestack.accounts.schemas import (
+    DISPLAY_NAME_MAX,
     Appearance,
     AppearanceUpdate,
     BacktestDefaults,
@@ -223,6 +226,8 @@ class AccountsService:
             SignInFailed: The sign-in or connect was cancelled or failed, or the session that
                 started the connect ended or is not this browser's any more.
             SignInMethodTaken: The account to connect signs in to another user.
+            AccountNotConnected: The account to sign in with is new, but its email is that of a
+                user (who must connect it in Settings first).
             SignInDenied: The account's email is not on the beta list (sign-in only).
         """
         if not state or not browser_state or len(state) > _MAX_STATE:
@@ -257,7 +262,11 @@ class AccountsService:
         self, account: ProviderAccount, identity: Identity | None, known: User | None
     ) -> User:
         """The user `account` signs in as: `known`, the one its `identity` signed in as before,
-        else the one with its email, else a new one."""
+        else a new one.
+
+        Raises:
+            AccountNotConnected: The account is new, but a user has its email.
+        """
         now = _now()
         if identity is not None:
             identity.email = account.email
@@ -265,9 +274,9 @@ class AccountsService:
             user = known
             assert user is not None  # the foreign key
         else:
-            user = await self._store.user_by_email(account.email)
-            if user is None:
-                user = self._new_user(account.email, _display_name(account), now)
+            if await self._store.user_by_email(account.email) is not None:
+                raise AccountNotConnected
+            user = self._new_user(account.email, provider_display_name(account), now)
             self._add_identity(user, account, now)
         user.last_sign_in_at = now
         return user
@@ -456,8 +465,9 @@ class AccountsService:
         return Appearance.model_validate(merged)
 
 
-def _display_name(account: ProviderAccount) -> str:
-    """GitHub's name or else login, Google's name, else the email's local part; cut to the
-    column's length."""
-    name = account.name or account.login or account.email.partition("@")[0]
-    return name[:DISPLAY_NAME_LENGTH]
+def provider_display_name(account: ProviderAccount) -> str:
+    """The display name of a new user: GitHub's name or else login, Google's name, else the
+    email's local part; without surrounding whitespace and cut to what the user may save, so
+    saving Profile unchanged always passes."""
+    name = (account.name or "").strip() or account.login or account.email.partition("@")[0]
+    return name[:DISPLAY_NAME_MAX].rstrip()

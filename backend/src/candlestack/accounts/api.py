@@ -3,7 +3,9 @@
 Sign-in starts at ``GET /api/v1/auth/{provider}/start?next=<path>``, which redirects to GitHub
 or Google; the provider returns to ``/api/v1/auth/{provider}/callback``, which sets the session
 cookie and redirects to ``next`` (default ``/dashboard``), or to ``/signin?error=denied`` (not on
-the beta list: ``GET /api/v1/auth/denied`` names the account) or ``/signin?error=failed``.
+the beta list: ``GET /api/v1/auth/denied`` names the account), ``/signin?error=connect-first``
+(a new account with the email of a user, who connects it in Settings first) or
+``/signin?error=failed``.
 With ``intent=connect`` the same round trip, started from a link of Settings, adds a sign-in
 method to the signed-in user and returns to Settings (``/settings/sign-in``, with
 ``?error=taken`` or ``?error=failed``).
@@ -20,6 +22,7 @@ from candlestack.accounts.cookies import DENIED, SESSION, STATE, Cookies, Cookie
 from candlestack.accounts.dependencies import (
     AccountsServiceDep,
     CurrentUserDep,
+    browser_session,
     limit_sign_ins,
     sign_in_wait,
 )
@@ -143,7 +146,10 @@ async def start_sign_in(  # noqa: PLR0913 (the query parameters and the dependen
     intent: IntentParam = SignInIntent.sign_in,
 ) -> RedirectResponse:
     """Redirects to the provider's sign-in page, or to `/signin?error=failed` when sign-in
-    with it is not available or this address made too many sign-in requests in a minute.
+    with it is not available or this address made too many sign-in requests in a minute. A
+    sign-in returns to `/signin?error=connect-first` when the provider's account never signed
+    in but its email is that of a CandleStack user: that user signs in with their other method
+    and connects it in Settings.
 
     With `intent=connect` (signed in, a link of Settings) the provider's account is added to
     the signed-in user's sign-in methods instead: the callback returns to `next` (default
@@ -185,14 +191,14 @@ async def _start_connect(
     # to there: SameSite=Lax sends the session cookie along on a navigation.
     if not is_same_origin(request, settings):
         raise SignInFailed("the connect does not come from the app's own pages")
-    token = cookies.read(request, SESSION)
-    signed_in = None if token is None else await service.signed_in(token)
-    if token is None or signed_in is None:
+    session = await browser_session(request, service, cookies)
+    if session is None:
         query = urlencode({"next": safe_next(next_path, CONNECT_NEXT)}, safe="/")
         return _redirect(f"{SIGN_IN_PAGE}?{query}")
-    response = _to_provider(await service.start_connect(provider, token, next_path), cookies)
-    if signed_in.extended:  # the session slides on, as on any request of the signed-in user
-        cookies.set(response, SESSION, token, SESSION_MAX_AGE)
+    response = _to_provider(
+        await service.start_connect(provider, session.token, next_path), cookies
+    )
+    session.slide_on(response)
     return response
 
 

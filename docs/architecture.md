@@ -51,7 +51,7 @@ flowchart LR
 | `GET /api/health/sources` | reachability of Binance and Alpaca (cached 60 s) |
 | `GET /api/v1/data/...` | instruments and candles, see [data.md](data.md) |
 | `GET /api/v1/auth/{provider}/start?next=<path>` | sign-in with `github` or `google`: redirects to the provider, or to `/signin?error=failed` (provider not configured, too many sign-ins from the address); with `intent=connect` it adds a sign-in method to the signed-in user instead ([Accounts](#accounts)) |
-| `GET /api/v1/auth/{provider}/callback` | where the provider returns; sets the session cookie and redirects to `next` (default `/dashboard`), or to `/signin?error=denied` (not on the beta list) or `/signin?error=failed`; a connect returns to Settings instead; not in the API reference |
+| `GET /api/v1/auth/{provider}/callback` | where the provider returns; sets the session cookie and redirects to `next` (default `/dashboard`), or to `/signin?error=denied` (not on the beta list), `/signin?error=connect-first` (a new account with the email of a user) or `/signin?error=failed`; a connect returns to Settings instead; not in the API reference |
 | `GET /api/v1/auth/denied` | the account this browser was just turned away with (email, provider), for the sign-in page |
 | `POST /api/v1/auth/sign-out` | ends this browser's session |
 | `POST /api/v1/auth/dev` | signs in as a fixed dev user; only `APP_ENV` `local` and `test`, not in the API reference |
@@ -90,7 +90,11 @@ flowchart LR
 - **Sign-in**: the OAuth round trip with GitHub or Google ([HTTP surface](#http-surface)). The
   beta list admits users: a new account by its email, an account that signed in before by the
   email of its user (that of the user's first sign-in), so a method connected in Settings signs
-  in too, and a user whose email leaves the list cannot sign in with any method.
+  in too, and a user whose email leaves the list cannot sign in with any method. A provider's
+  account signs in to the user it was added to; a new one whose email is a user's already does
+  not sign in (`/signin?error=connect-first`): the user signs in with their other method and
+  connects it in Settings. Linking it by the email would bring back a method the user removed
+  because they do not trust that account any more.
 - **Sign-in methods**: `GET /api/v1/auth/{provider}/start?intent=connect&next=<path>`, the
   Connect link of Settings, starts the same round trip for the signed-in user (without a
   session it redirects to `/signin?next=/settings/sign-in`). Being a navigation, it carries no
@@ -291,7 +295,7 @@ to check that an error reaches Sentry. The Sentry settings are recorded in
 | Modular monolith, one package, boundaries checked by import-linter | one image and one deploy for a small team; the boundaries still hold |
 | Market data is not stored; Redis as a disposable cache (no persistence, `allkeys-lru`) | market data comes from the sources on demand; losing Redis costs only refetch time |
 | Postgres for what users create, one database per environment, nightly dumps on prod and stage | accounts and later models and backtests must survive restarts and deploys; one small instance per environment keeps stage away from prod's data |
-| Sign-in with GitHub or Google only, no passwords | no password storage, reset or verification flows to build and secure; both providers vouch for a verified email, which also links a user's two providers into one account |
+| Sign-in with GitHub or Google only, no passwords | no password storage, reset or verification flows to build and secure; both providers vouch for a verified email; a user adds the other provider in Settings, never by the email alone |
 | A beta list (`BETA_ALLOWLIST`) decides who signs in, closed when empty | the app is for the team and invited testers while it is built; a turned-away account is named on the sign-in page (from Redis, for 10 minutes, never in a URL) and gets no account |
 | Server-side sessions: a random token in an HttpOnly, SameSite=Lax cookie (`__Host-` over https), only its SHA-256 in Postgres, 30 days sliding | a session can be ended at once (sign-out, later admin), a database leak does not leak sessions, and no script can read the cookie |
 | Changes on behalf of the user require the app's own origin (`core.require_same_origin`), the OAuth round trip a state bound to the browser (Redis and a cookie) and PKCE | every host under candlestack.tech is the same site to the browser, so SameSite cookies alone do not stop a page on another of them; the state stops login CSRF; PKCE stops a stolen code |

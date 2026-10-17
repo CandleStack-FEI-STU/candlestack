@@ -119,7 +119,10 @@ export interface paths {
         /**
          * Start Sign In
          * @description Redirects to the provider's sign-in page, or to `/signin?error=failed` when sign-in
-         *     with it is not available or this address made too many sign-in requests in a minute.
+         *     with it is not available or this address made too many sign-in requests in a minute. A
+         *     sign-in returns to `/signin?error=connect-first` when the provider's account never signed
+         *     in but its email is that of a CandleStack user: that user signs in with their other method
+         *     and connects it in Settings.
          *
          *     With `intent=connect` (signed in, a link of Settings) the provider's account is added to
          *     the signed-in user's sign-in methods instead: the callback returns to `next` (default

@@ -7,6 +7,9 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+# The longest display name: what a user may save, and where a provider's name is cut.
+DISPLAY_NAME_MAX = 80
+
 
 class Provider(StrEnum):
     """An identity provider a user signs in with."""
@@ -53,7 +56,7 @@ class MeUpdate(BaseModel):
 
     display_name: str = Field(
         min_length=1,
-        max_length=80,
+        max_length=DISPLAY_NAME_MAX,
         description="Name shown in the app; surrounding whitespace is dropped",
         examples=["Arsen Labovich"],
     )

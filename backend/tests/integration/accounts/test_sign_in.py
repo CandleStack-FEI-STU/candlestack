@@ -213,17 +213,22 @@ def test_an_account_without_a_verified_email(browser, providers) -> None:
     assert browser.sign_in("github").headers["location"] == "/signin?error=failed"
 
 
-def test_the_same_email_links_the_accounts(browser, sql) -> None:
+def test_a_new_account_with_the_email_of_a_user_is_connected_first(
+    browser, other_browser, sql, caplog
+) -> None:
+    """The email does not link a new account to its user: it would bring back a sign-in method
+    the user removed. The user connects it in Settings."""
     browser.sign_in("github")
-    first = browser.me().json()
-    browser.sign_out()
 
-    browser.sign_in("google")
-    second = browser.me().json()
+    with caplog.at_level(logging.WARNING):
+        callback = other_browser.sign_in("google")
 
-    assert second["id"] == first["id"]
-    assert second["display_name"] == "Ada Lovelace"
-    assert second["providers"] == ["github", "google"]
+    assert callback.status_code == 302
+    assert callback.headers["location"] == "/signin?error=connect-first"
+    assert "session" not in cookies_set(callback)
+    assert "a user it is not connected to" in caplog.text
+    assert "ada@example.com" not in caplog.text
+    assert sql("SELECT provider FROM identities") == [("github",)]
     assert len(sql("SELECT id FROM users")) == 1
 
 
@@ -248,11 +253,14 @@ def test_the_display_name_falls_back_to_the_login(browser, providers) -> None:
     assert browser.me().json()["display_name"] == "ada"
 
 
-def test_a_long_name_is_cut_to_fit(browser, providers) -> None:
+def test_a_long_name_is_cut_to_what_the_user_may_save(browser, providers) -> None:
     providers.github_account(name="A" * 300)
 
     assert browser.sign_in("github").headers["location"] == "/dashboard"
-    assert browser.me().json()["display_name"] == "A" * 200
+    name = browser.me().json()["display_name"]
+    assert name == "A" * 80
+    # Profile saved unchanged
+    assert browser.patch("/api/v1/me", json={"display_name": name}, headers=ORIGIN).is_success
 
 
 def test_a_first_sign_in_that_loses_a_race_fails(
