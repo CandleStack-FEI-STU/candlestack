@@ -40,6 +40,22 @@ def test_start_sends_the_browser_to_github(browser) -> None:
     assert "Max-Age=600" in state_cookie
 
 
+def test_redis_keys_hold_no_state_or_denial_id(browser, providers, auth_keys) -> None:
+    start = browser.start("github")
+    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    providers.github_account(email="grace@example.com")
+
+    pending = auth_keys()
+    browser.callback("github", code="the-code", state=state)
+    denied = auth_keys()
+
+    # Redis keys show up in traces: they name the state and the denial by their SHA-256.
+    assert pending == [f"auth:state:{hashlib.sha256(state.encode()).hexdigest()}"]
+    denial_id = browser.cookie("sign_in_denied")
+    assert denial_id
+    assert denied == [f"auth:denied:{hashlib.sha256(denial_id.encode()).hexdigest()}"]
+
+
 def test_the_callback_signs_in(browser, sql) -> None:
     callback = browser.sign_in("github")
 

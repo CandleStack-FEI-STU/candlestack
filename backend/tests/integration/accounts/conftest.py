@@ -7,7 +7,7 @@ fixture (``Providers``) and on ``Browser``, a TestClient that signs in like a br
 
 import asyncio
 from collections.abc import Callable, Iterator
-from typing import Any
+from typing import Any, cast
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
@@ -48,6 +48,15 @@ async def _flush(url: str) -> None:
         await redis.aclose()
 
 
+async def _auth_keys(url: str) -> list[str]:
+    redis = create_redis(url)
+    try:
+        keys = cast("list[bytes]", await redis.keys("auth:*"))  # responses stay bytes
+        return sorted(key.decode() for key in keys)
+    finally:
+        await redis.aclose()
+
+
 @pytest.fixture
 def sql(database_url: str) -> Callable[[str], list[Any]]:
     """Runs one statement in the test database: ``sql("SELECT id FROM users")``, the rows."""
@@ -58,6 +67,12 @@ def sql(database_url: str) -> Callable[[str], list[Any]]:
 def forget_pending(redis_url: str) -> Callable[[], None]:
     """Empties Redis, as if every pending sign-in and denial had expired."""
     return lambda: asyncio.run(_flush(redis_url))
+
+
+@pytest.fixture
+def auth_keys(redis_url: str) -> Callable[[], list[str]]:
+    """The keys of pending sign-ins and denials in Redis, sorted."""
+    return lambda: asyncio.run(_auth_keys(redis_url))
 
 
 @pytest.fixture(autouse=True)

@@ -206,9 +206,10 @@ What the backend sends to Sentry (only prod and stage have a DSN), set up in
   `request_id`: the `X-Request-ID` a user reports finds the error.
 - Nothing personal or secret: no IP addresses, cookies, request bodies, Cloudflare Access
   logins or emails; the Alpaca keys, the DSN, the database URL and the OAuth client secrets,
-  codes, verifiers, states and tokens are filtered; only our own frames keep their local
-  variables, without the ASGI scope. The logs of a sign-in name the provider and why it failed,
-  never the account.
+  codes, verifiers, states and tokens are filtered, in the query of a request too; Redis keys
+  hold the sign-in's state and the denial's id only as SHA-256; only our own frames keep their
+  local variables, without the ASGI scope. The logs of a sign-in name the provider and why it
+  failed, never the account.
 - At most 100 error events an hour per process, so an error in a loop cannot use up the
   month's quota (50,000 errors, no pay-as-you-go).
 

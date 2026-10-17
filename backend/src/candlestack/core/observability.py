@@ -56,9 +56,12 @@ _DENYLIST = [
     "refresh_token",
     "id_token",
 ]
-# The httpx integration records the query of every outgoing request in breadcrumbs and spans as
-# one string, which the scrubber cannot see into; logo.dev takes its key as ``token`` there.
+# The query of a request is recorded as one string, which the scrubber cannot see into: the
+# httpx integration's ``http.query`` of every outgoing request in breadcrumbs and spans
+# (logo.dev takes its key as ``token`` there), and the ASGI integration's ``query_string`` of
+# the incoming request in events and transactions (a sign-in's ``code`` and ``state`` there).
 _QUERY = "http.query"
+_REQUEST_QUERY = "query_string"
 _QUERY_DENYLIST = frozenset(name.lower() for name in _DENYLIST)
 _FILTERED = "[Filtered]"
 # Personal data never sent: the client's IP, the Cloudflare Access login of stage, and the
@@ -133,22 +136,23 @@ def _before_send(budget: ErrorBudget) -> Callable[[Event, Hint], Event | None]:
         if not budget.take():
             return None
         _drop_request_variables(event)
+        _hide_query_secrets(event.get("request"), _REQUEST_QUERY)
         return event
 
     return before_send
 
 
-def _hide_query_secrets(data: Any) -> None:
-    """Replaces the values of the denylisted parameters (any case) in the recorded query of an
-    outgoing request."""
-    if not isinstance(data, dict) or not isinstance(query := data.get(_QUERY), str):
+def _hide_query_secrets(data: Any, key: str = _QUERY) -> None:
+    """Replaces the values of the denylisted parameters (any case) in the recorded query
+    ``data[key]``."""
+    if not isinstance(data, dict) or not isinstance(query := data.get(key), str):
         return
     parts = []
     for part in query.split("&"):
         name, equals, _ = part.partition("=")
         secret = equals and unquote_plus(name).lower() in _QUERY_DENYLIST
         parts.append(f"{name}={_FILTERED}" if secret else part)
-    data[_QUERY] = "&".join(parts)
+    data[key] = "&".join(parts)
 
 
 def _before_breadcrumb(crumb: Breadcrumb, _hint: BreadcrumbHint) -> Breadcrumb | None:
@@ -157,6 +161,7 @@ def _before_breadcrumb(crumb: Breadcrumb, _hint: BreadcrumbHint) -> Breadcrumb |
 
 
 def _before_send_transaction(event: Event, _hint: Hint) -> Event | None:
+    _hide_query_secrets(event.get("request"), _REQUEST_QUERY)
     spans = event.get("spans")
     if isinstance(spans, list):
         for span in spans:
