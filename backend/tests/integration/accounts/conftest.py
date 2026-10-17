@@ -29,6 +29,8 @@ from candlestack.main import create_app
 GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 ORIGIN = {"Origin": "http://testserver"}
+# What a browser sends with a navigation from a page of the app, e.g. the Connect link.
+LINK = {"Sec-Fetch-Site": "same-origin"}
 
 
 async def _run_sql(url: str, statement: str) -> list[Any]:
@@ -78,7 +80,7 @@ def auth_keys(redis_url: str) -> Callable[[], list[str]]:
 
 @pytest.fixture(autouse=True)
 def empty_stores(sql: Callable[[str], list[Any]], forget_pending: Callable[[], None]) -> None:
-    sql("TRUNCATE users, identities, sessions")
+    sql("TRUNCATE users, identities, sessions, user_preferences")
     forget_pending()
 
 
@@ -180,22 +182,52 @@ class Browser:
     def set_cookie(self, name: str, value: str) -> None:
         self._cookies.set(name, value, domain="testserver.local")
 
-    def start(self, provider: str, next_path: str | None = None) -> httpx2.Response:
+    def patch(self, url: str, **kwargs: Any) -> httpx2.Response:
+        return self.request("PATCH", url, **kwargs)
+
+    def put(self, url: str, **kwargs: Any) -> httpx2.Response:
+        return self.request("PUT", url, **kwargs)
+
+    def delete(self, url: str, **kwargs: Any) -> httpx2.Response:
+        return self.request("DELETE", url, **kwargs)
+
+    def start(
+        self, provider: str, next_path: str | None = None, intent: str | None = None
+    ) -> httpx2.Response:
+        """Opens the start of a sign-in, or with `intent` ``connect`` follows the Connect link
+        of Settings."""
         params = {"next": next_path} if next_path is not None else {}
-        response = self.get(f"/api/v1/auth/{provider}/start", params=params)
+        if intent is not None:
+            params["intent"] = intent
+        headers = LINK if intent == "connect" else {}
+        response = self.get(f"/api/v1/auth/{provider}/start", params=params, headers=headers)
         if response.status_code == 302 and response.headers["location"].startswith("https://"):
             query = parse_qs(urlsplit(response.headers["location"]).query)
             self.providers.challenge = query["code_challenge"][0]
         return response
 
+    @staticmethod
+    def state_of(start: httpx2.Response) -> str:
+        """The state a start sends to the provider."""
+        return parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+
     def callback(self, provider: str, **params: str) -> httpx2.Response:
         return self.get(f"/api/v1/auth/{provider}/callback", params=params)
 
+    def _round_trip(
+        self, provider: str, next_path: str | None, intent: str | None
+    ) -> httpx2.Response:
+        """Starts, consents at the provider and returns the callback's response."""
+        start = self.start(provider, next_path, intent)
+        return self.callback(provider, code="the-code", state=self.state_of(start))
+
     def sign_in(self, provider: str = "github", next_path: str | None = None) -> httpx2.Response:
-        """Starts a sign-in, consents at the provider and returns the callback's response."""
-        start = self.start(provider, next_path)
-        state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
-        return self.callback(provider, code="the-code", state=state)
+        """Signs in; the callback's response."""
+        return self._round_trip(provider, next_path, None)
+
+    def connect(self, provider: str, next_path: str | None = None) -> httpx2.Response:
+        """Connects a sign-in method in Settings; the callback's response."""
+        return self._round_trip(provider, next_path, "connect")
 
     def sign_out(self) -> httpx2.Response:
         return self.post("/api/v1/auth/sign-out", headers=ORIGIN)
@@ -229,4 +261,9 @@ def browser_without_postgres(settings: Settings, providers: Providers) -> Iterat
 
 @pytest.fixture
 def other_browser(client: TestClient, providers: Providers) -> Browser:
+    return Browser(client, providers)
+
+
+@pytest.fixture
+def third_browser(client: TestClient, providers: Providers) -> Browser:
     return Browser(client, providers)

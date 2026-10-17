@@ -89,6 +89,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/sign-out-everywhere": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign Out Everywhere
+         * @description Ends every session of the user, this one included.
+         */
+        post: operations["sign_out_everywhere_api_v1_auth_sign_out_everywhere_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/{provider}/start": {
         parameters: {
             query?: never;
@@ -99,7 +119,15 @@ export interface paths {
         /**
          * Start Sign In
          * @description Redirects to the provider's sign-in page, or to `/signin?error=failed` when sign-in
-         *     with it is not available or this address made too many sign-in requests in a minute.
+         *     with it is not available or this address made too many sign-in requests in a minute. A
+         *     provider's account that never signed in joins the CandleStack user with its email, so the
+         *     email links a user's GitHub and Google; it signs in to a new user when no user has it.
+         *
+         *     With `intent=connect` (signed in, a link of Settings) the provider's account is added to
+         *     the signed-in user's sign-in methods instead: the callback returns to `next` (default
+         *     `/settings/sign-in`), or to `/settings/sign-in?error=taken` when that account already
+         *     signs in to another CandleStack user, or `/settings/sign-in?error=failed`, also right away
+         *     when the request does not come from the app's own pages.
          */
         get: operations["start_sign_in_api_v1_auth__provider__start_get"];
         put?: never;
@@ -232,7 +260,96 @@ export interface paths {
         get: operations["me_api_v1_me_get"];
         put?: never;
         post?: never;
+        /**
+         * Delete Me
+         * @description Deletes the account with everything it owns and ends all its sessions.
+         */
+        delete: operations["delete_me_api_v1_me_delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Me
+         * @description Changes the display name.
+         */
+        patch: operations["update_me_api_v1_me_patch"];
+        trace?: never;
+    };
+    "/api/v1/me/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preferences
+         * @description The user's settings, defaults included.
+         */
+        get: operations["preferences_api_v1_me_preferences_get"];
+        put?: never;
+        post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/preferences/appearance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Appearance
+         * @description Changes some appearance settings; each control saves as soon as it changes.
+         */
+        patch: operations["update_appearance_api_v1_me_preferences_appearance_patch"];
+        trace?: never;
+    };
+    "/api/v1/me/preferences/backtest-defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Save Backtest Defaults
+         * @description Saves how new backtests start (Save defaults): every setting, as a whole.
+         */
+        put: operations["save_backtest_defaults_api_v1_me_preferences_backtest_defaults_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/sign-in-methods/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect
+         * @description Removes a sign-in method; the last one cannot be removed. Signing in later with an
+         *     account of that provider whose email is the user's adds it again.
+         */
+        delete: operations["disconnect_api_v1_me_sign_in_methods__provider__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -242,6 +359,143 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * Appearance
+         * @description How the app looks for this user (Settings, Appearance).
+         */
+        Appearance: {
+            /** @default dmy */
+            date_format: components["schemas"]["DateFormat"];
+            /**
+             * Reduce Motion
+             * @description Turns off the small animations
+             * @default false
+             */
+            reduce_motion: boolean;
+            /** @default dark */
+            theme: components["schemas"]["Theme"];
+            /** @default 24 */
+            time_format: components["schemas"]["TimeFormat"];
+            /** @default ny */
+            time_zone: components["schemas"]["TimeZone"];
+        };
+        /**
+         * AppearanceUpdate
+         * @description A change of some of the appearance settings; the fields left out stay.
+         */
+        AppearanceUpdate: {
+            date_format?: components["schemas"]["DateFormat"] | null;
+            /** Reduce Motion */
+            reduce_motion?: boolean | null;
+            theme?: components["schemas"]["Theme"] | null;
+            time_format?: components["schemas"]["TimeFormat"] | null;
+            time_zone?: components["schemas"]["TimeZone"] | null;
+        };
+        /**
+         * BacktestDefaults
+         * @description How new backtests start (Settings, Backtest defaults).
+         */
+        BacktestDefaults: {
+            /** @default bh */
+            benchmark: components["schemas"]["Benchmark"];
+            /** @default long */
+            direction: components["schemas"]["Direction"];
+            /**
+             * Fees Pct
+             * @description Fees in percent per side
+             * @default 0.1
+             */
+            fees_pct: number;
+            /**
+             * Period End
+             * Format: date
+             * @description Last day of the test
+             * @default 2024-12-31
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date
+             * @description First day of the test
+             * @default 2021-01-04
+             */
+            period_start: string;
+            /**
+             * Slippage Pct
+             * @description Slippage in percent
+             * @default 0.02
+             */
+            slippage_pct: number;
+            /**
+             * Stop Loss Pct
+             * @description Exit when a trade loses this many percent
+             * @default 7
+             */
+            stop_loss_pct: number;
+            /**
+             * Threshold
+             * @description Signal strength to trade
+             * @default 0.05
+             */
+            threshold: number;
+            /** @default 30m */
+            timeframe: components["schemas"]["BacktestTimeframe"];
+        };
+        /**
+         * BacktestDefaultsIn
+         * @description The backtest defaults to save (Save defaults): every field, and no other. The same
+         *     checks as `BacktestDefaults`, but no defaults, so a body that leaves a field out is
+         *     refused instead of filled in.
+         */
+        BacktestDefaultsIn: {
+            benchmark: components["schemas"]["Benchmark"];
+            direction: components["schemas"]["Direction"];
+            /**
+             * Fees Pct
+             * @description Fees in percent per side
+             */
+            fees_pct: number;
+            /**
+             * Period End
+             * Format: date
+             * @description Last day of the test
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date
+             * @description First day of the test
+             */
+            period_start: string;
+            /**
+             * Slippage Pct
+             * @description Slippage in percent
+             */
+            slippage_pct: number;
+            /**
+             * Stop Loss Pct
+             * @description Exit when a trade loses this many percent
+             */
+            stop_loss_pct: number;
+            /**
+             * Threshold
+             * @description Signal strength to trade
+             */
+            threshold: number;
+            timeframe: components["schemas"]["BacktestTimeframe"];
+        };
+        /**
+         * BacktestTimeframe
+         * @description Timeframes a new backtest can start with (Settings, Backtest defaults).
+         * @enum {string}
+         */
+        BacktestTimeframe: "5m" | "30m" | "1h" | "1d";
+        /**
+         * Benchmark
+         * @description What each backtest is measured against: buy and hold of its own instruments, or an ETF.
+         * @enum {string}
+         */
+        Benchmark: "bh" | "SPY" | "QQQ" | "DIA";
         /** CandlesMeta */
         CandlesMeta: {
             /**
@@ -377,6 +631,12 @@ export interface components {
             v: number[];
         };
         /**
+         * DateFormat
+         * @description `dmy` 12 Oct 2024, `iso` 2024-10-12, `dot` 12.10.2024.
+         * @enum {string}
+         */
+        DateFormat: "dmy" | "iso" | "dot";
+        /**
          * DeniedSignInOut
          * @description The last sign-in of this browser that the beta list turned away.
          */
@@ -389,6 +649,11 @@ export interface components {
             email: string;
             provider: components["schemas"]["Provider"];
         };
+        /**
+         * Direction
+         * @enum {string}
+         */
+        Direction: "long" | "both";
         /**
          * Exchange
          * @description Where the instruments of the catalog trade: for stocks the listing exchanges Alpaca
@@ -681,12 +946,37 @@ export interface components {
             id: string;
             /**
              * Providers
-             * @description Connected sign-in methods
+             * @description Connected sign-in methods (the providers of `sign_in_methods`)
              * @example [
              *       "github"
              *     ]
              */
             providers: components["schemas"]["Provider"][];
+            /**
+             * Sign In Methods
+             * @description The account of each sign-in method, by provider
+             */
+            sign_in_methods: components["schemas"]["SignInMethodOut"][];
+        };
+        /**
+         * MeUpdate
+         * @description What the user may change about themselves.
+         */
+        MeUpdate: {
+            /**
+             * Display Name
+             * @description Name shown in the app; surrounding whitespace is dropped
+             * @example Arsen Labovich
+             */
+            display_name: string;
+        };
+        /**
+         * PreferencesOut
+         * @description The user's settings; a user who never saved any gets the defaults.
+         */
+        PreferencesOut: {
+            appearance: components["schemas"]["Appearance"];
+            backtest_defaults: components["schemas"]["BacktestDefaults"];
         };
         /**
          * Problem
@@ -722,6 +1012,30 @@ export interface components {
          * @enum {string}
          */
         Provider: "github" | "google";
+        /**
+         * SignInIntent
+         * @enum {string}
+         */
+        SignInIntent: "sign-in" | "connect";
+        /**
+         * SignInMethodOut
+         * @description A sign-in method: the provider's account the user signs in with.
+         */
+        SignInMethodOut: {
+            /**
+             * Email
+             * @description The account's email at the provider, as of its last sign-in or connect
+             * @example arsen@example.com
+             */
+            email: string;
+            /**
+             * Login
+             * @description The account's GitHub username; null for Google
+             * @example arsen
+             */
+            login: string | null;
+            provider: components["schemas"]["Provider"];
+        };
         /** SourceHealthOut */
         SourceHealthOut: {
             /**
@@ -758,6 +1072,23 @@ export interface components {
              */
             status: "ok" | "error";
         };
+        /**
+         * Theme
+         * @enum {string}
+         */
+        Theme: "light" | "dark";
+        /**
+         * TimeFormat
+         * @description `24` 16:05, `12` 4:05 PM.
+         * @enum {string}
+         */
+        TimeFormat: "24" | "12";
+        /**
+         * TimeZone
+         * @description `ny`: exchange time (New York); `local`: the browser's time zone.
+         * @enum {string}
+         */
+        TimeZone: "ny" | "local";
         /**
          * Timeframe
          * @description Candle durations; iteration goes from the shortest to the longest.
@@ -887,11 +1218,49 @@ export interface operations {
             };
         };
     };
+    sign_out_everywhere_api_v1_auth_sign_out_everywhere_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in (`not-signed-in`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not come from the app's own pages (`cross-origin-request`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     start_sign_in_api_v1_auth__provider__start_get: {
         parameters: {
             query?: {
                 /** @description Path of the app to open after signing in (default `/dashboard`) */
                 next?: string | null;
+                /** @description `sign-in` (default), or `connect` to add a sign-in method in Settings */
+                intent?: components["schemas"]["SignInIntent"];
             };
             header?: never;
             path: {
@@ -1187,6 +1556,289 @@ export interface operations {
             };
             /** @description No session came with the request, or it ended (`not-signed-in`). */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    delete_me_api_v1_me_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in (`not-signed-in`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not come from the app's own pages (`cross-origin-request`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_me_api_v1_me_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeOut"];
+                };
+            };
+            /** @description Not signed in (`not-signed-in`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not come from the app's own pages (`cross-origin-request`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    preferences_api_v1_me_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferencesOut"];
+                };
+            };
+            /** @description Not signed in (`not-signed-in`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_appearance_api_v1_me_preferences_appearance_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppearanceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Appearance"];
+                };
+            };
+            /** @description Not signed in (`not-signed-in`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not come from the app's own pages (`cross-origin-request`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    save_backtest_defaults_api_v1_me_preferences_backtest_defaults_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BacktestDefaultsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BacktestDefaults"];
+                };
+            };
+            /** @description Not signed in (`not-signed-in`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not come from the app's own pages (`cross-origin-request`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    disconnect_api_v1_me_sign_in_methods__provider__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: components["schemas"]["Provider"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not signed in (`not-signed-in`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The request does not come from the app's own pages (`cross-origin-request`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The account does not sign in with this provider (`not-found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description It is the account's last sign-in method (`last-sign-in-method`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid request */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

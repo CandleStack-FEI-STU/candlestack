@@ -4,9 +4,9 @@ The CandleStack backend is one Python service: a FastAPI application that serves
 under `/api`. In this milestone it has three modules: `core` (configuration, logging, errors,
 Redis, Postgres and HTTP clients, CSRF protection, health, Sentry), `data` (market data:
 instrument catalog and candles from Binance and Alpaca, see [data.md](data.md)) and `accounts`
-(users, GitHub and Google sign-in, sessions, the beta list). Postgres stores what users create,
-accounts and sessions so far; market data is not stored: the sources are the truth and Redis is
-a cache that can be lost at any time. The backtest is being built next to them
+(users, GitHub and Google sign-in, sessions, the beta list, Settings). Postgres stores what
+users create, accounts, sessions and settings so far; market data is not stored: the sources
+are the truth and Redis is a cache that can be lost at any time. The backtest is being built next to them
 (`signals`, `engine`, `metrics` and the `candlestack-bt` command in `cli`, see
 [Modules](#modules) and the contract in [engine.md](engine.md)); it runs from the command line,
 not in the service.
@@ -27,7 +27,7 @@ flowchart LR
             caddy -->|"/api/*"| backend["backend<br/>FastAPI on granian :8000"]
             caddy -->|"everything else"| frontend["frontend<br/>static page, Caddy :8080"]
             backend --> redis[("redis<br/>cache only")]
-            backend --> postgres[("postgres<br/>users, sessions")]
+            backend --> postgres[("postgres<br/>users, sessions, settings")]
         end
     end
     backend -->|HTTPS| binance["Binance<br/>REST + data.binance.vision"]
@@ -50,12 +50,19 @@ flowchart LR
 | `GET /api/health` | liveness + Redis + Postgres; used by deploys and the ops page; not versioned |
 | `GET /api/health/sources` | reachability of Binance and Alpaca (cached 60 s) |
 | `GET /api/v1/data/...` | instruments and candles, see [data.md](data.md) |
-| `GET /api/v1/auth/{provider}/start?next=<path>` | sign-in with `github` or `google`: redirects to the provider, or to `/signin?error=failed` (provider not configured, too many sign-ins from the address) |
-| `GET /api/v1/auth/{provider}/callback` | where the provider returns; sets the session cookie and redirects to `next` (default `/dashboard`), or to `/signin?error=denied` (not on the beta list) or `/signin?error=failed`; not in the API reference |
+| `GET /api/v1/auth/{provider}/start?next=<path>` | sign-in with `github` or `google`: redirects to the provider, or to `/signin?error=failed` (provider not configured, too many sign-ins from the address); with `intent=connect` it adds a sign-in method to the signed-in user instead ([Accounts](#accounts)) |
+| `GET /api/v1/auth/{provider}/callback` | where the provider returns; sets the session cookie and redirects to `next` (default `/dashboard`), or to `/signin?error=denied` (not on the beta list) or `/signin?error=failed`; a connect returns to Settings instead; not in the API reference |
 | `GET /api/v1/auth/denied` | the account this browser was just turned away with (email, provider), for the sign-in page |
 | `POST /api/v1/auth/sign-out` | ends this browser's session |
 | `POST /api/v1/auth/dev` | signs in as a fixed dev user; only `APP_ENV` `local` and `test`, not in the API reference |
-| `GET /api/v1/me` | the signed-in user |
+| `GET /api/v1/me` | the signed-in user, with the provider's account (email, GitHub login) of each sign-in method |
+| `PATCH /api/v1/me` | changes the display name (1 to 80 characters, surrounding whitespace dropped); an unknown field is a 422 |
+| `DELETE /api/v1/me` | deletes the account with everything it owns and ends its sessions |
+| `DELETE /api/v1/me/sign-in-methods/{provider}` | removes a sign-in method; `409 last-sign-in-method` for the last one; a later sign-in with that provider and the user's email adds it again |
+| `POST /api/v1/auth/sign-out-everywhere` | ends every session of the user, this browser's included |
+| `GET /api/v1/me/preferences` | the user's settings (backtest defaults, appearance), defaults included |
+| `PUT /api/v1/me/preferences/backtest-defaults` | replaces the backtest defaults: every field, no other (`period_start` before `period_end`), else 422 |
+| `PATCH /api/v1/me/preferences/appearance` | changes the appearance settings it is given; an unknown field is a 422 |
 | `GET /api/v1/docs` | API reference (Scalar); public on prod |
 | `GET /api/v1/openapi.json` | OpenAPI schema; snapshot committed as [openapi.json](openapi.json) |
 
@@ -68,14 +75,70 @@ flowchart LR
   (405), and an unhandled exception `internal-error` (500), whose `detail` reveals nothing and
   asks to report the response's `X-Request-ID`. The slugs of the data module are listed in
   [data.md](data.md#errors). The accounts module adds `not-signed-in` (401: no session, or it
-  ended) and `cross-origin-request` (403: a change that does not come from the app's own
-  pages), and uses `not-found` (404) and `rate-limited` (429) too. Each `type` URI opens a page on the website that says what the
-  problem means and what the client should do.
+  ended), `cross-origin-request` (403: a change that does not come from the app's own
+  pages) and `last-sign-in-method` (409: removing the account's only sign-in method), and uses
+  `not-found` (404) and `rate-limited` (429) too. Each `type` URI opens a page on the website
+  that says what the problem means and what the client should do.
 - Every response carries `X-Request-ID` and `Server-Timing: app;dur=<ms>` (the app's time
   until the response started), so response times can be measured from outside.
 - Logs: one JSON object per line on stdout (`ts`, `level`, `logger`, `msg`); the access line
   adds `method`, `path`, `status`, `duration_ms`, `request_id` (the `CF-Ray` header, else a
   random hex).
+
+## Accounts
+
+- **Sign-in**: the OAuth round trip with GitHub or Google ([HTTP surface](#http-surface)). The
+  beta list admits users: a new account by its email, an account that signed in before by the
+  email of its user (that of the user's first sign-in), so a method connected in Settings signs
+  in too, and a user whose email leaves the list cannot sign in with any method. A provider's
+  account signs in to the user it was added to; one that never signed in joins the user with
+  its email, so the email links a user's GitHub and Google into one account, else it makes a
+  new user. A user who already signs in with another account of that provider (connected in
+  Settings with another email) gets `/signin?error=failed` instead of a second one.
+- **Sign-in methods**: `GET /api/v1/auth/{provider}/start?intent=connect&next=<path>`, the
+  Connect link of Settings, starts the same round trip for the signed-in user (without a
+  session it redirects to `/signin?next=/settings/sign-in`). Being a navigation, it carries no
+  `Origin`, so it must come with `Sec-Fetch-Site: same-origin`: a link of another site cannot
+  connect the provider's account the browser is signed in to there. Its pending state in Redis
+  remembers the session that started it (the token's SHA-256), and the callback adds the
+  provider's account to that session's user only while the browser is still signed in with it,
+  so a connect started by a session that was signed out since (everywhere, too, after a theft)
+  or by another user of the browser fails. The callback adds the account without the beta list
+  and without changing the user's email, then returns to `next` (default `/settings/sign-in`).
+  An account that signs in to another user returns `/settings/sign-in?error=taken`, one
+  connected to this user already just returns, and any failure (cancelled, expired, the
+  session ended, a second account of the same provider) returns
+  `/settings/sign-in?error=failed`. A connect's state starts with `connect.`, so the
+  callback knows where to return even when it failed before its pending state was found. The
+  last sign-in method cannot be removed; changes of a user's methods lock the user's row, so
+  two removals at once cannot leave none. Removing a method deletes its identity only: signing
+  in later with that provider's account adds it again when its email is the user's.
+  `GET /api/v1/me` lists each method's account (`sign_in_methods`: provider, email, GitHub
+  login), as a connected one may have another email than the user's.
+- **Preferences**: table `user_preferences`, one row per user who saved anything (the user ID
+  as primary key, deleted with the user), one JSONB document per section of Settings
+  (`backtest_defaults`, `appearance`) and `updated_at`. A document holds only what was saved
+  and is read through its Pydantic model (`BacktestDefaults`, `Appearance`): no row or a
+  missing key reads as the default, a key the model does not know is ignored, so a new setting
+  needs no data migration. The backtest defaults are replaced as a whole (the body
+  `BacktestDefaultsIn` has every field and no default, so a client cannot reset a setting by
+  leaving it out); an appearance change
+  is merged into the stored document in one statement (`||`), so changes sent at the same time
+  all stay.
+- **Deleting an account**: `DELETE /api/v1/me` deletes the user's row in one transaction; the
+  foreign keys cascade to identities, sessions and preferences. A module that keeps more data
+  of a user (models, backtests) deletes it through an `AccountDeletionHook`
+  (`async (user_id, db) -> AfterDeletion | None`), which `candlestack.main` puts on
+  `app.state.account_deletion_hooks`, in two phases. The hooks run in the deletion's
+  transaction before the user's row goes and delete the module's rows; one that raises rolls
+  the whole deletion back (500). They do not touch storage outside Postgres (files on disk)
+  then, as the commit may still fail: each returns what deletes that (`async () -> None`, or
+  None), and those run only after the commit. The account is gone by then, so one that raises
+  is logged (by the error's type only, never its message) and the others still run: an
+  orphaned file at worst, never a user without their files. `accounts` never imports the
+  modules that own the data. No module registers a hook yet.
+- Every route of the signed-in user that returns user data sends `Cache-Control: no-store`, and
+  every change requires the app's own origin.
 
 ## Modules
 
@@ -85,7 +148,7 @@ A module is a subpackage of `candlestack` under `backend/src/candlestack/`.
 | --- | --- | --- |
 | `core` | now | settings, logging, problem errors, Redis, Postgres and HTTP clients, CSRF protection, health endpoint |
 | `data` | now | instrument catalog, candles, sessions, cache, source adapters, rate limits |
-| `accounts` | now | users, GitHub and Google sign-in, sessions, the beta list; `CurrentUserDep` for the routes of the signed-in user |
+| `accounts` | now | users, GitHub and Google sign-in, sessions, the beta list, Settings (name, sign-in methods, preferences, deleting the account); `CurrentUserDep` for the routes of the signed-in user, `AccountDeletionHook` for what other modules delete with an account |
 | `preprocessing` | later | Renko, Kagi, time windows, normalization, segmentation |
 | `ml` | later | upload `.keras` models, validate input/output shapes, run inference; worker only (below) |
 | `signals` | started | turn predictions into signals: align them with the candles, thresholds, long only; later smoothing, holding period, sizing, risk limits |
@@ -174,9 +237,9 @@ Environment variables, read by pydantic-settings without a prefix. All are docum
 | `LOGO_DEV_URL` | `https://img.logo.dev` | logo images |
 | `CANDLES_MAX` | `50000` | max candles in one candle response |
 | `CLIENT_RATE_LIMIT` | `60` | candle and instrument-detail requests per minute per client IP (IPv6: per /64); `0` disables |
-| `ALPACA_RATE_LIMIT` | prod `150`, stage `100`, `pr-*` `30`, else `60` | our Alpaca request budget per minute |
+| `ALPACA_RATE_LIMIT` | prod `150`, stage `100`, else `60` | our Alpaca request budget per minute |
 | `BINANCE_WEIGHT_LIMIT` | `1000` | our Binance REST weight budget per minute per environment |
-| `LOGO_DEV_RATE_LIMIT` | prod `50`, stage `20`, `pr-*` `5`, else `20` | our logo.dev request budget per minute |
+| `LOGO_DEV_RATE_LIMIT` | prod `50`, else `20` | our logo.dev request budget per minute |
 | `STATS_REFRESH` | prod and stage `true`, else `false` | refresh the instruments' 24 h stats and daily mini charts in the background ([data.md](data.md#stats)); without it the list has no stats or mini charts and sorts by symbol |
 | `SENTRY_DSN` | empty | Sentry project for errors, traces, profiles and logs; empty sends nothing (set for prod and stage only) |
 | `SENTRY_TRACES_SAMPLE_RATE` | prod `0.2`, else `1.0` | share of requests traced in Sentry |
@@ -243,6 +306,8 @@ to check that an error reaches Sentry. The Sentry settings are recorded in
 | A beta list (`BETA_ALLOWLIST`) decides who signs in, closed when empty | the app is for the team and invited testers while it is built; a turned-away account is named on the sign-in page (from Redis, for 10 minutes, never in a URL) and gets no account |
 | Server-side sessions: a random token in an HttpOnly, SameSite=Lax cookie (`__Host-` over https), only its SHA-256 in Postgres, 30 days sliding | a session can be ended at once (sign-out, later admin), a database leak does not leak sessions, and no script can read the cookie |
 | Changes on behalf of the user require the app's own origin (`core.require_same_origin`), the OAuth round trip a state bound to the browser (Redis and a cookie) and PKCE | every host under candlestack.tech is the same site to the browser, so SameSite cookies alone do not stop a page on another of them; the state stops login CSRF; PKCE stops a stolen code |
+| Preferences as one JSONB document per section of Settings, read through Pydantic models with defaults | a new setting needs no migration of the rows; the models validate both what is saved and what is read |
+| Account deletion through hooks that other modules register in `main.py` | `accounts` stays at the bottom of the import graph, yet the account's rows in other modules go with it in one transaction; data outside Postgres (model files) is the hook's to keep consistent with a rollback |
 | A dev sign-in for `APP_ENV` `local` and `test` only, fixed in code, not a setting | signed-in pages can be built and tested without OAuth keys; no setting can turn it on in stage or prod |
 | One source per market, never mixed in one series: Binance spot for crypto, Alpaca SIP for US stocks (15 minutes delayed) | consistent data; both are free |
 | Full history fetched lazily on request, catalog cached 24 h and refreshed in the background | no ingestion pipeline and no scheduler to run |

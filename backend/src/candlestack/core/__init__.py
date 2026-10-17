@@ -6,7 +6,7 @@ from the submodules.
 """
 
 from candlestack.core.config import Settings, SettingsDep, get_settings
-from candlestack.core.csrf import require_same_origin
+from candlestack.core.csrf import is_same_origin, require_same_origin
 from candlestack.core.db import DATABASE_ERRORS, Base, Database, DbSessionDep
 from candlestack.core.errors import (
     Problem,
@@ -50,6 +50,7 @@ __all__ = [
     "get_settings",
     "health_router",
     "install_error_handlers",
+    "is_same_origin",
     "problem_responses",
     "request_with_retry",
     "require_same_origin",

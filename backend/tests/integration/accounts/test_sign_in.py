@@ -42,7 +42,7 @@ def test_start_sends_the_browser_to_github(browser) -> None:
 
 def test_redis_keys_hold_no_state_or_denial_id(browser, providers, auth_keys) -> None:
     start = browser.start("github")
-    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    state = browser.state_of(start)
     providers.github_account(email="grace@example.com")
 
     pending = auth_keys()
@@ -83,6 +83,9 @@ def test_me(browser) -> None:
     assert body["display_name"] == "Ada Lovelace"
     assert body["email"] == "ada@example.com"
     assert body["providers"] == ["github"]
+    assert body["sign_in_methods"] == [
+        {"provider": "github", "email": "ada@example.com", "login": "ada"}
+    ]
 
 
 def test_sign_out(browser, sql) -> None:
@@ -145,7 +148,7 @@ def test_an_account_not_on_the_beta_list(browser, other_browser, providers, sql)
 
 def test_a_sign_in_cancelled_at_the_provider(browser, caplog) -> None:
     start = browser.start("github")
-    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    state = browser.state_of(start)
 
     with caplog.at_level(logging.WARNING):
         callback = browser.callback("github", error="access_denied", state=state)
@@ -161,7 +164,7 @@ def test_a_sign_in_cancelled_at_the_provider(browser, caplog) -> None:
 def test_a_state_from_another_browser(browser, other_browser) -> None:
     """Login CSRF: a victim's browser must not finish the attacker's sign-in."""
     start = browser.start("github")
-    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    state = browser.state_of(start)
 
     callback = other_browser.callback("github", code="the-code", state=state)
 
@@ -180,7 +183,7 @@ def test_a_state_that_does_not_match(browser, state: str) -> None:
 
 def test_a_state_of_another_provider(browser) -> None:
     start = browser.start("github")
-    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    state = browser.state_of(start)
 
     callback = browser.callback("google", code="the-code", state=state)
 
@@ -189,7 +192,7 @@ def test_a_state_of_another_provider(browser) -> None:
 
 def test_an_expired_state(browser, forget_pending) -> None:
     start = browser.start("github")
-    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    state = browser.state_of(start)
     forget_pending()
 
     assert browser.callback("github", code="the-code", state=state).headers["location"] == (
@@ -199,7 +202,7 @@ def test_an_expired_state(browser, forget_pending) -> None:
 
 def test_a_code_the_provider_refuses(browser, providers) -> None:
     start = browser.start("github")
-    state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+    state = browser.state_of(start)
     providers.challenge = "another"  # the token request fails the PKCE check
 
     assert browser.callback("github", code="the-code", state=state).headers["location"] == (
@@ -227,6 +230,29 @@ def test_the_same_email_links_the_accounts(browser, sql) -> None:
     assert len(sql("SELECT id FROM users")) == 1
 
 
+def test_the_email_does_not_link_a_second_account_of_a_provider(
+    browser, other_browser, providers, sql, caplog
+) -> None:
+    """A user signs in with one account per provider: a GitHub account with the user's email
+    does not join a user who connected another GitHub account."""
+    providers.google_account(email="ada@example.com")
+    browser.sign_in("google")
+    providers.github_account(subject=7, email="ada@work.example")
+    browser.connect("github")
+    providers.github_account(subject=42, email="ada@example.com")
+
+    with caplog.at_level(logging.WARNING):
+        callback = other_browser.sign_in("github")
+
+    assert callback.headers["location"] == "/signin?error=failed"
+    assert "session" not in cookies_set(callback)
+    assert "the user signs in with another github account" in caplog.text
+    assert sql("SELECT provider, subject FROM identities ORDER BY provider") == [
+        ("github", "7"),
+        ("google", "1077"),
+    ]
+
+
 def test_a_known_identity_signs_in_as_its_user(browser, providers, sql) -> None:
     browser.sign_in("github")
     first = browser.me().json()
@@ -248,11 +274,14 @@ def test_the_display_name_falls_back_to_the_login(browser, providers) -> None:
     assert browser.me().json()["display_name"] == "ada"
 
 
-def test_a_long_name_is_cut_to_fit(browser, providers) -> None:
+def test_a_long_name_is_cut_to_what_the_user_may_save(browser, providers) -> None:
     providers.github_account(name="A" * 300)
 
     assert browser.sign_in("github").headers["location"] == "/dashboard"
-    assert browser.me().json()["display_name"] == "A" * 200
+    name = browser.me().json()["display_name"]
+    assert name == "A" * 80
+    # Profile saved unchanged
+    assert browser.patch("/api/v1/me", json={"display_name": name}, headers=ORIGIN).is_success
 
 
 def test_a_first_sign_in_that_loses_a_race_fails(

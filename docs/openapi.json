@@ -1,6 +1,251 @@
 {
   "components": {
     "schemas": {
+      "Appearance": {
+        "description": "How the app looks for this user (Settings, Appearance).",
+        "properties": {
+          "date_format": {
+            "$ref": "#/components/schemas/DateFormat",
+            "default": "dmy"
+          },
+          "reduce_motion": {
+            "default": false,
+            "description": "Turns off the small animations",
+            "title": "Reduce Motion",
+            "type": "boolean"
+          },
+          "theme": {
+            "$ref": "#/components/schemas/Theme",
+            "default": "dark"
+          },
+          "time_format": {
+            "$ref": "#/components/schemas/TimeFormat",
+            "default": "24"
+          },
+          "time_zone": {
+            "$ref": "#/components/schemas/TimeZone",
+            "default": "ny"
+          }
+        },
+        "title": "Appearance",
+        "type": "object"
+      },
+      "AppearanceUpdate": {
+        "additionalProperties": false,
+        "description": "A change of some of the appearance settings; the fields left out stay.",
+        "properties": {
+          "date_format": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DateFormat"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reduce_motion": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reduce Motion"
+          },
+          "theme": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Theme"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "time_format": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimeFormat"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "time_zone": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimeZone"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "AppearanceUpdate",
+        "type": "object"
+      },
+      "BacktestDefaults": {
+        "description": "How new backtests start (Settings, Backtest defaults).",
+        "properties": {
+          "benchmark": {
+            "$ref": "#/components/schemas/Benchmark",
+            "default": "bh"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/Direction",
+            "default": "long"
+          },
+          "fees_pct": {
+            "default": 0.1,
+            "description": "Fees in percent per side",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Fees Pct",
+            "type": "number"
+          },
+          "period_end": {
+            "default": "2024-12-31",
+            "description": "Last day of the test",
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "default": "2021-01-04",
+            "description": "First day of the test",
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "slippage_pct": {
+            "default": 0.02,
+            "description": "Slippage in percent",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Slippage Pct",
+            "type": "number"
+          },
+          "stop_loss_pct": {
+            "default": 7,
+            "description": "Exit when a trade loses this many percent",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Stop Loss Pct",
+            "type": "integer"
+          },
+          "threshold": {
+            "default": 0.05,
+            "description": "Signal strength to trade",
+            "maximum": 0.5,
+            "minimum": 0.0,
+            "multipleOf": 0.01,
+            "title": "Threshold",
+            "type": "number"
+          },
+          "timeframe": {
+            "$ref": "#/components/schemas/BacktestTimeframe",
+            "default": "30m"
+          }
+        },
+        "title": "BacktestDefaults",
+        "type": "object"
+      },
+      "BacktestDefaultsIn": {
+        "additionalProperties": false,
+        "description": "The backtest defaults to save (Save defaults): every field, and no other. The same\nchecks as `BacktestDefaults`, but no defaults, so a body that leaves a field out is\nrefused instead of filled in.",
+        "properties": {
+          "benchmark": {
+            "$ref": "#/components/schemas/Benchmark"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/Direction"
+          },
+          "fees_pct": {
+            "description": "Fees in percent per side",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Fees Pct",
+            "type": "number"
+          },
+          "period_end": {
+            "description": "Last day of the test",
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "description": "First day of the test",
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "slippage_pct": {
+            "description": "Slippage in percent",
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Slippage Pct",
+            "type": "number"
+          },
+          "stop_loss_pct": {
+            "description": "Exit when a trade loses this many percent",
+            "maximum": 20.0,
+            "minimum": 1.0,
+            "title": "Stop Loss Pct",
+            "type": "integer"
+          },
+          "threshold": {
+            "description": "Signal strength to trade",
+            "maximum": 0.5,
+            "minimum": 0.0,
+            "multipleOf": 0.01,
+            "title": "Threshold",
+            "type": "number"
+          },
+          "timeframe": {
+            "$ref": "#/components/schemas/BacktestTimeframe"
+          }
+        },
+        "required": [
+          "timeframe",
+          "period_start",
+          "period_end",
+          "direction",
+          "threshold",
+          "stop_loss_pct",
+          "fees_pct",
+          "slippage_pct",
+          "benchmark"
+        ],
+        "title": "BacktestDefaultsIn",
+        "type": "object"
+      },
+      "BacktestTimeframe": {
+        "description": "Timeframes a new backtest can start with (Settings, Backtest defaults).",
+        "enum": [
+          "5m",
+          "30m",
+          "1h",
+          "1d"
+        ],
+        "title": "BacktestTimeframe",
+        "type": "string"
+      },
+      "Benchmark": {
+        "description": "What each backtest is measured against: buy and hold of its own instruments, or an ETF.",
+        "enum": [
+          "bh",
+          "SPY",
+          "QQQ",
+          "DIA"
+        ],
+        "title": "Benchmark",
+        "type": "string"
+      },
       "CandlesMeta": {
         "properties": {
           "count": {
@@ -230,6 +475,16 @@
         "title": "CandlesOut",
         "type": "object"
       },
+      "DateFormat": {
+        "description": "`dmy` 12 Oct 2024, `iso` 2024-10-12, `dot` 12.10.2024.",
+        "enum": [
+          "dmy",
+          "iso",
+          "dot"
+        ],
+        "title": "DateFormat",
+        "type": "string"
+      },
       "DeniedSignInOut": {
         "description": "The last sign-in of this browser that the beta list turned away.",
         "properties": {
@@ -251,6 +506,14 @@
         ],
         "title": "DeniedSignInOut",
         "type": "object"
+      },
+      "Direction": {
+        "enum": [
+          "long",
+          "both"
+        ],
+        "title": "Direction",
+        "type": "string"
       },
       "Exchange": {
         "description": "Where the instruments of the catalog trade: for stocks the listing exchanges Alpaca\nreports for tradable US equities without OTC (docs/data.md, \"Alpaca\"), for crypto pairs\nBinance.",
@@ -812,7 +1075,7 @@
             "type": "string"
           },
           "providers": {
-            "description": "Connected sign-in methods",
+            "description": "Connected sign-in methods (the providers of `sign_in_methods`)",
             "examples": [
               [
                 "github"
@@ -823,6 +1086,14 @@
             },
             "title": "Providers",
             "type": "array"
+          },
+          "sign_in_methods": {
+            "description": "The account of each sign-in method, by provider",
+            "items": {
+              "$ref": "#/components/schemas/SignInMethodOut"
+            },
+            "title": "Sign In Methods",
+            "type": "array"
           }
         },
         "required": [
@@ -830,9 +1101,48 @@
           "display_name",
           "email",
           "providers",
+          "sign_in_methods",
           "created_at"
         ],
         "title": "MeOut",
+        "type": "object"
+      },
+      "MeUpdate": {
+        "additionalProperties": false,
+        "description": "What the user may change about themselves.",
+        "properties": {
+          "display_name": {
+            "description": "Name shown in the app; surrounding whitespace is dropped",
+            "examples": [
+              "Arsen Labovich"
+            ],
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_name"
+        ],
+        "title": "MeUpdate",
+        "type": "object"
+      },
+      "PreferencesOut": {
+        "description": "The user's settings; a user who never saved any gets the defaults.",
+        "properties": {
+          "appearance": {
+            "$ref": "#/components/schemas/Appearance"
+          },
+          "backtest_defaults": {
+            "$ref": "#/components/schemas/BacktestDefaults"
+          }
+        },
+        "required": [
+          "backtest_defaults",
+          "appearance"
+        ],
+        "title": "PreferencesOut",
         "type": "object"
       },
       "Problem": {
@@ -885,6 +1195,52 @@
         ],
         "title": "Provider",
         "type": "string"
+      },
+      "SignInIntent": {
+        "enum": [
+          "sign-in",
+          "connect"
+        ],
+        "title": "SignInIntent",
+        "type": "string"
+      },
+      "SignInMethodOut": {
+        "description": "A sign-in method: the provider's account the user signs in with.",
+        "properties": {
+          "email": {
+            "description": "The account's email at the provider, as of its last sign-in or connect",
+            "examples": [
+              "arsen@example.com"
+            ],
+            "title": "Email",
+            "type": "string"
+          },
+          "login": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The account's GitHub username; null for Google",
+            "examples": [
+              "arsen"
+            ],
+            "title": "Login"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/Provider"
+          }
+        },
+        "required": [
+          "provider",
+          "email",
+          "login"
+        ],
+        "title": "SignInMethodOut",
+        "type": "object"
       },
       "SourceHealthOut": {
         "properties": {
@@ -967,6 +1323,32 @@
         ],
         "title": "SourcesHealthOut",
         "type": "object"
+      },
+      "Theme": {
+        "enum": [
+          "light",
+          "dark"
+        ],
+        "title": "Theme",
+        "type": "string"
+      },
+      "TimeFormat": {
+        "description": "`24` 16:05, `12` 4:05 PM.",
+        "enum": [
+          "24",
+          "12"
+        ],
+        "title": "TimeFormat",
+        "type": "string"
+      },
+      "TimeZone": {
+        "description": "`ny`: exchange time (New York); `local`: the browser's time zone.",
+        "enum": [
+          "ny",
+          "local"
+        ],
+        "title": "TimeZone",
+        "type": "string"
       },
       "Timeframe": {
         "description": "Candle durations; iteration goes from the shortest to the longest.",
@@ -1112,9 +1494,44 @@
         ]
       }
     },
+    "/api/v1/auth/sign-out-everywhere": {
+      "post": {
+        "description": "Ends every session of the user, this one included.",
+        "operationId": "sign_out_everywhere_api_v1_auth_sign_out_everywhere_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not signed in (`not-signed-in`)."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request does not come from the app's own pages (`cross-origin-request`)."
+          }
+        },
+        "summary": "Sign Out Everywhere",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
     "/api/v1/auth/{provider}/start": {
       "get": {
-        "description": "Redirects to the provider's sign-in page, or to `/signin?error=failed` when sign-in\nwith it is not available or this address made too many sign-in requests in a minute.",
+        "description": "Redirects to the provider's sign-in page, or to `/signin?error=failed` when sign-in\nwith it is not available or this address made too many sign-in requests in a minute. A\nprovider's account that never signed in joins the CandleStack user with its email, so the\nemail links a user's GitHub and Google; it signs in to a new user when no user has it.\n\nWith `intent=connect` (signed in, a link of Settings) the provider's account is added to\nthe signed-in user's sign-in methods instead: the callback returns to `next` (default\n`/settings/sign-in`), or to `/settings/sign-in?error=taken` when that account already\nsigns in to another CandleStack user, or `/settings/sign-in?error=failed`, also right away\nwhen the request does not come from the app's own pages.",
         "operationId": "start_sign_in_api_v1_auth__provider__start_get",
         "parameters": [
           {
@@ -1144,6 +1561,17 @@
                 "/dashboard"
               ],
               "title": "Next"
+            }
+          },
+          {
+            "description": "`sign-in` (default), or `connect` to add a sign-in method in Settings",
+            "in": "query",
+            "name": "intent",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/SignInIntent",
+              "default": "sign-in",
+              "description": "`sign-in` (default), or `connect` to add a sign-in method in Settings"
             }
           }
         ],
@@ -1671,6 +2099,39 @@
       }
     },
     "/api/v1/me": {
+      "delete": {
+        "description": "Deletes the account with everything it owns and ends all its sessions.",
+        "operationId": "delete_me_api_v1_me_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not signed in (`not-signed-in`)."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request does not come from the app's own pages (`cross-origin-request`)."
+          }
+        },
+        "summary": "Delete Me",
+        "tags": [
+          "accounts"
+        ]
+      },
       "get": {
         "description": "The signed-in user.",
         "operationId": "me_api_v1_me_get",
@@ -1697,6 +2158,297 @@
           }
         },
         "summary": "Me",
+        "tags": [
+          "accounts"
+        ]
+      },
+      "patch": {
+        "description": "Changes the display name.",
+        "operationId": "update_me_api_v1_me_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MeUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not signed in (`not-signed-in`)."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request does not come from the app's own pages (`cross-origin-request`)."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Update Me",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/v1/me/preferences": {
+      "get": {
+        "description": "The user's settings, defaults included.",
+        "operationId": "preferences_api_v1_me_preferences_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not signed in (`not-signed-in`)."
+          }
+        },
+        "summary": "Preferences",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/v1/me/preferences/appearance": {
+      "patch": {
+        "description": "Changes some appearance settings; each control saves as soon as it changes.",
+        "operationId": "update_appearance_api_v1_me_preferences_appearance_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppearanceUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Appearance"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not signed in (`not-signed-in`)."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request does not come from the app's own pages (`cross-origin-request`)."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Update Appearance",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/v1/me/preferences/backtest-defaults": {
+      "put": {
+        "description": "Saves how new backtests start (Save defaults): every setting, as a whole.",
+        "operationId": "save_backtest_defaults_api_v1_me_preferences_backtest_defaults_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BacktestDefaultsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacktestDefaults"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not signed in (`not-signed-in`)."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request does not come from the app's own pages (`cross-origin-request`)."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Save Backtest Defaults",
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/v1/me/sign-in-methods/{provider}": {
+      "delete": {
+        "description": "Removes a sign-in method; the last one cannot be removed. Signing in later with an\naccount of that provider whose email is the user's adds it again.",
+        "operationId": "disconnect_api_v1_me_sign_in_methods__provider__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Provider"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not signed in (`not-signed-in`)."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request does not come from the app's own pages (`cross-origin-request`)."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The account does not sign in with this provider (`not-found`)."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "It is the account's last sign-in method (`last-sign-in-method`)."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Invalid request"
+          }
+        },
+        "summary": "Disconnect",
         "tags": [
           "accounts"
         ]

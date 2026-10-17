@@ -427,12 +427,12 @@ requested timeframe.
 | Limit | Counted per | Default | When spent |
 | --- | --- | --- | --- |
 | Clients: `CLIENT_RATE_LIMIT` | client IP (`CF-Connecting-IP`, else the peer address; an IPv6 address counts as its /64 network); every candle and instrument-detail request, cached or not | 60 per minute, `0` disables | 429 `rate-limited` with `Retry-After` |
-| Alpaca: `ALPACA_RATE_LIMIT` | environment; each Alpaca request | prod 150, stage 100, `pr-*` 30 | 503 `source-unavailable` with `Retry-After` |
+| Alpaca: `ALPACA_RATE_LIMIT` | environment; each Alpaca request | prod 150, stage 100, else 60 | 503 `source-unavailable` with `Retry-After` |
 | Alpaca, stats refresh | environment; each snapshots request, on top of the above | a fifth of `ALPACA_RATE_LIMIT`, at most 20 | the refresh waits for the next minute |
 | Alpaca, daily candles refresh | environment; each daily bars request, on top of the above | a twentieth of `ALPACA_RATE_LIMIT`, at most 5 | the refresh waits for the next minute |
 | Binance REST: `BINANCE_WEIGHT_LIMIT` | environment; request weight of each REST call | 1000 | 503 `source-unavailable` with `Retry-After` |
 | Binance, daily candles refresh | environment; weight of each klines request, on top of the above | a third of `BINANCE_WEIGHT_LIMIT`, at most 300 | the refresh waits for the next minute |
-| logo.dev: `LOGO_DEV_RATE_LIMIT` | environment; each logo.dev request | prod 50, stage 20, `pr-*` 5 | the fallback icon, no waiting |
+| logo.dev: `LOGO_DEV_RATE_LIMIT` | environment; each logo.dev request | prod 50, else 20 | the fallback icon, no waiting |
 | `data.binance.vision` | not limited | | |
 
 - When our budget at a source is spent, a request waits for the next window if it begins

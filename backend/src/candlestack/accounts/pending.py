@@ -29,6 +29,10 @@ class PendingSignIn(BaseModel):
     provider: Provider
     verifier: str = Field(repr=False)  # Sentry keeps the reprs of a failed frame's variables
     next: str
+    # Connecting a sign-in method in Settings: the SHA-256 (hex) of the token of the session
+    # that started it, which the browser must still be signed in with at the callback; None for
+    # a sign-in.
+    connect_session: str | None = None
 
 
 class PendingStore:
