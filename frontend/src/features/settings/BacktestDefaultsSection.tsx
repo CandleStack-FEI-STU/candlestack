@@ -5,11 +5,10 @@ import { preferencesQueryOptions, saveBacktestDefaults, type DefaultTimeframe } 
 import { ACCENT_BUTTON, BUTTON_SIZES } from '@/components/buttonStyles';
 import { SlidersIcon } from '@/components/icons';
 import { Button } from '@/components/ui/button';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
 
 import { BenchmarkSelect } from './BenchmarkSelect';
-import { SettingsCard, SettingsFooter, SettingsRow } from './Card';
+import { Choice, SettingsCard, SettingsFooter, SettingsRow } from './Card';
 import { DirectionCards, PeriodInput, UnitInput, ValueSlider } from './defaultsControls';
 import { checkDefaults, formOf, sameDefaults, type DefaultsForm, type TypedField } from './defaultsForm';
 
@@ -19,7 +18,8 @@ type Setter = <K extends keyof DefaultsForm>(key: K) => (value: DefaultsForm[K])
 type FieldsProps = { form: DefaultsForm; set: Setter; invalid: ReadonlySet<TypedField> };
 
 // The card being edited, starting from the saved defaults. Save sends it once something changed
-// and every typed field is right; the API's answer becomes the account's defaults.
+// and every typed field is right (a wrong one is marked); the API's answer becomes the account's
+// defaults.
 function useDefaultsForm() {
   const queryClient = useQueryClient();
   const saved = useSuspenseQuery(preferencesQueryOptions()).data.backtest_defaults;
@@ -33,13 +33,12 @@ function useDefaultsForm() {
       ),
   });
   const { defaults, invalid } = checkDefaults(form);
-  const canSave = defaults !== undefined && !sameDefaults(defaults, saved) && !save.isPending;
   const set: Setter = (key) => (value) => setForm((current) => ({ ...current, [key]: value }));
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (canSave) save.mutate(defaults);
+    if (defaults !== undefined && !sameDefaults(defaults, saved) && !save.isPending) save.mutate(defaults);
   };
-  return { form, set, invalid, canSave, submit, error: save.error?.message };
+  return { form, set, invalid, saving: save.isPending, submit, error: save.error?.message };
 }
 
 // What to test: the timeframe and the test period.
@@ -47,13 +46,12 @@ function DataRows({ form, set, invalid }: FieldsProps) {
   return (
     <>
       <SettingsRow label="Timeframe">
-        <ToggleGroup value={form.timeframe} onValueChange={set('timeframe')} aria-label="Timeframe">
-          {TIMEFRAMES.map((timeframe) => (
-            <ToggleGroupItem key={timeframe} value={timeframe}>
-              {timeframe}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+        <Choice<DefaultTimeframe>
+          label="Timeframe"
+          value={form.timeframe}
+          options={TIMEFRAMES.map((timeframe) => [timeframe, timeframe])}
+          onChange={set('timeframe')}
+        />
       </SettingsRow>
       <SettingsRow label="Test period">
         <div className="flex items-center gap-2">
@@ -140,24 +138,24 @@ function CostRows({ form, set, invalid }: FieldsProps) {
 
 // How a new backtest starts: every control of the design, then Save defaults.
 export function BacktestDefaultsSection() {
-  const { form, set, invalid, canSave, submit, error } = useDefaultsForm();
+  const { form, set, invalid, saving, submit, error } = useDefaultsForm();
   const fields = { form, set, invalid };
   return (
-    <SettingsCard
-      icon={SlidersIcon}
-      title="Backtest defaults"
-      aside={<span className="text-xs text-muted-foreground">New backtests start here</span>}
-    >
-      <form onSubmit={submit} className="contents">
+    <form onSubmit={submit}>
+      <SettingsCard
+        icon={SlidersIcon}
+        title="Backtest defaults"
+        aside={<span className="text-xs text-muted-foreground">New backtests start here</span>}
+      >
         <DataRows {...fields} />
         <TradeRows {...fields} />
         <CostRows {...fields} />
         <SettingsFooter error={error}>
-          <Button type="submit" className={cn(BUTTON_SIZES.sm, ACCENT_BUTTON)} disabled={!canSave}>
+          <Button type="submit" className={cn(BUTTON_SIZES.sm, ACCENT_BUTTON)} disabled={saving}>
             Save defaults
           </Button>
         </SettingsFooter>
-      </form>
-    </SettingsCard>
+      </SettingsCard>
+    </form>
   );
 }

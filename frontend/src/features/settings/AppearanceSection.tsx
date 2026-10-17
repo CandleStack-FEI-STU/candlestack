@@ -10,38 +10,15 @@ import {
 } from '@/api';
 import { AppearanceIcon } from '@/components/icons';
 import { Switch } from '@/components/ui/switch';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useAppearanceError, useThemeSetting, useUpdateAppearance } from '@/features/preferences';
 import { cityOf, formatDate, formatTime, viewerTimeZone } from '@/lib/dates';
 
-import { ErrorNote, SettingsCard, SettingsRow } from './Card';
+import { Choice, ErrorNote, SettingsCard, SettingsRow } from './Card';
 
 // The formats show themselves on one moment: 12 October 2024, 16:05.
 const EXAMPLE = new Date(Date.UTC(2024, 9, 12, 16, 5));
 const DATE_FORMATS: readonly DateFormat[] = ['dmy', 'iso', 'dot'];
 const TIME_FORMATS: readonly TimeFormat[] = ['24', '12'];
-
-function Choice<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  options: readonly (readonly [value: T, text: string])[];
-  onChange: (value: T) => void;
-}) {
-  return (
-    <ToggleGroup value={value} onValueChange={onChange} aria-label={label}>
-      {options.map(([option, text]) => (
-        <ToggleGroupItem key={option} value={option}>
-          {text}
-        </ToggleGroupItem>
-      ))}
-    </ToggleGroup>
-  );
-}
 
 // The theme on the page, which the header's toggle changes too.
 function ThemeRow() {

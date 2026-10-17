@@ -3,6 +3,8 @@ import type { ComponentProps } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
+import { classes } from '@/test/markup';
+
 import { Filters } from './Filters';
 
 // The button needs a router; a one-route router on "/", loaded first, is enough.
@@ -19,7 +21,7 @@ describe('Filters', () => {
     expect(html).toContain('aria-label="Filters: Stocks · NYSE"');
     expect(html).toContain('aria-haspopup="dialog"');
     expect(html).toContain('aria-expanded="false"');
-    expect(html).toContain('h-[34px] w-[200px]');
+    expect(classes(html, /<button [^>]*>/)).toEqual(expect.arrayContaining(['h-[34px]', 'w-[200px]']));
     expect(html).not.toContain('role="listbox"');
   });
 

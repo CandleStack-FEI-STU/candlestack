@@ -1,9 +1,10 @@
 import type { InstrumentDetail, Market, Timeframe } from '@/api';
+import type { DateFormats } from '@/lib/dates';
 
 import { CandleChart } from './CandleChart';
 import { CandlesError } from './CandlesError';
 import { timeZoneNote } from './time';
-import { useCandleHistory } from './useCandleHistory';
+import { useCandleHistory, type CandleHistory } from './useCandleHistory';
 
 // "1 candle is missing …" or "3 candles are missing …".
 function gapsNote(count: number): string {
@@ -13,14 +14,10 @@ function gapsNote(count: number): string {
 
 function Status({
   market,
-  isLoadingOlder,
-  hasOlder,
-  gapsTotal,
+  history: { isLoadingOlder, hasOlder, gapsTotal },
 }: {
   market: Market;
-  isLoadingOlder: boolean;
-  hasOlder: boolean;
-  gapsTotal: number;
+  history: CandleHistory;
 }) {
   const notes = [
     isLoadingOlder ? 'Loading older candles…' : hasOlder ? 'Scroll left for older candles.' : 'All history is loaded.',
@@ -31,6 +28,8 @@ function Status({
   return <p className="mt-2 text-xs text-muted-foreground">{notes.join(' ')}</p>;
 }
 
+type Props = { instrument: InstrumentDetail; timeframe: Timeframe; formats: DateFormats };
+
 function Placeholder({ children }: { children: string }) {
   return <p className="my-auto py-24 text-center text-sm text-muted-foreground">{children}</p>;
 }
@@ -39,8 +38,9 @@ function Placeholder({ children }: { children: string }) {
 // candles there is no chart and no status line: a failed first load shows only its error. It
 // fills the height the page leaves, for the chart, also while it loads or fails, so it does not
 // jump when the candles arrive. It stops at 64rem, the chart at about 60rem with the status line:
-// on a very tall screen the space left stays below it.
-export function InstrumentCandles({ instrument, timeframe }: { instrument: InstrumentDetail; timeframe: Timeframe }) {
+// on a very tall screen the space left stays below it. The chart writes dates and times in the
+// user's formats.
+export function InstrumentCandles({ instrument, timeframe, formats }: Props) {
   const history = useCandleHistory(instrument, timeframe);
   const hasBars = history.bars.length > 0;
 
@@ -68,14 +68,10 @@ export function InstrumentCandles({ instrument, timeframe }: { instrument: Instr
             key={history.restarts}
             bars={history.bars}
             market={instrument.market}
+            formats={formats}
             onNearLeftEdge={history.loadOlder}
           />
-          <Status
-            market={instrument.market}
-            isLoadingOlder={history.isLoadingOlder}
-            hasOlder={history.hasOlder}
-            gapsTotal={history.gapsTotal}
-          />
+          <Status market={instrument.market} history={history} />
         </>
       )}
     </section>

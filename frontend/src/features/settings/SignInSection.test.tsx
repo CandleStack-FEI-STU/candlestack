@@ -25,7 +25,7 @@ describe('Sign-in', () => {
     stubApi(session(ARSEN));
     await renderApp('/settings/sign-in');
     expect(card().getByText('Sign in with either. Keep at least one connected.')).toBeDefined();
-    expect(row('GitHub').getByText('Connected')).toBeDefined();
+    expect(row('GitHub').getByText('Connected · arsen@example.com')).toBeDefined();
     expect(row('Google').getByText('Not connected')).toBeDefined();
     expect(row('Google').getByRole('link', { name: 'Connect' }).getAttribute('href')).toBe(
       '/api/v1/auth/google/start?intent=connect&next=%2Fsettings%2Fsign-in',
@@ -69,7 +69,7 @@ describe('Sign-in', () => {
     expect((await card().findByRole('alert')).textContent).toBe('Keep at least one way to sign in.');
     await user.click(row('Google').getByRole('button', { name: 'Disconnect' }));
     await vi.waitFor(() => expect(card().getByRole('alert').textContent).toBe('Down for a minute.'));
-    expect(row('GitHub').getByText('Connected')).toBeDefined();
+    expect(row('GitHub').getByText('Connected · arsen@example.com')).toBeDefined();
   });
 
   it('says how connecting ended when the API comes back with an error', async () => {

@@ -13,8 +13,8 @@ import { Code, INPUT, SettingsCard, SettingsFooter, SettingsRow } from './Card';
 // The API's limit (MeUpdate); it trims the name, so the check does too.
 const NAME_MAX = 80;
 
-// The display name being edited. Save is there once it changed and is not empty; the API's answer
-// becomes the user everywhere (the header, the menu).
+// The display name being edited. Save sends it once it changed and is not empty (an empty one is
+// marked); the API's answer becomes the user everywhere (the header, the menu).
 function useDisplayNameForm(saved: string) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(saved);
@@ -23,12 +23,11 @@ function useDisplayNameForm(saved: string) {
     onSuccess: (me) => queryClient.setQueryData(meQueryOptions().queryKey, me),
   });
   const trimmed = name.trim();
-  const canSave = trimmed !== '' && trimmed !== saved && !save.isPending;
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (canSave) save.mutate(trimmed);
+    if (trimmed !== '' && trimmed !== saved && !save.isPending) save.mutate(trimmed);
   };
-  return { name, setName, empty: trimmed === '', canSave, submit, error: save.error?.message };
+  return { name, setName, empty: trimmed === '', saving: save.isPending, submit, error: save.error?.message };
 }
 
 // Who is signed in: the drawn initials (44 px) with the name and email.
@@ -47,11 +46,11 @@ function Who({ user }: { user: Me }) {
 // The user, then the display name to change, the email from the provider and the public user ID.
 export function ProfileSection() {
   const user = useSignedInUser();
-  const { name, setName, empty, canSave, submit, error } = useDisplayNameForm(user.display_name);
+  const { name, setName, empty, saving, submit, error } = useDisplayNameForm(user.display_name);
   return (
-    <SettingsCard icon={UserIcon} title="Profile">
-      <Who user={user} />
-      <form onSubmit={submit} className="contents">
+    <form onSubmit={submit}>
+      <SettingsCard icon={UserIcon} title="Profile">
+        <Who user={user} />
         <SettingsRow label="Display name">
           <input
             className={INPUT}
@@ -70,11 +69,11 @@ export function ProfileSection() {
           <Code>{user.id}</Code>
         </SettingsRow>
         <SettingsFooter error={error}>
-          <Button type="submit" className={cn(BUTTON_SIZES.sm, ACCENT_BUTTON)} disabled={!canSave}>
+          <Button type="submit" className={cn(BUTTON_SIZES.sm, ACCENT_BUTTON)} disabled={saving}>
             Save
           </Button>
         </SettingsFooter>
-      </form>
-    </SettingsCard>
+      </SettingsCard>
+    </form>
   );
 }

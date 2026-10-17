@@ -2,6 +2,7 @@ import * as React from 'react';
 import * as SelectPrimitive from '@radix-ui/react-select';
 import { Check, ChevronDown } from 'lucide-react';
 
+import { DROPDOWN_CHEVRON, DROPDOWN_TRIGGER } from '@/components/buttonStyles';
 import { cn } from '@/lib/utils';
 
 // shadcn/ui's Select in the look of the app design's dropdowns (mockups/app, .fp-t and .fp, as
@@ -17,17 +18,10 @@ function Select({ ...props }: React.ComponentProps<typeof SelectPrimitive.Root>)
 // comes last.
 function SelectTrigger({ className, children, ...props }: React.ComponentProps<typeof SelectPrimitive.Trigger>) {
   return (
-    <SelectPrimitive.Trigger
-      data-slot="select-trigger"
-      className={cn(
-        'group flex h-[34px] cursor-pointer items-center gap-2 rounded-md border bg-background pr-2.5 pl-3 text-left text-sm text-muted-foreground transition-[color,border-color] duration-150 outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[state=open]:border-[color-mix(in_srgb,var(--accent)_55%,var(--rule))] data-[state=open]:text-foreground',
-        className,
-      )}
-      {...props}
-    >
+    <SelectPrimitive.Trigger data-slot="select-trigger" className={cn(DROPDOWN_TRIGGER, className)} {...props}>
       {children}
       <SelectPrimitive.Icon asChild>
-        <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-150 group-data-[state=open]:rotate-180" />
+        <ChevronDown className={DROPDOWN_CHEVRON} />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   );
@@ -68,7 +62,7 @@ function SelectItem({
       data-slot="select-item"
       textValue={text}
       className={cn(
-        'flex cursor-pointer items-center gap-2 rounded-sm p-2 text-foreground outline-none select-none data-[highlighted]:bg-muted',
+        'flex cursor-pointer items-center gap-2 rounded-sm p-2 text-foreground transition-colors duration-150 outline-none select-none data-[highlighted]:bg-muted',
         className,
       )}
       {...props}

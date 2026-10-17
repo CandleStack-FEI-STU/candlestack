@@ -49,6 +49,8 @@ function disconnectError(error: Error | null): string | undefined {
 
 type RowProps = {
   info: ProviderInfo;
+  // The account's email, which a connected provider signs in with.
+  email: string;
   connected: boolean;
   // The user's only way in: it cannot be disconnected.
   only: boolean;
@@ -56,8 +58,9 @@ type RowProps = {
   onDisconnect: () => void;
 };
 
-// A provider: its mark on a tile, its name over whether it is connected, and what to do about it.
-function ProviderRow({ info: { provider, name, Mark }, connected, only, busy, onDisconnect }: RowProps) {
+// A provider: its mark on a tile, its name over whether it is connected (and as whom), and what to
+// do about it.
+function ProviderRow({ info: { provider, name, Mark }, email, connected, only, busy, onDisconnect }: RowProps) {
   return (
     <div className="flex items-center gap-3 rounded-lg border px-3 py-2.5">
       <span className="grid size-[34px] flex-none place-items-center rounded-lg bg-muted">
@@ -65,7 +68,9 @@ function ProviderRow({ info: { provider, name, Mark }, connected, only, busy, on
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
         <b>{name}</b>
-        <span className="text-xs text-muted-foreground">{connected ? 'Connected' : 'Not connected'}</span>
+        <span className="truncate text-xs text-muted-foreground">
+          {connected ? `Connected · ${email}` : 'Not connected'}
+        </span>
       </span>
       {connected ? (
         <Button
@@ -102,6 +107,7 @@ export function SignInSection() {
           <ProviderRow
             key={info.provider}
             info={info}
+            email={user.email}
             connected={user.providers.includes(info.provider)}
             only={user.providers.length === 1}
             busy={disconnect.isPending}

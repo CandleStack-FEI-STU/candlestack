@@ -30,3 +30,13 @@ export const DANGER_BUTTON =
 // .btn.danger.pri on the default variant (the dialog's Delete account): filled with the red, which
 // stays on hover.
 export const DANGER_ACCENT_BUTTON = 'border border-down bg-down text-background shadow-none hover:bg-down';
+
+// .fp-t, the dropdowns' button (the Instruments filter, the benchmark): 34 px with the text in the
+// muted color, the full ink on hover and while open, the border then in the accent. It is the
+// group of its chevron (DROPDOWN_CHEVRON), which turns while open.
+export const DROPDOWN_TRIGGER =
+  'group flex h-[34px] cursor-pointer items-center gap-2 rounded-md border bg-background pr-2.5 pl-3 text-left text-sm text-muted-foreground transition-[color,border-color,box-shadow] duration-150 outline-none hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[state=open]:border-[color-mix(in_srgb,var(--accent)_55%,var(--rule))] data-[state=open]:text-foreground';
+
+// .fp-chev: lucide's ChevronDown at the end of a DROPDOWN_TRIGGER.
+export const DROPDOWN_CHEVRON =
+  'size-4 shrink-0 text-muted-foreground transition-transform duration-150 group-data-[state=open]:rotate-180';

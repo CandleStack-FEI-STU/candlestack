@@ -14,7 +14,7 @@ export function InstrumentPage() {
   const { data: instrument } = useSuspenseQuery(instrumentQueryOptions(id));
   // Only a timeframe the instrument has; otherwise its first one.
   const tf = instrumentTimeframe(search.tf, instrument.timeframes);
-  const { dateFormat } = useDateStyle();
+  const { dateFormat, timeFormat } = useDateStyle();
   usePageTitle(`${instrument.symbol} ${tf}`);
 
   return (
@@ -24,7 +24,12 @@ export function InstrumentPage() {
       <div className="mb-3">
         <TimeframeSwitch timeframes={instrument.timeframes} current={tf} />
       </div>
-      <InstrumentCandles key={`${instrument.id}/${tf}`} instrument={instrument} timeframe={tf} />
+      <InstrumentCandles
+        key={`${instrument.id}/${tf}`}
+        instrument={instrument}
+        timeframe={tf}
+        formats={{ dateFormat, timeFormat }}
+      />
     </>
   );
 }

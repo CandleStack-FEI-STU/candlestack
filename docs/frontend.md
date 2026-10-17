@@ -216,10 +216,10 @@ and an unknown section open `profile`; the others are `sign-in`, `backtest-defau
 The two sections with the account's preferences load them in the route's loader
 (`GET /api/v1/me/preferences`, under `['account', 'preferences']`, so signing out forgets them).
 
-- Profile: the drawn initials, the display name to change (`PATCH /api/v1/me`; Save is there once
-  it changed and is not empty, the answer becomes the user in the header and the menu), the email
-  and the user ID.
-- Sign-in: GitHub and Google. Connect is a full page navigation to
+- Profile: the drawn initials, the display name to change (`PATCH /api/v1/me`; Save sends it once
+  it changed and is not empty, an empty one is marked, the answer becomes the user in the header
+  and the menu), the email and the user ID. Save is off only while it saves, as in the design.
+- Sign-in: GitHub and Google, a connected one with the account's email. Connect is a full page navigation to
   `/api/v1/auth/{provider}/start?intent=connect&next=/settings/sign-in`; the API comes back with
   `?error=taken` or `?error=failed`, which the card says under the list. Disconnect
   (`DELETE /api/v1/me/sign-in-methods/{provider}`) is off for the last method, with the title
@@ -228,7 +228,7 @@ The two sections with the account's preferences load them in the route's loader
   direction cards, Slider for the threshold and the stop loss, Select for the benchmark) and Save
   defaults, which sends the whole set (`PUT .../backtest-defaults`) once something changed and the
   typed fields are right (`defaultsForm.ts`: real days, the period ending after it starts, 0 to
-  5 %).
+  5 %; a wrong one is marked as it is typed).
 - Appearance: each control saves as it changes (`PATCH .../appearance`, `src/features/preferences/`):
   at once in the cache the page reads, then on the account, one change after another; a failed
   one goes back and the card says why. The theme is the page's (`src/theme.ts`): the header's
@@ -239,7 +239,8 @@ The two sections with the account's preferences load them in the route's loader
   the system's alone.
 - Dates and times go through `src/lib/dates.ts` (`formatDate`, `formatTime`, the zone of the
   setting); `useDateStyle()` gives the account's choice, or the API's defaults for a visitor. The
-  instrument page writes its first day in the user's date format.
+  instrument page writes its first day, the chart's crosshair and the axis's times in the user's
+  formats (the chart keeps the market's zone, `src/features/instrument/time.ts`).
 - Data and storage shows the market data; the backtests and models rows come with those pages.
   API and MCP shows both cards as Coming soon, with the API docs of the same host.
 - Account: Sign out everywhere (`POST /api/v1/auth/sign-out-everywhere`) and Delete account

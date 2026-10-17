@@ -1,5 +1,5 @@
 import type { Market } from '@/api';
-import { NEW_YORK, viewerTimeZone } from '@/lib/dates';
+import { NEW_YORK, calendarDay, formatDate, formatTime, monthName, viewerTimeZone, type DateStyle } from '@/lib/dates';
 
 // Stocks trade on New York time (the session opens at 09:30 there all year). Crypto trades around
 // the clock with no home exchange, so it shows the viewer's own time. The API sends UTC epoch
@@ -16,35 +16,24 @@ export function timeZoneNote(market: Market, viewer = viewerTimeZone()): string 
 // The kinds of tick marks lightweight-charts asks a label for (its TickMarkType enum).
 export const Tick = { Year: 0, Month: 1, Day: 2, Time: 3, TimeWithSeconds: 4 } as const;
 
-const LOCALE = 'en-GB';
-
-function formatter(timeZone: string, options: Intl.DateTimeFormatOptions) {
-  const format = new Intl.DateTimeFormat(LOCALE, { timeZone, ...options });
-  return (seconds: number) => format.format(new Date(seconds * 1000));
-}
-
-// Labels on the time axis: a year, a month, a day or a time of day, in the market's zone.
-export function tickFormatter(timeZone: string) {
-  const year = formatter(timeZone, { year: 'numeric' });
-  const month = formatter(timeZone, { month: 'short' });
-  const day = formatter(timeZone, { day: 'numeric', month: 'short' });
-  const time = formatter(timeZone, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+// Labels on the time axis: a year, a month, a day or a time of day in the user's time format, in
+// the market's zone. The day stays short (3 Jun) in every date format, to fit between the ticks.
+export function tickFormatter(style: DateStyle) {
   return (seconds: number, tick: number): string => {
-    if (tick === Tick.Year) return year(seconds);
-    if (tick === Tick.Month) return month(seconds);
-    if (tick === Tick.Day) return day(seconds);
-    return time(seconds);
+    const date = new Date(seconds * 1000);
+    if (tick === Tick.Time || tick === Tick.TimeWithSeconds) return formatTime(date, style);
+    const { year, month, day } = calendarDay(date, style.timeZone);
+    if (tick === Tick.Year) return year;
+    if (tick === Tick.Month) return monthName(month);
+    return `${Number(day)} ${monthName(month)}`;
   };
 }
 
-// The label under the crosshair: full date and time, in the market's zone.
-export function crosshairFormatter(timeZone: string) {
-  return formatter(timeZone, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  });
+// The label under the crosshair: the date and the time as the user writes them, in the market's
+// zone.
+export function crosshairFormatter(style: DateStyle) {
+  return (seconds: number): string => {
+    const date = new Date(seconds * 1000);
+    return `${formatDate(date, style)}, ${formatTime(date, style)}`;
+  };
 }

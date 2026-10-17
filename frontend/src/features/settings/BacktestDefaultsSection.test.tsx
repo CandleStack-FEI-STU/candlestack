@@ -51,7 +51,16 @@ describe('Backtest defaults', () => {
     expect([field('Fees').value, field('Slippage').value]).toEqual(['0.1', '0.02']);
     expect(card().getByText('% per side')).toBeDefined();
     expect(card().getByRole('combobox', { name: 'Benchmark: Buy and hold' }).textContent).toBe('B&HBuy and hold');
-    expect(save()).toHaveProperty('disabled', true);
+    expect(save()).toHaveProperty('disabled', false);
+  });
+
+  it('draws no line between the title and the first row', async () => {
+    stubApi(sessionWithPreferences(ARSEN));
+    await renderApp('/settings/backtest-defaults');
+    // The rows' top line is left out right after the title (Card.tsx), so the first row has to
+    // follow it in the card.
+    const first = card().getByText('Timeframe').closest('[data-slot=settings-row]');
+    expect(first?.previousElementSibling?.getAttribute('data-slot')).toBe('settings-head');
   });
 
   it('saves the choices: the timeframe, the direction, the threshold and the stop loss', async () => {
@@ -81,7 +90,7 @@ describe('Backtest defaults', () => {
     await vi.waitFor(() =>
       expect(queryClient.getQueryData(preferencesQueryOptions().queryKey)?.backtest_defaults).toEqual(changed),
     );
-    expect(save()).toHaveProperty('disabled', true);
+    expect(save()).toHaveProperty('disabled', false);
   });
 
   it('saves the typed fields as numbers and days, a comma working as the decimal point', async () => {
@@ -120,19 +129,21 @@ describe('Backtest defaults', () => {
     await vi.waitFor(() => expect(sentBody(fetch, SAVE)).toMatchObject({ benchmark: 'QQQ' }));
   });
 
-  it('keeps Save off while a typed field is not right, and marks it', async () => {
-    stubApi(sessionWithPreferences(ARSEN));
+  it('marks a typed field that is not right and sends nothing while one is, or nothing changed', async () => {
+    const fetch = stubApi(sessionWithPreferences(ARSEN));
     await renderApp('/settings/backtest-defaults');
     const user = userEvent.setup();
+    await user.click(save());
     await retype(user, 'To', '2020-12-31');
     expect(field('To').getAttribute('aria-invalid')).toBe('true');
-    expect(save()).toHaveProperty('disabled', true);
+    await user.click(save());
 
     await retype(user, 'To', '2025-06-30');
     await retype(user, 'Slippage', '9');
     expect(field('To').getAttribute('aria-invalid')).toBeNull();
     expect(field('Slippage').getAttribute('aria-invalid')).toBe('true');
-    expect(save()).toHaveProperty('disabled', true);
+    await user.click(save());
+    expect(sentBody(fetch, SAVE)).toBeUndefined();
   });
 
   it('says why the defaults could not be saved', async () => {

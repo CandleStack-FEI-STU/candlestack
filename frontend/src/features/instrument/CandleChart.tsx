@@ -11,10 +11,11 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 import { ChevronsRight } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 
 import type { Market } from '@/api';
 import { Button } from '@/components/ui/button';
+import type { DateFormats } from '@/lib/dates';
 import { priceDecimals } from '@/lib/numbers';
 import { useTheme } from '@/theme';
 
@@ -61,16 +62,12 @@ function applyTheme(chart: IChartApi, series: Series) {
   return colors;
 }
 
-function create(container: HTMLElement, market: Market) {
-  const zone = chartTimeZone(market);
-  const ticks = tickFormatter(zone);
-  const crosshair = crosshairFormatter(zone);
+function create(container: HTMLElement) {
   const chart = createChart(container, {
     autoSize: true,
     // The TradingView attribution is a line in the footer instead (#166).
     layout: { attributionLogo: false },
-    localization: { timeFormatter: (time: Time) => crosshair(time as number) },
-    timeScale: { timeVisible: true, tickMarkFormatter: (time: Time, tick: number) => ticks(time as number, tick) },
+    timeScale: { timeVisible: true },
   });
   const candles = chart.addSeries(CandlestickSeries, { borderVisible: false });
   const volume = chart.addSeries(HistogramSeries, { priceScaleId: '', priceFormat: { type: 'volume' } });
@@ -89,6 +86,17 @@ function setBars(series: Series, bars: readonly Bar[], colors: { up: string; dow
       color: withAlpha(bar.close >= bar.open ? colors.up : colors.down, 0.4),
     })),
   );
+}
+
+// The axis and the crosshair write dates and times as the user does, in the market's zone.
+function applyTimeFormats(chart: IChartApi, market: Market, formats: DateFormats) {
+  const style = { ...formats, timeZone: chartTimeZone(market) };
+  const ticks = tickFormatter(style);
+  const crosshair = crosshairFormatter(style);
+  chart.applyOptions({
+    localization: { timeFormatter: (time: Time) => crosshair(time as number) },
+    timeScale: { tickMarkFormatter: (time: Time, tick: number) => ticks(time as number, tick) },
+  });
 }
 
 type Instance = { chart: IChartApi; series: Series };
@@ -115,9 +123,16 @@ function showBars(instance: Instance, bars: readonly Bar[], firstTime: number | 
   return bars[0]?.time;
 }
 
+// The axis and the crosshair follow the user's formats once the chart is there, and on a change.
+function useTimeFormats(chart: RefObject<Instance | null>, market: Market, { dateFormat, timeFormat }: DateFormats) {
+  useEffect(() => {
+    if (chart.current) applyTimeFormats(chart.current.chart, market, { dateFormat, timeFormat });
+  }, [chart, market, dateFormat, timeFormat]);
+}
+
 // Creates the chart and follows it: loads older pages near the left edge, tracks the candle under
 // the cursor for the legend, and whether the newest candle is out of view.
-function useCandleChart(market: Market, bars: readonly Bar[], onNearLeftEdge: () => void) {
+function useCandleChart(market: Market, formats: DateFormats, bars: readonly Bar[], onNearLeftEdge: () => void) {
   const container = useRef<HTMLDivElement>(null);
   const chart = useRef<Instance | null>(null);
   const lastIndex = useRef(-1);
@@ -136,10 +151,10 @@ function useCandleChart(market: Market, bars: readonly Bar[], onNearLeftEdge: ()
     if (range && range.from < PRELOAD_BARS) onNearLeftEdge();
   }, [onNearLeftEdge]);
 
-  // One chart per market (the time zone of the axis); the bars only get replaced.
+  // One chart per market; the bars and the time formats only get replaced.
   useEffect(() => {
     if (!container.current) return;
-    const created = create(container.current, market);
+    const created = create(container.current);
     chart.current = created;
     created.chart.timeScale().subscribeVisibleLogicalRangeChange((range: LogicalRange | null) => {
       if (!range) return;
@@ -154,6 +169,8 @@ function useCandleChart(market: Market, bars: readonly Bar[], onNearLeftEdge: ()
     };
   }, [market]);
 
+  useTimeFormats(chart, market, formats);
+
   useEffect(() => {
     if (!chart.current) return;
     lastIndex.current = bars.length - 1;
@@ -164,10 +181,10 @@ function useCandleChart(market: Market, bars: readonly Bar[], onNearLeftEdge: ()
   return { container, hovered, awayFromLatest, scrollToLatest };
 }
 
-type Props = { bars: readonly Bar[]; market: Market; onNearLeftEdge: () => void };
+type Props = { bars: readonly Bar[]; market: Market; formats: DateFormats; onNearLeftEdge: () => void };
 
-export function CandleChart({ bars, market, onNearLeftEdge }: Props) {
-  const { container, hovered, awayFromLatest, scrollToLatest } = useCandleChart(market, bars, onNearLeftEdge);
+export function CandleChart({ bars, market, formats, onNearLeftEdge }: Props) {
+  const { container, hovered, awayFromLatest, scrollToLatest } = useCandleChart(market, formats, bars, onNearLeftEdge);
   const legend = legendFor(bars, hovered, priceDecimals(bars.at(-1)?.close ?? 0));
 
   // As tall as the rest of the page leaves room for on the screen, however many lines the name,

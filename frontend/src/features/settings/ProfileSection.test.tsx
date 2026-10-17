@@ -32,7 +32,7 @@ describe('Profile', () => {
     const fetch = stubApi({ ...session(ARSEN), 'PATCH /api/v1/me': { status: 200, body: renamed } });
     await renderApp('/settings/profile');
     const user = userEvent.setup();
-    expect(save()).toHaveProperty('disabled', true);
+    expect(save()).toHaveProperty('disabled', false);
 
     const name = card().getByRole('textbox', { name: 'Display name' });
     await user.clear(name);
@@ -42,16 +42,19 @@ describe('Profile', () => {
     await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Account' }).textContent).toBe('FH'));
     expect(sentBody(fetch, 'PATCH /api/v1/me')).toEqual({ display_name: 'Filip Hodoň' });
     expect(card().getByText('Filip Hodoň', { selector: 'b' })).toBeDefined();
-    expect(save()).toHaveProperty('disabled', true);
+    expect(save()).toHaveProperty('disabled', false);
   });
 
-  it('keeps Save off while the name is empty', async () => {
-    stubApi(session(ARSEN));
+  it('marks an empty name and sends neither it nor an unchanged one', async () => {
+    const fetch = stubApi(session(ARSEN));
     await renderApp('/settings/profile');
+    const user = userEvent.setup();
+    await user.click(save());
     const name = card().getByRole('textbox', { name: 'Display name' });
-    await userEvent.setup().clear(name);
+    await user.clear(name);
     expect(name.getAttribute('aria-invalid')).toBe('true');
-    expect(save()).toHaveProperty('disabled', true);
+    await user.click(save());
+    expect(sentBody(fetch, 'PATCH /api/v1/me')).toBeUndefined();
   });
 
   it('says why the name could not be saved and keeps it to try again', async () => {
