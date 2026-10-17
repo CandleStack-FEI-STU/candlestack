@@ -5,6 +5,9 @@ never from the submodules. A route of the signed-in user takes ``user: CurrentUs
 one that changes something also depends on ``core.require_same_origin``. Such a route returns
 its data, not a ``Response`` of its own: FastAPI drops the renewed session cookie that
 ``CurrentUserDep`` sets from a response the route builds itself.
+
+A module that keeps data of a user deletes it with the account through an
+``AccountDeletionHook``, which ``candlestack.main`` puts on ``app.state.account_deletion_hooks``.
 """
 
 from candlestack.accounts.api import dev_router as dev_sign_in_router
@@ -13,8 +16,10 @@ from candlestack.accounts.api import router as accounts_router
 from candlestack.accounts.dependencies import CurrentUserDep
 from candlestack.accounts.models import User
 from candlestack.accounts.schemas import DeniedSignInOut, MeOut, Provider
+from candlestack.accounts.service import AccountDeletionHook
 
 __all__ = [
+    "AccountDeletionHook",
     "CurrentUserDep",
     "DeniedSignInOut",
     "MeOut",

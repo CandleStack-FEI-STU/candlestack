@@ -30,3 +30,24 @@ def test_sign_in_without_oauth_keys_fails_gracefully(http: httpx.Client) -> None
 
     assert response.status_code == 302
     assert response.headers["location"] == "/signin?error=failed"
+
+
+def test_settings_and_deleting_the_account(http: httpx.Client) -> None:
+    """The migrated preferences table, and an account deleted with what it owns."""
+    http.post("/api/v1/auth/dev", headers=ORIGIN)
+
+    renamed = http.patch("/api/v1/me", json={"display_name": " Dev "}, headers=ORIGIN)
+    appearance = http.patch(
+        "/api/v1/me/preferences/appearance", json={"theme": "light"}, headers=ORIGIN
+    )
+    preferences = http.get("/api/v1/me/preferences")
+
+    assert renamed.json()["display_name"] == "Dev"
+    assert appearance.json()["theme"] == "light"
+    assert preferences.json()["appearance"]["theme"] == "light"
+    assert preferences.json()["backtest_defaults"]["timeframe"] == "30m"
+
+    deleted = http.delete("/api/v1/me", headers=ORIGIN)
+
+    assert deleted.status_code == 204
+    assert http.get("/api/v1/me").status_code == 401

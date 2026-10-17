@@ -11,7 +11,12 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from scalar_fastapi import AgentScalarConfig, get_scalar_api_reference
 
-from candlestack.accounts import accounts_router, dev_sign_in_allowed, dev_sign_in_router
+from candlestack.accounts import (
+    AccountDeletionHook,
+    accounts_router,
+    dev_sign_in_allowed,
+    dev_sign_in_router,
+)
 from candlestack.core import (
     Database,
     RateLimiter,
@@ -128,6 +133,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
     )
     app.state.settings = settings
+    # What other modules delete with an account (their hooks run before the user's row goes);
+    # no module keeps data of a user yet.
+    deletion_hooks: tuple[AccountDeletionHook, ...] = ()
+    app.state.account_deletion_hooks = deletion_hooks
     app.add_middleware(RequestContextMiddleware)
     install_error_handlers(app)
     app.include_router(health_router)

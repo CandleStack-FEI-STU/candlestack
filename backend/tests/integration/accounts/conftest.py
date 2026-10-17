@@ -78,7 +78,7 @@ def auth_keys(redis_url: str) -> Callable[[], list[str]]:
 
 @pytest.fixture(autouse=True)
 def empty_stores(sql: Callable[[str], list[Any]], forget_pending: Callable[[], None]) -> None:
-    sql("TRUNCATE users, identities, sessions")
+    sql("TRUNCATE users, identities, sessions, user_preferences")
     forget_pending()
 
 
@@ -180,8 +180,21 @@ class Browser:
     def set_cookie(self, name: str, value: str) -> None:
         self._cookies.set(name, value, domain="testserver.local")
 
-    def start(self, provider: str, next_path: str | None = None) -> httpx2.Response:
+    def patch(self, url: str, **kwargs: Any) -> httpx2.Response:
+        return self.request("PATCH", url, **kwargs)
+
+    def put(self, url: str, **kwargs: Any) -> httpx2.Response:
+        return self.request("PUT", url, **kwargs)
+
+    def delete(self, url: str, **kwargs: Any) -> httpx2.Response:
+        return self.request("DELETE", url, **kwargs)
+
+    def start(
+        self, provider: str, next_path: str | None = None, intent: str | None = None
+    ) -> httpx2.Response:
         params = {"next": next_path} if next_path is not None else {}
+        if intent is not None:
+            params["intent"] = intent
         response = self.get(f"/api/v1/auth/{provider}/start", params=params)
         if response.status_code == 302 and response.headers["location"].startswith("https://"):
             query = parse_qs(urlsplit(response.headers["location"]).query)
@@ -194,6 +207,13 @@ class Browser:
     def sign_in(self, provider: str = "github", next_path: str | None = None) -> httpx2.Response:
         """Starts a sign-in, consents at the provider and returns the callback's response."""
         start = self.start(provider, next_path)
+        state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
+        return self.callback(provider, code="the-code", state=state)
+
+    def connect(self, provider: str, next_path: str | None = None) -> httpx2.Response:
+        """Starts connecting a sign-in method, consents at the provider and returns the
+        callback's response."""
+        start = self.start(provider, next_path, intent="connect")
         state = parse_qs(urlsplit(start.headers["location"]).query)["state"][0]
         return self.callback(provider, code="the-code", state=state)
 
@@ -229,4 +249,9 @@ def browser_without_postgres(settings: Settings, providers: Providers) -> Iterat
 
 @pytest.fixture
 def other_browser(client: TestClient, providers: Providers) -> Browser:
+    return Browser(client, providers)
+
+
+@pytest.fixture
+def third_browser(client: TestClient, providers: Providers) -> Browser:
     return Browser(client, providers)

@@ -1,9 +1,11 @@
-"""Response bodies of the accounts API (the contract the web app is built against)."""
+"""Request and response bodies of the accounts API (the contract the web app is built
+against)."""
 
 from datetime import date, datetime
 from enum import StrEnum
+from typing import Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Provider(StrEnum):
@@ -45,6 +47,9 @@ class DeniedSignInOut(BaseModel):
 
 class MeUpdate(BaseModel):
     """What the user may change about themselves."""
+
+    # The length limits apply to the stripped name, so a blank one is refused.
+    model_config = ConfigDict(str_strip_whitespace=True)
 
     display_name: str = Field(
         min_length=1,
@@ -93,6 +98,12 @@ class BacktestDefaults(BaseModel):
     fees_pct: float = Field(default=0.1, ge=0, le=5, description="Fees in percent per side")
     slippage_pct: float = Field(default=0.02, ge=0, le=5, description="Slippage in percent")
     benchmark: Benchmark = Benchmark.buy_and_hold
+
+    @model_validator(mode="after")
+    def _period_moves_forward(self) -> Self:
+        if self.period_start >= self.period_end:
+            raise ValueError("period_start must be before period_end")
+        return self
 
 
 class Theme(StrEnum):

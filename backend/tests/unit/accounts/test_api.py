@@ -9,7 +9,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.routing import NoMatchFound
 
-from candlestack.accounts import dev_sign_in_allowed
+from candlestack.accounts import User, dev_sign_in_allowed
+from candlestack.accounts.dependencies import current_user
 from candlestack.core import Settings
 from candlestack.core.ratelimit import get_rate_limiter
 from candlestack.main import create_app
@@ -159,3 +160,141 @@ def test_callback_over_the_rate_limit_fails(client: TestClient, limiter: FakeLim
 
     assert response.status_code == 302
     assert response.headers["location"] == "/signin?error=failed"
+
+
+def test_callback_of_a_connect_over_the_rate_limit_returns_to_settings(
+    client: TestClient, limiter: FakeLimiter
+) -> None:
+    limiter.wait = 5
+
+    response = client.get(
+        "/api/v1/auth/github/callback?code=c&state=connect.s", follow_redirects=False
+    )
+
+    assert response.headers["location"] == "/settings/sign-in?error=failed"
+
+
+@pytest.mark.parametrize(
+    ("next_path", "location"),
+    [
+        (None, "/signin?next=/settings/sign-in"),
+        ("/settings/sign-in?from=banner", "/signin?next=/settings/sign-in%3Ffrom%3Dbanner"),
+        ("https://evil.example/", "/signin?next=/settings/sign-in"),
+    ],
+)
+def test_connect_without_a_session_signs_in_first(
+    client: TestClient, next_path: str | None, location: str
+) -> None:
+    params = {"intent": "connect"} | ({"next": next_path} if next_path else {})
+
+    response = client.get("/api/v1/auth/google/start", params=params, follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["location"] == location
+    assert "set-cookie" not in response.headers
+
+
+def test_connect_over_the_rate_limit_returns_to_settings(
+    client: TestClient, limiter: FakeLimiter
+) -> None:
+    limiter.wait = 5
+    client.cookies.set("session", "some-token")
+
+    response = client.get(
+        "/api/v1/auth/github/start", params={"intent": "connect"}, follow_redirects=False
+    )
+
+    assert response.headers["location"] == "/settings/sign-in?error=failed"
+
+
+def test_start_with_an_unknown_intent(client: TestClient) -> None:
+    response = client.get(
+        "/api/v1/auth/github/start", params={"intent": "merge"}, follow_redirects=False
+    )
+
+    assert response.status_code == 422
+
+
+SETTINGS_ROUTES = [
+    ("PATCH", "/api/v1/me", {"display_name": "Ada"}),
+    ("DELETE", "/api/v1/me", None),
+    ("DELETE", "/api/v1/me/sign-in-methods/github", None),
+    ("POST", "/api/v1/auth/sign-out-everywhere", None),
+    ("PUT", "/api/v1/me/preferences/backtest-defaults", {}),
+    ("PATCH", "/api/v1/me/preferences/appearance", {}),
+]
+
+
+@pytest.mark.parametrize(("method", "path", "body"), SETTINGS_ROUTES)
+def test_settings_need_a_session(
+    client: TestClient, method: str, path: str, body: dict[str, str] | None
+) -> None:
+    response = client.request(method, path, json=body, headers=ORIGIN)
+
+    assert response.status_code == 401
+    assert response.json()["type"] == PROBLEMS + "not-signed-in"
+
+
+def test_preferences_need_a_session(client: TestClient) -> None:
+    response = client.get("/api/v1/me/preferences")
+
+    assert response.status_code == 401
+    assert response.json()["type"] == PROBLEMS + "not-signed-in"
+
+
+@pytest.mark.parametrize(("method", "path", "body"), SETTINGS_ROUTES)
+def test_settings_need_the_apps_origin(
+    client: TestClient, method: str, path: str, body: dict[str, str] | None
+) -> None:
+    response = client.request(method, path, json=body, headers={"Origin": "https://evil.example"})
+
+    assert response.status_code == 403
+    assert response.json()["type"] == PROBLEMS + "cross-origin-request"
+
+
+@pytest.fixture
+def signed_in(app: FastAPI) -> None:
+    """The requests come from a signed-in user; anything past validation needs Postgres."""
+    app.dependency_overrides[current_user] = lambda: User(id="usr_aaaaaaaaaa")
+
+
+@pytest.mark.usefixtures("signed_in")
+@pytest.mark.parametrize(
+    ("path", "body", "field"),
+    [
+        ("/api/v1/me", {"display_name": "   "}, "display_name"),
+        ("/api/v1/me", {"display_name": "A" * 81}, "display_name"),
+        ("/api/v1/me", {}, "display_name"),
+        ("/api/v1/me/preferences/appearance", {"theme": "sepia"}, "theme"),
+        ("/api/v1/me/preferences/appearance", {"reduce_motion": "sometimes"}, "reduce_motion"),
+    ],
+)
+def test_invalid_changes(
+    client: TestClient, path: str, body: dict[str, object], field: str
+) -> None:
+    response = client.patch(path, json=body, headers=ORIGIN)
+
+    assert response.status_code == 422
+    problem = response.json()
+    assert problem["type"] == PROBLEMS + "validation"
+    assert [error["loc"] for error in problem["errors"]] == [["body", field]]
+
+
+@pytest.mark.usefixtures("signed_in")
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"period_start": "2024-01-01", "period_end": "2023-01-01"},
+        {"threshold": 0.6},
+        {"threshold": 0.055},
+        {"stop_loss_pct": 0},
+        {"fees_pct": -0.1},
+        {"timeframe": "4h"},
+        {"benchmark": "VTI"},
+    ],
+)
+def test_invalid_backtest_defaults(client: TestClient, body: dict[str, object]) -> None:
+    response = client.put("/api/v1/me/preferences/backtest-defaults", json=body, headers=ORIGIN)
+
+    assert response.status_code == 422
+    assert response.json()["type"] == PROBLEMS + "validation"

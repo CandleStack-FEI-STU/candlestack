@@ -1685,6 +1685,24 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Not signed in (`not-signed-in`). */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The account does not sign in with this provider (`not-found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description It is the account's last sign-in method (`last-sign-in-method`). */
             409: {
                 headers: {
