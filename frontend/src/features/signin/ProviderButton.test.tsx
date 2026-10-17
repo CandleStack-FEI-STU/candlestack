@@ -19,6 +19,10 @@ describe('ProviderButton', () => {
     expect(render('google', null)).toContain('<span>Continue with Google</span>');
   });
 
+  it('sets its 15 px label in the line height of the font, as the design does', () => {
+    expect(classes(render('github', null), /<button [^>]*>/)).toContain('text-[15px]/[normal]');
+  });
+
   it('shows the clicked one busy: disabled but solid, a spinner instead of the mark', () => {
     const html = render('github', 'github');
     expect(html).toContain('<span>Opening GitHub</span>');

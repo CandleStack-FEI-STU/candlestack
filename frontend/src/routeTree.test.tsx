@@ -36,7 +36,7 @@ describe('the signed-in pages', () => {
   it('show the app shell to a signed-in user: header, sidebar, title, footer', async () => {
     stubApi(session(ARSEN));
     await renderApp('/dashboard');
-    expect(heading()).toBe('Welcome, Arsen Labovich');
+    expect(heading()).toBe('Welcome back, Arsen Labovich');
     expect(screen.getByRole('link', { name: 'CandleStack dashboard' }).getAttribute('href')).toBe('/dashboard');
     expect(screen.getByRole('button', { name: 'New backtest' })).toBeDefined();
     expect(screen.getByRole('button', { name: 'Account' }).textContent).toBe('AL');
@@ -57,6 +57,13 @@ describe('the signed-in pages', () => {
     ]);
     expect(links.map((link) => link.getAttribute('aria-current'))).toEqual([null, null, 'page', null]);
     expect(heading()).toBe('Models');
+  });
+
+  it('note under the sidebar that market data is delayed', async () => {
+    stubApi(session(ARSEN));
+    await renderApp('/backtests');
+    const sidebar = screen.getByRole('navigation', { name: 'Workspace' });
+    expect(within(sidebar).getByText('Market data delayed 15 min').tagName).toBe('P');
   });
 
   it('give each page only its title row for now', async () => {
@@ -150,6 +157,26 @@ describe('the sign-in page', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: 'Use another account' }));
     expect(heading()).toBe('Sign in to CandleStack');
     expect(router.state.location.search).toEqual({ next: '/models' });
+  });
+
+  it('asks who was denied once, answered or not, and only after a denied sign-in', async () => {
+    const deniedRequests = (fetch: ReturnType<typeof stubApi>) =>
+      fetch.mock.calls.filter(([path]) => path === '/api/v1/auth/denied').length;
+    for (const [url, status, asked] of [
+      ['/signin?error=denied', 200, 1],
+      ['/signin?error=denied', 404, 1],
+      ['/signin?error=failed', 200, 0],
+      ['/signin', 200, 0],
+    ] as const) {
+      const fetch = stubApi({
+        ...session(null),
+        'GET /api/v1/auth/denied': { status, body: { email: 'someone@example.com', provider: 'github' } },
+      });
+      await renderApp(url);
+      await screen.findByRole('heading', { level: 1 });
+      expect([url, status, deniedRequests(fetch)]).toEqual([url, status, asked]);
+      cleanup();
+    }
   });
 
   it('offers the buttons again after a failed sign-in, or when it cannot say who was denied', async () => {

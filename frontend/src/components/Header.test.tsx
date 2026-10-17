@@ -78,6 +78,12 @@ describe('Header', () => {
     expect(signIn).not.toContain('dark:hover:bg-accent/50');
   });
 
+  it('has the theme toggle as a 34 px ghost square, as high as the buttons beside it', async () => {
+    const toggle = classes(await render('/'), /<button [^>]*aria-label="Switch to light theme"[^>]*>/);
+    expect(toggle).toEqual(expect.arrayContaining(['size-[34px]', 'border', 'border-transparent']));
+    expect(toggle).not.toContain('size-9');
+  });
+
   it('leaves both out on the sign-in page itself', async () => {
     const html = await render('/signin');
     expect(html).not.toContain('>Sign in</a>');

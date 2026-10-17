@@ -183,7 +183,9 @@ names the layout: `useSearch({ from: '/_public/instruments' })`.
 
 The app shell (`src/features/workspace/`) follows `mockups/app`: the app header (logo to the
 dashboard, no nav, New backtest, the theme toggle, the avatar), a 200 px sidebar (Dashboard,
-Backtests, Models, Settings; above the page as a scrolling row up to 980 px) and the footer.
+Backtests, Models, Settings, then the note that market data is delayed 15 min; up to 980 px
+above the page as a row that scrolls sideways without a scrollbar, the note left out) and the
+footer.
 The avatar is the user's initials (`initials.ts`), never a provider picture; its menu
 (`src/features/account/AccountMenu.tsx`) is a shadcn/ui DropdownMenu with Settings, Home page,
 API docs and, in red, Sign out. New backtest opens `ComingSoonDialog`: a shadcn/ui Dialog with

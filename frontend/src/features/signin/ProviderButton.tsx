@@ -33,7 +33,7 @@ export function ProviderButton({ provider, busy, onStart }: Props) {
       disabled={busy !== null}
       onClick={() => onStart(provider)}
       className={cn(
-        'relative h-11 w-full gap-2.5 rounded-lg border text-[15px] transition-[translate,box-shadow,background-color,opacity] duration-150 enabled:hover:-translate-y-px enabled:hover:shadow-[0_6px_16px_var(--shadow)] disabled:opacity-55 motion-reduce:transition-none',
+        'relative h-11 w-full gap-2.5 rounded-lg border text-[15px]/[normal] transition-[translate,box-shadow,background-color,opacity] duration-150 enabled:hover:-translate-y-px enabled:hover:shadow-[0_6px_16px_var(--shadow)] disabled:opacity-55 motion-reduce:transition-none',
         look,
         isBusy && 'disabled:opacity-100',
       )}

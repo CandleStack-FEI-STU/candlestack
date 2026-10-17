@@ -54,7 +54,8 @@ function AccountMenuItems({ user }: { user: Me }) {
 }
 
 // The avatar and its menu (mockups/app, the account menu), in both headers: 240 px wide,
-// right-aligned 10 px under the avatar, which gets an accent ring while hovered or open.
+// right-aligned 10 px under the header's 34 px buttons, so 12 px under the 30 px avatar, which
+// gets an accent ring while hovered or open.
 export function AccountMenu({ user }: { user: Me }) {
   return (
     <DropdownMenu>
@@ -67,7 +68,7 @@ export function AccountMenu({ user }: { user: Me }) {
           className="group-hover:shadow-[0_0_0_2px_color-mix(in_srgb,var(--accent)_35%,transparent)] group-data-[state=open]:shadow-[0_0_0_2px_color-mix(in_srgb,var(--accent)_35%,transparent)]"
         />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" sideOffset={10} className="w-60 text-sm/[1.5]">
+      <DropdownMenuContent align="end" sideOffset={12} className="w-60 text-sm/[1.5]">
         <AccountMenuItems user={user} />
       </DropdownMenuContent>
     </DropdownMenu>

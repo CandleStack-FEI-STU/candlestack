@@ -74,7 +74,7 @@ export function DeniedSignIn({ email, onUseAnotherAccount }: DeniedProps) {
 // Under the card: what signing in shares.
 export function SignInLegal() {
   return (
-    <p className="max-w-[400px] text-center text-xs text-muted-foreground">
+    <p className="max-w-[400px] text-center text-xs/[1.5] text-muted-foreground">
       We only get your name and email. No password is stored.
     </p>
   );

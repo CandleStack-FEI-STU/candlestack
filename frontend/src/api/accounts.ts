@@ -30,10 +30,15 @@ export function meQueryOptions() {
 }
 
 // GET /api/v1/auth/denied: the account the beta list just turned away, for the sign-in page.
+// Asked once per denied sign-in: the route's loader asks, the page reads the answer. It does not
+// change while the page is open, and a failed answer is not asked again when the page mounts (the
+// page then offers the buttons).
 export function deniedSignInQueryOptions() {
   return queryOptions({
     queryKey: ['auth', 'denied'],
     queryFn: ({ signal }) => get<DeniedSignIn>('/v1/auth/denied', signal),
+    staleTime: Infinity,
+    retryOnMount: false,
   });
 }
 
