@@ -1,0 +1,245 @@
+// @vitest-environment jsdom
+import { cleanup, screen, within } from '@testing-library/react';
+import { userEvent } from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { ARSEN, backtest, backtestsAnswer, failedBacktest, problem, sessionWithPreferences, stubApi } from '@/test/api';
+import { renderApp } from '@/test/app';
+
+// #12 finished today at 10:05 in New York, #11 failed yesterday, #10 on three instruments.
+const TWELVE = backtest();
+const ELEVEN = failedBacktest({ id: 'bt_a2b3c4d5e6', number: 11, created_at: '2026-10-16T22:10:00Z' });
+const TEN = backtest({
+  id: 'bt_q7r8s9t2u3',
+  number: 10,
+  starred: true,
+  instruments: [
+    { symbol: 'BTCUSDT', market: 'crypto' },
+    { symbol: 'ETHUSDT', market: 'crypto' },
+    { symbol: 'SOLUSDT', market: 'crypto' },
+  ],
+  total_return: -0.241,
+  sharpe: -0.184,
+  created_at: '2026-10-12T23:44:00Z',
+});
+const COUNTS = { all: 3, starred: 1, failed: 1 };
+const MODELS = [{ name: 'blesk-novol-8.keras', framework: 'keras', count: 3 }];
+const PAGE = { backtests: [TWELVE, ELEVEN, TEN], counts: COUNTS, models: MODELS };
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-17T16:00:00Z'));
+});
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+const subtitle = () => screen.getByRole('heading', { level: 1 }).parentElement?.querySelector('p')?.textContent;
+const rows = () => screen.getAllByRole('row').slice(1);
+const cells = (row: HTMLElement) =>
+  within(row)
+    .getAllByRole('cell')
+    .map((cell) => cell.textContent);
+const asked = (fetch: ReturnType<typeof stubApi>) =>
+  fetch.mock.calls.map(([path]) => String(path)).filter((path) => path.startsWith('/api/v1/backtests'));
+
+describe('the Backtests page', () => {
+  it('counts the backtests under the title and shows a row for each', async () => {
+    stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer(PAGE) });
+    await renderApp('/backtests');
+    await screen.findByText('#12');
+    expect(subtitle()).toBe('3 backtests');
+    expect(document.title).toBe('Backtests · CandleStack');
+    expect(screen.getAllByRole('columnheader').map((head) => head.textContent)).toEqual([
+      'Backtest',
+      'Instruments',
+      'Model',
+      'Return',
+      'Sharpe',
+      'Max drawdown',
+      'Trades',
+      'When',
+    ]);
+    expect(rows().map(cells)).toEqual([
+      ['☆#12', 'AAPLMSFT', 'blesk-novol-8.keras', '+24.6 %', '0.79', '−19.7 %', '1,712', 'Today 10:05'],
+      ['☆#11', 'AAPLMSFT', 'blesk-novol-8.keras', 'Failed', '–', '–', '–', 'Yesterday 18:10'],
+      ['★#10', 'BTCUSDT+2', 'blesk-novol-8.keras', '−24.1 %', '−0.18', '−19.7 %', '1,712', '12 Oct 19:44'],
+    ]);
+    expect(within(rows()[0]!).getByRole('img', { name: 'Keras' })).toBeDefined();
+  });
+
+  it('says how many match a search, and one backtest in the singular', async () => {
+    stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer({ ...PAGE, total: 1 }, '?q=11') });
+    await renderApp('/backtests?q=11');
+    expect(await screen.findByText('1 of 3')).toBeDefined();
+    cleanup();
+
+    stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer({ backtests: [TWELVE] }) });
+    await renderApp('/backtests');
+    expect(await screen.findByText('1 backtest')).toBeDefined();
+  });
+
+  it('says No backtests yet for an account without any, and No backtests match for a search', async () => {
+    stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer({}) });
+    await renderApp('/backtests');
+    expect(await screen.findByText('No backtests yet')).toBeDefined();
+    expect(subtitle()).toBe('0 backtests');
+    expect(screen.queryByRole('navigation', { name: 'Pages' })).toBeNull();
+    cleanup();
+
+    stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer({ counts: COUNTS, total: 0 }, '?q=zzz') });
+    await renderApp('/backtests?q=zzz');
+    expect(await screen.findByText('No backtests match')).toBeDefined();
+    expect(subtitle()).toBe('0 of 3');
+  });
+
+  it('says why the backtests could not load', async () => {
+    stubApi({ ...sessionWithPreferences(ARSEN), 'GET /api/v1/backtests': { status: 503, body: { detail: 'Down.' } } });
+    await renderApp('/backtests');
+    await vi.waitFor(() => expect(subtitle()).toBe('Down.'));
+  });
+
+  it('searches as the typing pauses, from page 1, keeping the focus in the field', async () => {
+    const fetch = stubApi({
+      ...sessionWithPreferences(ARSEN),
+      ...backtestsAnswer({ ...PAGE, page: 2, pages: 2, total: 13 }, '?page=2'),
+      ...backtestsAnswer({ ...PAGE, backtests: [TEN], total: 1 }, '?q=btc'),
+    });
+    const { router } = await renderApp('/backtests?page=2');
+    const field = await screen.findByRole('searchbox', { name: 'Search backtests' });
+    expect(field.getAttribute('placeholder')).toBe('Number, instrument or model, e.g. aapl');
+    await userEvent.type(field, 'btc');
+    await vi.waitFor(() => expect(router.state.location.search).toEqual({ q: 'btc' }));
+    expect(await screen.findByText('1 of 3')).toBeDefined();
+    expect(document.activeElement).toBe(field);
+    expect(asked(fetch)).toEqual(['/api/v1/backtests?page=2', '/api/v1/backtests?q=btc']);
+  });
+
+  it('keeps the rows of the page on screen while the next one loads', async () => {
+    stubApi({
+      ...sessionWithPreferences(ARSEN),
+      ...backtestsAnswer({ ...PAGE, pages: 2, total: 13 }),
+      'GET /api/v1/backtests?page=2': () => new Promise(() => {}),
+    });
+    await renderApp('/backtests');
+    await userEvent.click(await screen.findByRole('link', { name: 'Next' }));
+    expect(screen.getByText('#12')).toBeDefined();
+    expect(screen.getByText('Page 2 of 2')).toBeDefined();
+    expect(screen.queryByRole('link', { name: 'Previous' })).toBeNull();
+  });
+
+  it('sorts by a column down, then up, then back to newest first', async () => {
+    const fetch = stubApi({
+      ...sessionWithPreferences(ARSEN),
+      ...backtestsAnswer(PAGE),
+      ...backtestsAnswer(PAGE, '?sort=return&order=desc'),
+      ...backtestsAnswer(PAGE, '?sort=return&order=asc'),
+    });
+    const { router } = await renderApp('/backtests');
+    await screen.findByText('#12');
+    const head = () => screen.getByRole('columnheader', { name: /^Return/ });
+    await userEvent.click(within(head()).getByRole('button'));
+    await vi.waitFor(() => expect(head().textContent).toBe('Return ↓'));
+    expect(head().getAttribute('aria-sort')).toBe('descending');
+    await userEvent.click(within(head()).getByRole('button'));
+    await vi.waitFor(() => expect(head().textContent).toBe('Return ↑'));
+    await userEvent.click(within(head()).getByRole('button'));
+    await vi.waitFor(() => expect(head().textContent).toBe('Return'));
+    expect(router.state.location.search).toEqual({});
+    expect(asked(fetch).slice(0, 3)).toEqual([
+      '/api/v1/backtests',
+      '/api/v1/backtests?sort=return&order=desc',
+      '/api/v1/backtests?sort=return&order=asc',
+    ]);
+  });
+
+  it('filters by Show and Model, keeping the panel open', async () => {
+    const fetch = stubApi({
+      ...sessionWithPreferences(ARSEN),
+      ...backtestsAnswer(PAGE),
+      ...backtestsAnswer({ ...PAGE, backtests: [TEN], total: 1 }, '?show=starred'),
+      ...backtestsAnswer({ ...PAGE, backtests: [TEN], total: 1 }, '?show=starred&model=blesk-novol-8.keras'),
+    });
+    await renderApp('/backtests');
+    await screen.findByText('#12');
+    await userEvent.click(screen.getByRole('button', { name: 'Filters: All backtests' }));
+    const panel = screen.getByRole('dialog', { name: 'Filters' });
+    expect(
+      within(panel)
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual(['All backtests3', 'Starred1', 'Failed1', 'All models', 'blesk-novol-8.keras3']);
+    await userEvent.click(within(panel).getByRole('option', { name: /^Starred/ }));
+    await screen.findByRole('button', { name: 'Filters: Starred' });
+    await userEvent.click(within(panel).getByRole('option', { name: /blesk-novol-8/ }));
+    await screen.findByRole('button', { name: 'Filters: Starred · blesk-novol-8.keras' });
+    expect(screen.getByRole('dialog', { name: 'Filters' })).toBeDefined();
+    expect(asked(fetch).at(-1)).toBe('/api/v1/backtests?show=starred&model=blesk-novol-8.keras');
+  });
+
+  it('stars a backtest at once and takes the star back when the API refuses', async () => {
+    stubApi({
+      ...sessionWithPreferences(ARSEN),
+      ...backtestsAnswer(PAGE),
+      'PATCH /api/v1/backtests/bt_7f3k2m9qx4': () =>
+        new Promise((resolve) => setTimeout(() => resolve(problem(404, 'not-found', 'Gone.')), 50)),
+    });
+    await renderApp('/backtests');
+    const starOf = () => screen.getByRole('button', { name: 'Star backtest 12' });
+    await userEvent.click(await screen.findByRole('button', { name: 'Star backtest 12' }));
+    expect(starOf().getAttribute('aria-pressed')).toBe('true');
+    expect(starOf().textContent).toBe('★');
+    await vi.waitFor(() => expect(starOf().getAttribute('aria-pressed')).toBe('false'));
+  });
+
+  it('drops a backtest that loses its star from the Starred list at once', async () => {
+    stubApi({
+      ...sessionWithPreferences(ARSEN),
+      ...backtestsAnswer({ ...PAGE, backtests: [TEN], total: 1 }, '?show=starred'),
+      'PATCH /api/v1/backtests/bt_q7r8s9t2u3': () => new Promise(() => {}),
+    });
+    await renderApp('/backtests?show=starred');
+    await userEvent.click(await screen.findByRole('button', { name: 'Star backtest 10' }));
+    expect(screen.getByText('No backtests match')).toBeDefined();
+    expect(subtitle()).toBe('0 of 3');
+  });
+
+  it('opens a backtest as Coming soon, but not from its star', async () => {
+    stubApi({
+      ...sessionWithPreferences(ARSEN),
+      ...backtestsAnswer(PAGE),
+      'PATCH /api/v1/backtests/bt_q7r8s9t2u3': { status: 200, body: { ...TEN, starred: false } },
+    });
+    await renderApp('/backtests');
+    await userEvent.click(await screen.findByRole('button', { name: 'Star backtest 10' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Backtest #10' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Backtest #10' });
+    expect(
+      within(dialog).getByText('BTCUSDT, ETHUSDT and SOLUSDT · Time windows · blesk-novol-8.keras · 12 Oct 19:44'),
+    ).toBeDefined();
+    expect(within(dialog).getByText('Coming soon')).toBeDefined();
+  });
+
+  it('pages through the backtests', async () => {
+    stubApi({ ...sessionWithPreferences(ARSEN), ...backtestsAnswer({ ...PAGE, pages: 2, total: 13 }) });
+    await renderApp('/backtests');
+    const pager = await screen.findByRole('navigation', { name: 'Pages' });
+    expect(pager.textContent).toBe('PreviousPage 1 of 2Next');
+    expect(within(pager).getByRole('link', { name: 'Next' }).getAttribute('href')).toBe('/backtests?page=2');
+  });
+
+  it('goes to the last page from a link past the end', async () => {
+    stubApi({
+      ...sessionWithPreferences(ARSEN),
+      ...backtestsAnswer({ ...PAGE, backtests: [], page: 9, pages: 2, total: 13 }, '?page=9'),
+      ...backtestsAnswer({ ...PAGE, page: 2, pages: 2, total: 13 }, '?page=2'),
+    });
+    const { router } = await renderApp('/backtests?page=9');
+    await vi.waitFor(() => expect(router.state.location.search).toEqual({ page: 2 }));
+    expect(await screen.findByText('Page 2 of 2')).toBeDefined();
+  });
+});

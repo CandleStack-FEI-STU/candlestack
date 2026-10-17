@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { formatParameters, formatShape, formatSize, formatUsage, splitExtension } from './format';
-import { ACCEPTED_EXTENSIONS, frameworkOfFile } from './frameworks';
+import { ACCEPTED_EXTENSIONS, frameworkOf, frameworkOfFile } from './frameworks';
 
 const MB = 1024 * 1024;
 
@@ -91,5 +91,13 @@ describe('frameworkOfFile', () => {
 
   it('lets the file picker offer every extension', () => {
     expect(ACCEPTED_EXTENSIONS).toBe('.keras,.h5,.pb,.zip,.pt,.pth,.onnx,.joblib,.pkl,.skops');
+  });
+});
+
+describe('frameworkOf', () => {
+  it('knows a framework by the name the API gives it', () => {
+    expect(frameworkOf('keras')).toBe('Keras');
+    expect(frameworkOf('scikit-learn')).toBe('scikit-learn');
+    expect(frameworkOf('jax')).toBeUndefined();
   });
 });
