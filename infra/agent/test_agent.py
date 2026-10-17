@@ -1,4 +1,4 @@
-"""Tests of the server agent: the schema-1 snapshot, a contract with the ops repository (README
+"""Tests of the server agent: the schema-2 snapshot, a contract with the ops repository (README
 "Agent contract" there), the order of its containers and the answers of its HTTP server.
 
 Docker is a stub HTTP server and /proc a directory of fixture files, so nothing of the machine
@@ -158,7 +158,7 @@ class AgentTest(unittest.TestCase):
             kinds = expected if isinstance(expected, tuple) else (expected,)
             self.assertIn(type(value[key]), kinds, f"{key}: {value[key]!r}")
 
-    def test_snapshot_has_the_keys_and_types_of_schema_1(self):
+    def test_snapshot_has_the_keys_and_types_of_schema_2(self):
         first = agent.sample()  # no CPU shares yet: they need two samples
         second = self.next_sample()
 
@@ -170,10 +170,9 @@ class AgentTest(unittest.TestCase):
                     "sampled_at": int,
                     "host": dict,
                     "containers": list,
-                    "previews": list,
                 },
             )
-            self.assertEqual(snapshot["schema"], 1)
+            self.assertEqual(snapshot["schema"], 2)
             self.assert_shape(
                 snapshot["host"],
                 {
@@ -203,7 +202,6 @@ class AgentTest(unittest.TestCase):
                         "version": (str, NoneType),
                     },
                 )
-            self.assertEqual(snapshot["previews"], [])
         self.assertEqual((first["host"]["cpu"], type(second["host"]["cpu"])), (None, float))
 
     def test_snapshot_values(self):

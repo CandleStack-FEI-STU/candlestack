@@ -113,7 +113,7 @@ https://ops.candlestack.tech is a Cloudflare Worker in its own repository,
 records the outage when this VM is down. Every minute it checks prod and stage from outside and
 reads `https://vm.candlestack.tech/api/snapshot`, served by the server agent (`agent/`): host
 CPU, memory and disk, and the containers. The agent keeps no history
-and holds no secrets; its JSON is a contract with the ops repository (schema 1).
+and holds no secrets; its JSON is a contract with the ops repository (schema 2).
 
 The backend of prod and stage also reports to Sentry (organization `candlestack`, EU): errors,
 traces, profiles and logs. An uptime monitor there e-mails the tech lead when prod's
@@ -256,7 +256,7 @@ cd backend && uv run ruff check ../infra/agent && uv run ruff format --check ../
   successful `up stage` adds to the stage record, that no token or secret is printed (the
   database password and the OAuth secrets included), and the Docker commands of every allowed
   command. It touches nothing outside a temporary directory.
-- `agent/test_agent.py` (standard library `unittest`, like the agent) pins the schema-1
+- `agent/test_agent.py` (standard library `unittest`, like the agent) pins the schema-2
   snapshot that ops reads, the order of its containers and the HTTP answers (`starting`, the
   snapshot, `stale`), with a stub Docker API and fixture files for `/proc`. The agent is linted
   with the backend's ruff release and `agent/ruff.toml`.
