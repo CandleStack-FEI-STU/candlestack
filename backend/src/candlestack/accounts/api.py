@@ -11,7 +11,6 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import RedirectResponse
-from sqlalchemy.exc import SQLAlchemyError
 
 from candlestack.accounts.cookies import DENIED, SESSION, STATE, CookiesDep
 from candlestack.accounts.dependencies import (
@@ -24,7 +23,7 @@ from candlestack.accounts.errors import SignInDenied, SignInFailed
 from candlestack.accounts.pending import TTL
 from candlestack.accounts.schemas import DeniedSignInOut, MeOut, Provider
 from candlestack.accounts.service import SESSION_MAX_AGE
-from candlestack.core import Problem, ProblemError, require_same_origin
+from candlestack.core import DATABASE_ERRORS, Problem, ProblemError, require_same_origin
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +114,7 @@ async def finish_sign_in(  # noqa: PLR0913 (the provider's query parameters)
         cookies.set(response, DENIED, denied.denial_id, TTL)
     except SignInFailed as failed:
         response = _failed(provider, failed)
-    except SQLAlchemyError as failed:
+    except DATABASE_ERRORS as failed:
         # Postgres is down, or another first sign-in of the same account was just saved. The
         # browser comes back from the provider, so it gets the sign-in page, not a problem. The
         # error reaches Sentry by its type only: its message and the variables of its frames

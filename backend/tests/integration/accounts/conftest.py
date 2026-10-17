@@ -17,6 +17,7 @@ import respx
 from authlib.oauth2.rfc7636 import create_s256_code_challenge
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
@@ -212,6 +213,18 @@ def client(app: FastAPI) -> Iterator[TestClient]:
 @pytest.fixture
 def browser(client: TestClient, providers: Providers) -> Browser:
     return Browser(client, providers)
+
+
+@pytest.fixture
+def browser_without_postgres(settings: Settings, providers: Providers) -> Iterator[Browser]:
+    """A browser on an app whose Postgres is unreachable: nothing listens on port 1."""
+    unreachable = settings.model_copy(
+        update={
+            "database_url": SecretStr("postgresql+asyncpg://nobody:nothing@127.0.0.1:1/nothing")
+        }
+    )
+    with TestClient(create_app(unreachable)) as client:
+        yield Browser(client, providers)
 
 
 @pytest.fixture

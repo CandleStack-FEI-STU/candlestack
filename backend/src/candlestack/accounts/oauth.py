@@ -5,7 +5,7 @@ request). The requests go through the app's shared HTTP client: Authlib's own as
 runs on httpx2, which the tests could not mock and which the app does not otherwise use.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import httpx
 from authlib.oauth2.client import DEFAULT_HEADERS
@@ -45,13 +45,14 @@ _ENDPOINTS = {
 
 @dataclass(frozen=True, slots=True)
 class ProviderAccount:
-    """The account the provider signed in, with its verified email (lowercased)."""
+    """The account the provider signed in, with its verified email (lowercased). Its repr
+    leaves out the personal data: Sentry keeps the reprs of the variables of a failed frame."""
 
     provider: Provider
     subject: str
-    email: str
-    name: str | None
-    login: str | None
+    email: str = field(repr=False)
+    name: str | None = field(repr=False)
+    login: str | None = field(repr=False)
 
 
 class _Token(BaseModel):

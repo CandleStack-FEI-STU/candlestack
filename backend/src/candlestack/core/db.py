@@ -7,6 +7,7 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 from sqlalchemy import MetaData, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -25,6 +26,10 @@ POOL_SIZE = 5
 MAX_OVERFLOW = 5
 POOL_TIMEOUT = 5.0
 CONNECT_TIMEOUT = 2.0
+
+# What a query raises when Postgres fails. SQLAlchemy wraps the errors of the driver, but not
+# those of connecting: an unreachable server raises an OSError or a TimeoutError from asyncpg.
+DATABASE_ERRORS = (SQLAlchemyError, OSError, TimeoutError)
 
 
 class Base(DeclarativeBase):

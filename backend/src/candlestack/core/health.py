@@ -9,10 +9,9 @@ from fastapi import APIRouter, Response
 from pydantic import BaseModel
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
-from sqlalchemy.exc import SQLAlchemyError
 
 from candlestack.core.config import SettingsDep
-from candlestack.core.db import Database, DatabaseDep
+from candlestack.core.db import DATABASE_ERRORS, Database, DatabaseDep
 from candlestack.core.redis import RedisDep
 
 logger = logging.getLogger(__name__)
@@ -79,7 +78,7 @@ async def _ping_postgres(db: Database) -> bool:
     try:
         async with asyncio.timeout(POSTGRES_TIMEOUT):
             await db.ping()
-    except (SQLAlchemyError, OSError, TimeoutError) as exc:
+    except DATABASE_ERRORS as exc:
         logger.warning("Postgres ping failed: %s", type(exc).__name__)
         return False
     return True

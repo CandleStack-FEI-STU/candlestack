@@ -7,7 +7,7 @@ from the submodules.
 
 from candlestack.core.config import Settings, SettingsDep, get_settings
 from candlestack.core.csrf import require_same_origin
-from candlestack.core.db import Base, Database, DbSessionDep
+from candlestack.core.db import DATABASE_ERRORS, Base, Database, DbSessionDep
 from candlestack.core.errors import (
     Problem,
     ProblemError,
@@ -30,6 +30,7 @@ from candlestack.core.ratelimit import RateLimiter, RateLimiterDep, client_addre
 from candlestack.core.redis import RedisDep, create_redis
 
 __all__ = [
+    "DATABASE_ERRORS",
     "Base",
     "Database",
     "DbSessionDep",

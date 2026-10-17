@@ -28,6 +28,12 @@ class DownRedis:
         return fail
 
 
+def test_the_repr_of_a_sign_in_leaves_out_its_verifier() -> None:
+    sign_in = PendingSignIn(provider=Provider.github, verifier="the-verifier", next="/dashboard")
+
+    assert "the-verifier" not in repr(sign_in)
+
+
 @pytest.fixture
 def pending() -> PendingStore:
     return PendingStore(cast("Redis", DownRedis()))

@@ -122,6 +122,8 @@ async def test_github_account_with_its_primary_verified_email(
     assert account.email == "ada@example.com"
     assert account.name == "Ada Lovelace"
     assert account.login == "ada"
+    # Sentry keeps the reprs of a failed frame's variables: no personal data in them.
+    assert repr(account) == "ProviderAccount(provider=<Provider.github: 'github'>, subject='42')"
     body = parse_qs(token.calls.last.request.content.decode())
     assert body == {
         "grant_type": ["authorization_code"],

@@ -8,7 +8,7 @@ import hashlib
 import logging
 import secrets
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
@@ -27,7 +27,7 @@ def _key(kind: str, value: str) -> str:
 
 class PendingSignIn(BaseModel):
     provider: Provider
-    verifier: str
+    verifier: str = Field(repr=False)  # Sentry keeps the reprs of a failed frame's variables
     next: str
 
 

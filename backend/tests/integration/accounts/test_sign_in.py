@@ -276,6 +276,19 @@ def test_a_first_sign_in_that_loses_a_race_fails(
     assert sql("SELECT provider FROM identities") == [("google",)]
 
 
+def test_a_sign_in_without_postgres_fails(browser_without_postgres, caplog) -> None:
+    with caplog.at_level(logging.INFO):
+        callback = browser_without_postgres.sign_in("github")
+
+    assert callback.status_code == 302
+    assert callback.headers["location"] == "/signin?error=failed"
+    assert "session" not in cookies_set(callback)
+    # asyncpg raises an OSError or a TimeoutError, which SQLAlchemy does not wrap.
+    assert re.search(r"Sign-in with github failed: Postgres failed \(\w+Error\)", caplog.text)
+    assert "ada@example.com" not in caplog.text.lower()
+    assert not [record for record in caplog.records if record.exc_info]
+
+
 def test_dev_sign_in(browser, sql) -> None:
     first = browser.post("/api/v1/auth/dev", headers=ORIGIN)
 
