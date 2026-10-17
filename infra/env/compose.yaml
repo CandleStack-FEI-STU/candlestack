@@ -37,7 +37,8 @@ services:
     # Read by the server agent: ops tells deploys (new version) from redeploys (same version).
     labels:
       candlestack.version: ${APP_VERSION:?}
-    mem_limit: 320m
+    # The app, and the child process that checks an upload (infra/README.md, "Memory").
+    mem_limit: 384m
     read_only: true
     # The files of the uploaded models; the image's /data/models is owned by the app's user, so
     # a new volume is too.

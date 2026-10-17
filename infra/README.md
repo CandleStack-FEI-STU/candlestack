@@ -24,7 +24,7 @@ compresses the responses (zstd or gzip) on the way to Cloudflare.
 
 | Container | Image | Reached as | Memory limit |
 | --- | --- | --- | --- |
-| `backend` | `ghcr.io/candlestack-fei-stu/candlestack/backend` (built from `backend/`) | `<env>-backend:8000` on the edge network (below) | `320m` |
+| `backend` | `ghcr.io/candlestack-fei-stu/candlestack/backend` (built from `backend/`) | `<env>-backend:8000` on the edge network (below) | `384m` |
 | `frontend` | `ghcr.io/candlestack-fei-stu/candlestack/frontend` (built from `frontend/`: the app) | `<env>-frontend:8080` on the edge network (below) | `32m` |
 | `redis` | `redis:8-alpine`, pinned by digest | `redis:6379` on the environment's own network only | see below |
 | `postgres` | `postgres:18-alpine`, pinned by digest | `postgres:5432` on the environment's own network only | `128m` |
@@ -58,16 +58,31 @@ starts only once it succeeded, so a failing migration fails the deploy before th
 serves anything. Postgres is sized for a few connections (`max_connections` 20: the backend's
 pool of at most 10, the migration, the backup) with `shared_buffers` 32 MB.
 
-Memory: the container limits of one environment add up to 832 MB (backend 320, frontend 32,
-Redis 288, Postgres 128, backup 32, models-backup 32), 1.66 GB for prod and stage on a VM with
-2 GB; `migrate` runs only during a deploy. What runs is far below the limits: an idle Postgres
-of this size with the backend's pool connected uses about 30 MB, each backup service about 2 MB
-between its nightly runs, the backend about 120 MB.
-
 All containers of an environment run with a read-only root filesystem, no Linux capabilities
 and `no-new-privileges`. Postgres runs as the image's `postgres` user, which owns its volume;
 the backend as `65534`, which owns the models volume (the image's `/data/models`); the backup
 services as root, which owns their volumes, but also without any capability.
+
+### Memory
+
+The VM has 2 GB of memory and a 2 GB swap file. The limits are ceilings, not reservations:
+together they are above the memory, which is fine as long as what runs stays far below them.
+
+| Container | Limit per environment | Measured |
+| --- | --- | --- |
+| `backend` | `384m` | about 120 MB idle, 150 MB after uploads; a check of an upload adds a child process of about 45 MB for under a second, one at a time |
+| `frontend` | `32m` | small: Caddy serving static files |
+| `redis` | `288m` (`maxmemory` 256 MB) | grows with the cache, up to `maxmemory` |
+| `postgres` | `128m` | about 30 MB with the backend's pool connected |
+| `backup`, `models-backup` | `32m` each | about 2 MB between their nightly runs; the models archive took under 32 MB for 300 MB of files |
+| `migrate` | `160m` | runs only during a deploy |
+
+The limits of one environment add up to 896 MB without `migrate`, 1.79 GB for prod and stage,
+on top of the edge Caddy, cloudflared, the server agent (`2 x 64m`) and the system. Besides
+Redis' cache, what runs is about 200 MB per environment; the cache grows up to `maxmemory`,
+so the two environments stay within the memory with room for the system and a check. The
+backend's limit leaves room for the check's child (limited to 256 MB of data itself) next to
+the app at its peak.
 
 ### Backups
 
@@ -102,15 +117,24 @@ take an archive now: `sudo docker exec prod-models-backup-1 backup`; to list the
 `sudo docker exec prod-models-backup-1 ls /archive`.
 
 To restore the files of a given night (after the database of the same night, the backend
-still stopped):
+still stopped), with the Postgres image the environment already runs (pinned by digest, it has
+a shell and tar):
 
 ```sh
 sudo docker stop prod-backend-1
-sudo docker run --rm -v prod_models:/data/models -v prod_model_backups:/archive:ro alpine:3 \
-  sh -c 'rm -rf /data/models/* && tar -xzf /archive/models-<yyyy-mm-dd>T00-30-00.tar.gz \
-  -C /data/models --strip-components 2 && chown -R 65534:65534 /data/models'
+image=$(sudo docker inspect --format '{{.Config.Image}}' prod-postgres-1)
+sudo docker run --rm --entrypoint sh -v prod_models:/data/models \
+  -v prod_model_backups:/archive:ro "$image" -c 'rm -rf /data/models/* \
+  && tar -xzf /archive/models-<yyyy-mm-dd>T00-30-00.tar.gz -C /data/models --strip-components 2 \
+  && chown -R 65534:65534 /data/models'
 sudo docker start prod-backend-1
 ```
+
+Disk: the archives of 7 nights take up to 7 times the models volume (model files hardly
+compress), and while an archive is built, `<env>_model_backups_work` holds one more copy. With
+the quota of 100 MB per user, 20 users with full storage need 2 GB for the files, 14 GB for the
+archives and 2 GB while one is built, per environment: check `df -h /var/lib/docker` before
+admitting more users.
 
 The Docker networks:
 

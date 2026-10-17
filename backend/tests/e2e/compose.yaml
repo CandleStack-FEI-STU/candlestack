@@ -44,7 +44,7 @@ services:
       timeout: 3s
       retries: 15
     # The limit of the deployed backends (infra/env/compose.yaml): the tests run within it.
-    mem_limit: 320m
+    mem_limit: 384m
     read_only: true
     # A volume for the model files, like the deployed backends' (removed with the stack).
     volumes:
