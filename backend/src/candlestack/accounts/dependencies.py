@@ -44,7 +44,9 @@ async def current_user(
     """The user whose session cookie came with the request; 401 ``not-signed-in`` without one.
 
     A session in use slides on: when the service extends it, the cookie goes out again with
-    the new expiry.
+    the new expiry, on the response FastAPI builds from what the route returns. A route that
+    returns a ``Response`` of its own loses that cookie, so routes of the signed-in user
+    return their data.
     """
     token = cookies.read(request, SESSION)
     signed_in = None if token is None else await service.signed_in(token)

@@ -2,7 +2,9 @@
 
 Other modules import only from here (``from candlestack.accounts import CurrentUserDep``),
 never from the submodules. A route of the signed-in user takes ``user: CurrentUserDep``, and
-one that changes something also depends on ``core.require_same_origin``.
+one that changes something also depends on ``core.require_same_origin``. Such a route returns
+its data, not a ``Response`` of its own: FastAPI drops the renewed session cookie that
+``CurrentUserDep`` sets from a response the route builds itself.
 """
 
 from candlestack.accounts.api import dev_router as dev_sign_in_router
