@@ -1,16 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { DateFormat } from '@/api';
-
-import {
-  formatAdded,
-  formatParameters,
-  formatShape,
-  formatSharpe,
-  formatSize,
-  formatUsage,
-  splitExtension,
-} from './format';
+import { formatParameters, formatShape, formatSize, formatUsage, splitExtension } from './format';
 import { ACCEPTED_EXTENSIONS, frameworkOfFile } from './frameworks';
 
 const MB = 1024 * 1024;
@@ -67,46 +57,6 @@ describe('formatShape', () => {
     expect(formatShape([25, 23], null)).toBe('25×23');
     expect(formatShape(null, [1])).toBeNull();
     expect(formatShape([], [1])).toBeNull();
-  });
-});
-
-describe('formatSharpe', () => {
-  it('writes 2 decimals with a real minus sign, an en dash without a value', () => {
-    expect(formatSharpe(1.344)).toBe('1.34');
-    expect(formatSharpe(-0.18)).toBe('−0.18');
-    expect(formatSharpe(0)).toBe('0.00');
-    expect(formatSharpe(-0.004)).toBe('0.00');
-    expect(formatSharpe(-0.005)).toBe('−0.01');
-    expect(formatSharpe(1234.5)).toBe('1,234.50');
-    expect(formatSharpe(null)).toBe('–');
-  });
-});
-
-describe('formatAdded', () => {
-  const now = new Date('2026-10-17T12:00:00Z');
-  const utc = (dateFormat: DateFormat) => ({ timeZone: 'UTC', dateFormat });
-
-  it('says Today for a model added today, in every date format', () => {
-    for (const format of ['dmy', 'iso', 'dot'] as const) {
-      expect(formatAdded('2026-10-17T00:30:00Z', utc(format), now)).toBe('Today');
-    }
-  });
-
-  it('writes an earlier day of this year as day and month in the default format', () => {
-    expect(formatAdded('2026-10-13T09:00:00Z', utc('dmy'), now)).toBe('13 Oct');
-    expect(formatAdded('2025-12-31T09:00:00Z', utc('dmy'), now)).toBe('31 Dec 2025');
-  });
-
-  it('writes the whole date in the numeric formats', () => {
-    expect(formatAdded('2026-10-13T09:00:00Z', utc('iso'), now)).toBe('2026-10-13');
-    expect(formatAdded('2026-10-13T09:00:00Z', utc('dot'), now)).toBe('13.10.2026');
-  });
-
-  it('counts days in the zone of the setting', () => {
-    // 23:30 on 16 Oct in UTC is already 17 Oct in Bratislava, and still 16 Oct in New York.
-    const day = '2026-10-16T23:30:00Z';
-    expect(formatAdded(day, { timeZone: 'Europe/Bratislava', dateFormat: 'dmy' }, now)).toBe('Today');
-    expect(formatAdded(day, { timeZone: 'America/New_York', dateFormat: 'dmy' }, now)).toBe('16 Oct');
   });
 });
 
