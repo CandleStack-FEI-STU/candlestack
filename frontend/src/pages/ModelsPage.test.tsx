@@ -265,6 +265,38 @@ describe('Rename model', () => {
     expect(dialog.getByText(/^The extension stays/)).toBeDefined();
   });
 
+  it.each([
+    ['a slash', 'lstm/v2', 'Names cannot contain / or \\.'],
+    ['a backslash', 'lstm\\v2', 'Names cannot contain / or \\.'],
+    ['a tab', 'lstm\tv2', 'Names cannot contain invisible characters such as tabs.'],
+    ['a zero-width space', 'lstm\u200bv2', 'Names cannot contain invisible characters such as tabs.'],
+  ])('says at once that a name with %s cannot be used, with Save off and no request', async (_, name, text) => {
+    const { user, dialog, input, save } = await openRename();
+    const fetch = stubApi(modelsAnswer([TSMIXER, LSTM]));
+    await user.clear(input);
+    await user.paste(name);
+    const help = dialog.getByRole('alert');
+    expect(help.textContent).toBe(text);
+    expect(help.className.split(' ')).toContain('text-down');
+    expect(save.disabled).toBe(true);
+    await user.keyboard('{Enter}');
+    expect(fetch).not.toHaveBeenCalled();
+    await user.clear(input);
+    await user.type(input, 'lstm-v2');
+    expect(dialog.queryByRole('alert')).toBeNull();
+    expect(save.disabled).toBe(false);
+  });
+
+  it("says in plain words when the API refuses the name for another reason, not in the API's", async () => {
+    const { user, dialog, input, save } = await openRename();
+    stubApi({
+      'PATCH /api/v1/models/mdl_7f3k2m9qx4': problem(422, 'validation', "body 'name': String should match pattern"),
+    });
+    await user.type(input, '2');
+    await user.click(save);
+    expect((await dialog.findByRole('alert')).textContent).toBe('This name cannot be used. Try another one.');
+  });
+
   it('closes and drops the tile when the model is gone already', async () => {
     const { user, input, save } = await openRename();
     stubApi({

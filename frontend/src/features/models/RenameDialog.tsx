@@ -20,10 +20,21 @@ import { isGone, useRenameModel } from './useModels';
 // As the API takes it: 1 to 60 characters before the extension.
 const NAME_MAX = 60;
 
-function errorText(error: unknown): string {
-  if (error instanceof ApiError && error.problem === 'model-name-taken')
-    return 'You already have a model with this name.';
-  return error instanceof Error ? error.message : 'Could not rename the model.';
+// What the API refuses in a name (ModelUpdate in backend/src/candlestack/ml/schemas.py), said
+// before Save instead of after a round trip: slashes, and control and format characters (Unicode
+// Cc and Cf: tabs, zero-width spaces, direction marks). The field itself stops at 60 characters.
+function nameProblem(name: string): string | undefined {
+  if (/[/\\]/.test(name)) return 'Names cannot contain / or \\.';
+  if (/[\p{Cc}\p{Cf}]/u.test(name)) return 'Names cannot contain invisible characters such as tabs.';
+  return undefined;
+}
+
+function errorText(error: Error): string {
+  if (!(error instanceof ApiError)) return error.message;
+  if (error.problem === 'model-name-taken') return 'You already have a model with this name.';
+  // Any other refusal of the name: the API's words name its fields and rules.
+  if (error.status === 422) return 'This name cannot be used. Try another one.';
+  return error.message;
 }
 
 type FieldProps = { value: string; extension: string; onChange: (value: string) => void };
@@ -58,14 +69,15 @@ function NameField({ value, extension, onChange }: FieldProps) {
 
 type FormProps = { model: Model; onDone: () => void };
 
-// Save is off while the name is empty, unchanged or being saved; Enter saves. A name the user
-// already has turns the help line red.
+// Save is off while the name is empty, unchanged, one the API refuses or being saved; Enter
+// saves. A name the API refuses, or one the user already has, turns the help line red.
 function RenameForm({ model, onDone }: FormProps) {
   const [stem, extension] = splitExtension(model.name);
   const [text, setText] = useState(stem);
   const rename = useRenameModel();
   const name = text.trim();
-  const canSave = name !== '' && name !== stem && !rename.isPending;
+  const problem = nameProblem(name) ?? (rename.error ? errorText(rename.error) : undefined);
+  const canSave = name !== '' && name !== stem && nameProblem(name) === undefined && !rename.isPending;
 
   const save = (event: FormEvent) => {
     event.preventDefault();
@@ -85,10 +97,8 @@ function RenameForm({ model, onDone }: FormProps) {
             rename.reset();
           }}
         />
-        <DialogDescription role={rename.isError ? 'alert' : undefined} className={cn(rename.isError && 'text-down')}>
-          {rename.isError
-            ? errorText(rename.error)
-            : `The extension stays ${extension}. Backtests that used this model show the new name.`}
+        <DialogDescription role={problem ? 'alert' : undefined} className={cn(problem && 'text-down')}>
+          {problem ?? `The extension stays ${extension}. Backtests that used this model show the new name.`}
         </DialogDescription>
       </DialogBody>
       <DialogFooter>
