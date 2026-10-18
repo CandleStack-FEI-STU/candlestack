@@ -7,7 +7,8 @@ sliced to ``[start, end)``, checked for gaps and fingerprinted in a worker threa
 
 The instrument list is sorted by the 24 h stats that ``keep_stats_fresh`` refreshes in the
 background (``StatsStore``), and its items carry mini charts of the last daily candles, which
-the same task refreshes once a day (``SparkStore``); a search only reads them.
+the same task refreshes once a day (``SparkStore``), and their first candles as far as Redis
+knows them (``Firsts``); a search only reads them.
 """
 
 import asyncio
@@ -49,6 +50,7 @@ from candlestack.data.errors import (
     SourceUnavailable,
     TooManyCandles,
 )
+from candlestack.data.firsts import Firsts
 from candlestack.data.icons import FALLBACK_AFTER_FAILURE, Icon, Icons
 from candlestack.data.models import (
     CandleSet,
@@ -76,9 +78,6 @@ logger = logging.getLogger(__name__)
 # Chunks decoded and resampled at once: a year of monthly chunks of 1m bars is about
 # 100000 rows (5 MB). Fewer at once use less memory, but every resample call costs time.
 RESAMPLE_CHUNKS = 12
-FIRST_TTL = 7 * DAY
-# An instrument without any candle yet (a new listing) is asked again after an hour.
-FIRST_NONE_TTL = 3600
 HEALTH_TTL = 60
 # How often the background task looks for stats that are due (StatsStore.REFRESH_SECONDS).
 STATS_CHECK_SECONDS = 60
@@ -130,6 +129,7 @@ class DataService:
         candles_max: int,
         stats: StatsStore,
         sparks: SparkStore,
+        firsts: Firsts,
     ) -> None:
         self._sources = sources
         self._cache = cache
@@ -138,6 +138,7 @@ class DataService:
         self._candles_max = candles_max
         self._stats = stats
         self._sparks = sparks
+        self._firsts = firsts
 
     async def search(
         self,
@@ -154,13 +155,14 @@ class DataService:
         without ``q``, in the markets whose catalog can be loaded; ``unavailable`` names the
         others. Raises the source's error when none can be loaded. ``exchange`` keeps only the
         instruments that trade there. The stats and the mini charts are what the background
-        refresh last stored: instruments without stats sort last."""
+        refresh last stored: instruments without stats sort last. The first candles are those
+        Redis knows; a few unknown ones are looked up in the background (``Firsts.known``)."""
         if q is not None and not normalise_query(q):
-            return SearchResult([], [], 0, [], [])
+            return SearchResult([], [], 0, [], [], [])
         if exchange is not None:
             # An exchange lists one market only: the other market's catalog is not needed.
             if market not in (None, exchange.market):
-                return SearchResult([], [], 0, [], [])
+                return SearchResult([], [], 0, [], [], [])
             market = exchange.market
         catalog = await self._catalogs.catalog(market)
         # Taken with the catalog, before anything else is awaited: a market that finishes loading
@@ -174,7 +176,12 @@ class DataService:
             )
         )
         sparks = await self._sparks.sparks(found.items)
-        return SearchResult(found.items, unavailable, found.total, found.stats, sparks)
+        firsts = await self._firsts.known(found.items)
+        return SearchResult(found.items, unavailable, found.total, found.stats, sparks, firsts)
+
+    async def close(self) -> None:
+        """Stops what requests left running in the background (on shutdown)."""
+        await self._firsts.close()
 
     async def keep_stats_fresh(self) -> None:
         """Refreshes the stats and the daily candles of every market when they are due, each
@@ -237,7 +244,7 @@ class DataService:
         source = self._sources[instrument_id.market]
         sessions = await source.sessions()
         try:
-            first = await self._first(source, instrument)
+            first = await self._firsts.first(instrument)
         except SourceUnavailable as exc:
             logger.warning("First candle of %s unknown: %s", instrument_id, exc.detail)
             first = None
@@ -337,7 +344,7 @@ class DataService:
         source = self._sources[instrument_id.market]
         now = int(_time())
         sessions = await source.sessions()
-        first = await self._first(source, instrument)
+        first = await self._firsts.first(instrument)
         return _Lookup(
             instrument,
             source,
@@ -382,16 +389,6 @@ class DataService:
         if instrument is None:
             raise InstrumentNotFound(instrument_id)
         return instrument
-
-    async def _first(self, source: DataSource, instrument: Instrument) -> int | None:
-        async def fetch() -> tuple[bytes, int]:
-            first = await source.first_timestamp(instrument.symbol)
-            if first is None:
-                return b"", FIRST_NONE_TTL
-            return str(first).encode(), FIRST_TTL
-
-        blob = await self._cache.get_or_fetch(f"first:{instrument.id}", fetch)
-        return int(blob) if blob else None
 
     async def _chunks(
         self,
@@ -441,6 +438,7 @@ def build_data_service(settings: Settings, redis: Redis, http: httpx.AsyncClient
         candles_max=settings.candles_max,
         stats=StatsStore(cache, sources),
         sparks=SparkStore(cache, sources),
+        firsts=Firsts(cache, sources, limiter),
     )
 
 

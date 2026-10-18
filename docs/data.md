@@ -59,8 +59,9 @@ the search, the instrument and every other answer with an instrument. The field 
 markets (no source call per item) and returns one page,
 `{"items": [<instrument>, ...], "count": <n>, "total": <all matches>, "offset": <offset>, "unavailable": []}`.
 Each item is an instrument with its 24 h stats (see [Stats](#stats)): `price`, `change_24h` and
-`volume_24h`, each `null` while the instrument has none, and its mini chart `spark` (see
-[Mini charts](#mini-charts)).
+`volume_24h`, each `null` while the instrument has none, its mini chart `spark` (see
+[Mini charts](#mini-charts)) and `available_from` (see [First candles in the
+list](#first-candles-in-the-list)).
 
 | Parameter | Rule |
 | --- | --- |
@@ -118,6 +119,29 @@ source:
 - `max_candles`: `CANDLES_MAX`.
 
 Values in the examples of this document are illustrative.
+
+### First candles in the list
+
+Each item of the list also carries `available_from`, the open time of its first candle in UTC
+epoch seconds, as in the instrument detail. It is `null` while the backend does not know it
+yet, and for an instrument without any candle yet. Finding it costs one source request per
+instrument (Binance `klines`, weight 2; one Alpaca request), so the list never asks a source for
+it while it answers:
+
+- The first candles of the page come from Redis (`data:vN:first:<market>:<symbol>`, the keys the
+  instrument detail fills) in one `MGET`.
+- Up to 5 instruments of the page that Redis does not know yet, its first rows first, are
+  looked up in the background without delaying the answer, so a later request has them; one
+  already being looked up by this process is skipped, and the single-flight lock stops two
+  processes from asking for the same one. A process runs at most 10 such lookups at once, and all
+  processes together at most 60 a minute for crypto and 6 a minute for stocks
+  (`data:rl:first-warm:<market>`, a tenth of the smallest `ALPACA_RATE_LIMIT`); each also
+  counts against the source's own budget, so the charts keep the rest.
+- When a lookup finds the source unavailable (down, our budget spent, no Alpaca keys), the
+  lookups of that market stop for a minute (or the `Retry-After`, when longer), with one
+  warning. When the source refuses one instrument (HTTP 4xx, e.g. a pair delisted since the
+  catalog was read) or sends invalid data for it, only that instrument is not looked up for an
+  hour, with one warning. Without Redis nothing is looked up, as nothing could be kept.
 
 ## Stats
 
@@ -461,14 +485,14 @@ again. Keys:
 | `data:v2:catalog:<market>` | instrument list of the market with its fetch time (compact JSON) | 7 days; refreshed when older than 24 h, the old list is served while one background task refreshes it |
 | `data:v1:calendar` | NYSE sessions from 2016 to the end of next year | 7 days |
 | `data:v2:candles:crypto:<symbol>:<base timeframe>:<chunk>`, `data:v3:candles:stock:<symbol>:...` | one chunk of validated candles, Arrow IPC + zstd | see below |
-| `data:v1:first:crypto:<symbol>`, `data:v2:first:stock:<symbol>` | `available_from` | 7 days; 1 hour while the instrument has no candle |
+| `data:v1:first:crypto:<symbol>`, `data:v2:first:stock:<symbol>` | `available_from` | 90 days (the first candle never moves, so the list rarely asks the sources again; it still expires, so a reused symbol is asked again some day); 1 hour while the instrument has no candle |
 | `data:v1:health:<source>` | reachability of the source | 60 s |
 | `data:v1:stats:crypto`, `data:v2:stats:stock` | the 24 h stats of the market's instruments (symbol, price, change, volume): their fetch time (8 bytes), then Arrow IPC + zstd, as a candle chunk | until 2 hours after the fetch began; replaced every 5 (crypto) or 10 (stocks) minutes by the background refresh |
 | `data:v1:spark:crypto`, `data:v2:spark:stock` | the last 10 daily candles of the market's instruments (symbol, open time, open, high, low, close), as the stats | until 7 days after the fetch began; replaced once a day after the market's daily close |
 | `data:v1:icon:ticker/<symbol>`, `data:v1:icon:crypto/<base asset>` | the logo (`<media type>` + newline + image), `none` or `failed` | 30 days; `none` 7 days; `failed` 60 s |
 | `data:lock:vN:<key without data:vN:>` | single-flight lock for a key being fetched, with the key's version (`data:lock:v2:catalog:crypto`) | 30 s; 2 minutes for a stats or daily candles refresh, renewed every 40 s while it runs |
 | `data:fail:vN:<key without data:vN:>` | the error of a failed fetch of that key (source unavailable or invalid data) | 10 s, or the error's `Retry-After` when shorter |
-| `data:rl:client:<ip>:<minute>`, `data:rl:alpaca:<minute>`, `data:rl:alpaca-stats:<minute>` (the stats' share), `data:rl:binance:<minute>`, `data:rl:alpaca-spark:<minute>`, `data:rl:binance-spark:<minute>` (the daily candles' shares), `data:rl:logodev:<minute>` | fixed-window counters; `<ip>` is an IPv4 address or an IPv6 /64 network, `<minute>` is Unix time // 60 | 61 s |
+| `data:rl:client:<ip>:<minute>`, `data:rl:alpaca:<minute>`, `data:rl:alpaca-stats:<minute>` (the stats' share), `data:rl:binance:<minute>`, `data:rl:alpaca-spark:<minute>`, `data:rl:binance-spark:<minute>` (the daily candles' shares), `data:rl:first-warm:<market>:<minute>` (the list's first-candle lookups), `data:rl:logodev:<minute>` | fixed-window counters; `<ip>` is an IPv4 address or an IPv6 /64 network, `<minute>` is Unix time // 60 | 61 s |
 
 | Chunk | `<chunk>` | Crypto | Stock |
 | --- | --- | --- | --- |

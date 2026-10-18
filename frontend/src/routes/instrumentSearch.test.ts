@@ -9,11 +9,12 @@ const validate = (search: Record<string, unknown>) => validateInstrumentSearch(s
 describe('validateInstrumentSearch', () => {
   it('keeps a valid timeframe', () => {
     expect(validate({ tf: '4h' })).toEqual({ tf: '4h' });
+    expect(validate({ tf: '1h' })).toEqual({ tf: '1h' }); // not the default, still kept
   });
 
   it('fills in the default when tf is missing or broken', () => {
-    expect(validate({})).toEqual({ tf: '1h' });
-    expect(validate({ tf: 'banana' })).toEqual({ tf: '1h' });
+    expect(validate({})).toEqual({ tf: '1d' });
+    expect(validate({ tf: 'banana' })).toEqual({ tf: '1d' });
   });
 
   it('drops params the route does not know', () => {

@@ -4,6 +4,8 @@ import type { ReactNode } from 'react';
 
 import { exchangeName, type Instrument, type Market } from '@/api';
 import { InstrumentIcon } from '@/components/InstrumentIcon';
+import { useDateStyle } from '@/features/preferences';
+import { formatMonth, marketTimeZone } from '@/lib/dates';
 import { changeTone, formatChange, formatPrice, formatSignedChange, formatVolume } from '@/lib/numbers';
 import { cn } from '@/lib/utils';
 import type { ListSort } from '@/routes/instrumentsSearch';
@@ -13,8 +15,8 @@ import { sortedColumn, type SortedColumn } from './sorting';
 
 // Phones (below md) show three columns, the symbol, the last 7 daily candles and the price; from md
 // the stats get their own columns and the name the rest; from lg the type and the 10 daily candles
-// too. Cells have 12 px at the sides (8 px between the columns of a phone), 4 px above and below
-// the 32 px icon and the 32 px candles: a row is 41 px high.
+// too, from xl since when there is data. Cells have 12 px at the sides (8 px between the columns of
+// a phone), 4 px above and below the 32 px icon and the 32 px candles: a row is 41 px high.
 const HEAD = 'py-2 text-xs font-medium text-muted-foreground';
 const CELL = 'py-1';
 const PHONE_FIRST = 'pr-2 pl-3 md:px-3';
@@ -22,6 +24,7 @@ const PHONE_LAST = 'pr-3 pl-2 md:px-3';
 const PHONE_MIDDLE = 'w-[60px] px-2 md:hidden';
 const WIDEST = 'hidden w-[136px] px-3 lg:table-cell';
 const WIDE = 'hidden px-3 md:table-cell';
+const XL = 'hidden px-3 xl:table-cell';
 const TONES = { up: 'text-up', down: 'text-down', flat: 'text-muted-foreground', none: 'text-muted-foreground' };
 const TYPES: Record<Market, string> = { stock: 'Stock', crypto: 'Crypto' };
 
@@ -105,6 +108,7 @@ function Header({ sort }: { sort: ListSort | undefined }) {
         <Head className={cn(WIDE, 'text-left')}>Name</Head>
         <Head className="hidden w-[88px] px-3 text-left lg:table-cell">Type</Head>
         <Head className={cn(WIDE, 'w-[104px] text-left')}>Exchange</Head>
+        <Head className={cn(XL, 'w-[96px] text-left')}>Data since</Head>
       </tr>
     </thead>
   );
@@ -207,18 +211,32 @@ function Row({ instrument }: { instrument: Instrument }) {
       <td title={exchange} className={cn(CELL, WIDE, 'truncate text-muted-foreground')}>
         {exchange}
       </td>
+      <SinceCell instrument={instrument} />
     </tr>
   );
 }
 
-// One row per instrument with its 24 h stats (#184) and its last daily candles (#189): Symbol 168 |
-// Price 128 | 24h 104 | 10d 136 | Volume 24h 112 | Name (the rest) | Type 88 | Exchange 104 px. The
-// symbol is the row's link, stretched over the whole row, so the row is one click target and one
-// tab stop. The columns have fixed widths and the name takes the rest, so long text truncates
-// instead of widening the table past the screen: Type and 10d show from lg (1024 px), the stats,
-// name and exchange from md (768 px), where 10d would leave the name no room; a phone shows the
-// symbol over "exchange · volume", the last 7 candles in 60 px and the price over the change. The
-// sorted column's header is ink with an arrow.
+// The month of the first candle, Aug 2017, in the zone the instrument page writes its first day
+// in; a dash while the server does not know it yet (it looks it up for a later visit).
+function SinceCell({ instrument }: { instrument: Instrument }) {
+  const { timeZone } = useDateStyle(marketTimeZone(instrument.market));
+  const since = instrument.available_from;
+  return (
+    <td className={cn(CELL, XL, 'font-mono text-[13px] whitespace-nowrap text-muted-foreground')}>
+      {since === null ? <span title="Not known yet">—</span> : formatMonth(new Date(since * 1000), { timeZone })}
+    </td>
+  );
+}
+
+// One row per instrument with its 24 h stats (#184), its last daily candles (#189) and since when
+// there is data (#199): Symbol 168 | Price 128 | 24h 104 | 10d 136 | Volume 24h 112 | Name (the
+// rest) | Type 88 | Exchange 104 | Data since 96 px. The symbol is the row's link, stretched over
+// the whole row, so the row is one click target and one tab stop. The columns have fixed widths
+// and the name takes the rest, so long text truncates instead of widening the table past the
+// screen (the mockup scrolls it sideways instead): Data since shows from xl (1280 px), Type and
+// 10d from lg (1024 px), the stats, name and exchange from md (768 px), each where it would leave
+// the name no room below that; a phone shows the symbol over "exchange · volume", the last 7
+// candles in 60 px and the price over the change. The sorted column's header is ink with an arrow.
 export function InstrumentTable({ items, sort }: { items: readonly Instrument[]; sort?: ListSort | undefined }) {
   return (
     <table className="w-full table-fixed border-collapse text-sm">

@@ -1,22 +1,4 @@
-import type { Market } from '@/api';
-import {
-  NEW_YORK,
-  calendarDay,
-  formatDate,
-  formatShortDay,
-  formatTime,
-  monthName,
-  viewerTimeZone,
-  type DateStyle,
-} from '@/lib/dates';
-
-// The chart's zone for a visitor, who has no time zone setting (signed in, the setting decides).
-// Stocks trade on New York time (the session opens at 09:30 there all year). Crypto trades around
-// the clock with no home exchange, so it shows the viewer's own time. The API sends UTC epoch
-// seconds; without a zone the chart would show UTC.
-export function marketTimeZone(market: Market, viewer = viewerTimeZone()): string {
-  return market === 'stock' ? NEW_YORK : viewer;
-}
+import { NEW_YORK, calendarDay, formatDate, formatShortDay, formatTime, monthName, type DateStyle } from '@/lib/dates';
 
 // Under the chart, so nobody has to guess which clock the axis uses. Any zone but New York is the
 // viewer's own.

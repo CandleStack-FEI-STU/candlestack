@@ -20,7 +20,7 @@ from redis.asyncio import Redis
 
 from candlestack.core import Settings, create_redis
 from candlestack.core import http as http_module
-from candlestack.data import DataService, build_data_service
+from candlestack.data import DataService, build_data_service, firsts
 from candlestack.data.sources import base
 
 FIXTURES = Path(__file__).parents[2] / "fixtures"
@@ -237,6 +237,13 @@ def service(settings: Settings, redis: Redis, http: httpx.AsyncClient) -> DataSe
 def upstream() -> Iterator[Upstream]:
     with respx.mock(assert_all_called=False) as router:
         yield Upstream(router)
+
+
+@pytest.fixture(autouse=True)
+def no_first_lookups(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A search looks up no first candles in the background, so that the mocked sources see
+    only the requests a test makes; test_firsts.py turns the lookups on."""
+    monkeypatch.setattr(firsts, "WARM_PER_PAGE", 0)
 
 
 @pytest.fixture(autouse=True)

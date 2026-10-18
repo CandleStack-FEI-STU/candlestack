@@ -6,6 +6,7 @@ import {
   cityOf,
   dateStyleOf,
   formatDate,
+  formatMonth,
   formatRecentDay,
   formatRecentTime,
   formatShortDay,
@@ -70,6 +71,14 @@ describe('formatShortDay', () => {
     expect(formatShortDay(MOMENT, { timeZone: 'UTC' })).toBe('12 Oct');
     expect(formatShortDay(LATE, { timeZone: 'UTC' })).toBe('4 Jan');
     expect(formatShortDay(LATE, { timeZone: 'America/New_York' })).toBe('3 Jan');
+  });
+});
+
+describe('formatMonth', () => {
+  it('writes the month and the year, in the zone', () => {
+    expect(formatMonth(MOMENT, { timeZone: 'UTC' })).toBe('Oct 2024');
+    expect(formatMonth(new Date(Date.UTC(2024, 0, 1, 2)), { timeZone: 'UTC' })).toBe('Jan 2024');
+    expect(formatMonth(new Date(Date.UTC(2024, 0, 1, 2)), { timeZone: 'America/New_York' })).toBe('Dec 2023');
   });
 });
 

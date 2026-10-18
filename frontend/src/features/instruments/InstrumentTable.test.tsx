@@ -35,6 +35,7 @@ const BTC: Instrument = {
   change_24h: 1.51,
   volume_24h: 1258811866,
   spark: TEN_DAYS,
+  available_from: 1_502_942_400, // 2017-08-17 04:00 UTC
 };
 const AAPL: Instrument = {
   id: 'stock:AAPL',
@@ -62,6 +63,7 @@ const AAPL: Instrument = {
     null,
     [OCT_4 + 2 * DAY, 248, 249, 247.5, 248.5],
   ],
+  available_from: 1_451_917_800, // 2016-01-04 14:30 UTC
 };
 const NEW: Instrument = {
   ...AAPL,
@@ -73,6 +75,7 @@ const NEW: Instrument = {
   change_24h: null,
   volume_24h: null,
   spark: null,
+  available_from: null,
 };
 const FLAT: Instrument = { ...AAPL, id: 'stock:SPY', symbol: 'SPY', change_24h: 0.001 };
 
@@ -113,7 +116,7 @@ describe('InstrumentTable', () => {
     expect(btc).toMatch(/<img [^>]*width="32"/);
   });
 
-  it('shows the price, the 24 h change and volume, the name, the type and the exchange', async () => {
+  it('shows the price, the 24 h change and volume, the name, the type, the exchange and since when', async () => {
     const [btc = '', aapl = ''] = rows(await render());
     expect(cells(btc).map(text)).toEqual([
       'BTCUSDTBinance · $1.26B',
@@ -126,6 +129,7 @@ describe('InstrumentTable', () => {
       'Bitcoin / TetherUS',
       'Crypto',
       'Binance',
+      'Aug 2017',
     ]);
     expect(cells(aapl).map(text)).toEqual([
       'AAPLNASDAQ · $341M',
@@ -137,6 +141,7 @@ describe('InstrumentTable', () => {
       'Apple Inc.',
       'Stock',
       'NASDAQ',
+      'Jan 2016',
     ]);
   });
 
@@ -166,8 +171,19 @@ describe('InstrumentTable', () => {
       'Ares Acquisition Corporation II Units',
       'Stock',
       'NYSE',
+      '—',
     ]);
     expect(classes(cells(fresh)[2] ?? '', /<span [^>]*>—/)).toContain('text-muted-foreground');
+  });
+
+  it('writes since when there is data as month and year in the instrument page’s zone, a dash while unknown', async () => {
+    // 2024-02-01 02:00 UTC: still January in New York, where a visitor sees stocks.
+    const lateNight = { ...AAPL, available_from: Date.UTC(2024, 1, 1, 2) / 1000 };
+    const [stock = '', fresh = ''] = rows(await render(undefined, [lateNight, NEW]));
+    const since = (row: string) => cells(row).at(-1) ?? '';
+    expect(text(since(stock))).toBe('Jan 2024');
+    expect(classes(since(stock), /<td [^>]*>/)).toEqual(expect.arrayContaining(['font-mono', 'text-muted-foreground']));
+    expect(since(fresh)).toMatch(/<span title="Not known yet">—<\/span>/);
   });
 
   it('writes the numbers in Geist Mono', async () => {
@@ -181,9 +197,8 @@ describe('InstrumentTable', () => {
     const html = await render();
     expect(classes(html, /<table [^>]*>/)).toContain('table-fixed');
     const th = (index: number) => classes(headers(html)[index] ?? '', /<th [^>]*>/);
-    const [phoneSymbol, phoneCandles, phonePrice, symbol, price, change, candles, volume, name, type, exchange] = [
-      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-    ].map(th);
+    const [phoneSymbol, phoneCandles, phonePrice, symbol, price, change, candles, volume, name, type, exchange, since] =
+      [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(th);
     // a phone: the symbol takes the rest, the candles 60 px, the price 100 px
     expect(phoneSymbol).toContain('md:hidden');
     expect(phoneSymbol?.some((each) => each.startsWith('w-'))).toBe(false);
@@ -199,6 +214,8 @@ describe('InstrumentTable', () => {
     expect(name?.some((each) => each.startsWith('w-'))).toBe(false);
     expect(type).toEqual(expect.arrayContaining(['hidden', 'lg:table-cell', 'w-[88px]']));
     expect(exchange).toEqual(expect.arrayContaining(['hidden', 'md:table-cell', 'w-[104px]']));
+    // from xl, as from lg to xl it would leave the name no room
+    expect(since).toEqual(expect.arrayContaining(['hidden', 'xl:table-cell', 'w-[96px]']));
     const [btc = ''] = rows(html);
     expect(classes(btc, /<span [^>]*>Bitcoin/)).toContain('truncate');
     expect(classes(btc, /<a [^>]*>BTCUSDT</)).toContain('truncate');
@@ -294,6 +311,7 @@ describe('InstrumentTable header', () => {
       'Name',
       'Type',
       'Exchange',
+      'Data since',
     ]);
   });
 

@@ -1308,8 +1308,23 @@
         "type": "object"
       },
       "InstrumentItemOut": {
-        "description": "An instrument of the list with its 24 h stats, refreshed every few minutes, and its mini\nchart of the last daily candles, refreshed once a day; null while there are none (yet).",
+        "description": "An instrument of the list with its 24 h stats, refreshed every few minutes, its mini\nchart of the last daily candles, refreshed once a day, and since when there is data; null\nwhile there are none (yet).",
         "properties": {
+          "available_from": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Open time of the first candle, UTC epoch seconds, as in the instrument detail. Null while it is not known yet: the list never waits for a source, and looks up a few unknown ones per request in the background, so a later request has them. Also null for an instrument without any candle yet.",
+            "examples": [
+              1502942400
+            ],
+            "title": "Available From"
+          },
           "base": {
             "anyOf": [
               {
@@ -1520,7 +1535,8 @@
           "price",
           "change_24h",
           "volume_24h",
-          "spark"
+          "spark",
+          "available_from"
         ],
         "title": "InstrumentItemOut",
         "type": "object"
@@ -2790,7 +2806,7 @@
     },
     "/api/v1/data/instruments": {
       "get": {
-        "description": "Searches the instruments of both markets: every Binance spot pair that is trading and\nevery active tradable US stock and ETF at Alpaca (without OTC). Each item carries its last\nprice, 24 h change and 24 h volume in USD, refreshed every few minutes, and its last 10 daily\ncandles (`spark`), refreshed once a day (null without them).\n\nRanking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`\nfirst), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word\nin the name, substring of the symbol, substring of the name; ties go to `sort`, then to the\nshorter symbol, then alphabetically. Without `q`, every instrument comes back in `sort`:\nthe most traded first by default.\n`exchange` narrows any of these to the instruments that trade on it.\n`total` counts all matches: page through them with `offset` and `limit`.\n\nWhen the instrument list of one market cannot be loaded, the other market is still\nsearched and `unavailable` names the missing one; 503 when no market can be searched.",
+        "description": "Searches the instruments of both markets: every Binance spot pair that is trading and\nevery active tradable US stock and ETF at Alpaca (without OTC). Each item carries its last\nprice, 24 h change and 24 h volume in USD, refreshed every few minutes, its last 10 daily\ncandles (`spark`), refreshed once a day (null without them), and the open time of its first\ncandle (`available_from`, null while not known yet).\n\nRanking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`\nfirst), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word\nin the name, substring of the symbol, substring of the name; ties go to `sort`, then to the\nshorter symbol, then alphabetically. Without `q`, every instrument comes back in `sort`:\nthe most traded first by default.\n`exchange` narrows any of these to the instruments that trade on it.\n`total` counts all matches: page through them with `offset` and `limit`.\n\nWhen the instrument list of one market cannot be loaded, the other market is still\nsearched and `unavailable` names the missing one; 503 when no market can be searched.",
         "operationId": "search_instruments_api_v1_data_instruments_get",
         "parameters": [
           {

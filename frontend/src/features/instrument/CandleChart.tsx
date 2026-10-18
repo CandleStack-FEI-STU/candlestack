@@ -28,6 +28,9 @@ import { crosshairFormatter, tickFormatter } from './time';
 const PRELOAD_BARS = 30;
 // Further than this from the newest candle, the "go to the latest candle" button shows.
 const AWAY_BARS = 3;
+// The chart opens on this many of the newest candles, as the mockup does (about four months of
+// daily candles); fewer fill it at the default spacing from the right.
+const OPEN_BARS = 120;
 
 type Series = { candles: ISeriesApi<'Candlestick'>; volume: ISeriesApi<'Histogram'> };
 
@@ -106,8 +109,9 @@ function hoveredIndex(event: MouseEventParams): number | null {
 }
 
 // Puts the bars into the chart, in the theme's colors and with enough decimals for the price.
-// Older bars added on the left shift the view by as many, so it does not jump. Returns the time
-// of the first bar, to compare with on the next call.
+// The first bars of a chart show their newest OPEN_BARS; older bars added on the left later shift
+// the view by as many, so it does not jump. Returns the time of the first bar, to compare with on
+// the next call.
 function showBars(instance: Instance, bars: readonly Bar[], firstTime: number | undefined) {
   const colors = applyTheme(instance.chart, instance.series);
   const decimals = priceDecimals(bars.at(-1)?.close ?? 0);
@@ -118,7 +122,12 @@ function showBars(instance: Instance, bars: readonly Bar[], firstTime: number | 
   const range = timeScale.getVisibleLogicalRange();
   const added = firstTime === undefined ? 0 : bars.findIndex((bar) => bar.time === firstTime);
   setBars(instance.series, bars, colors);
-  if (range && added > 0) timeScale.setVisibleLogicalRange({ from: range.from + added, to: range.to + added });
+  if (firstTime === undefined && bars.length > OPEN_BARS) {
+    // Logical indexes are the bars' centres: half a bar more on each side shows them whole.
+    timeScale.setVisibleLogicalRange({ from: bars.length - OPEN_BARS - 0.5, to: bars.length - 0.5 });
+  } else if (range && added > 0) {
+    timeScale.setVisibleLogicalRange({ from: range.from + added, to: range.to + added });
+  }
   return bars[0]?.time;
 }
 

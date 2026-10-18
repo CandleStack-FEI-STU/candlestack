@@ -5,7 +5,8 @@ import type { components } from './schema';
 export type Timeframe = components['schemas']['InstrumentDetailOut']['timeframes'][number];
 
 export const TIMEFRAMES: readonly Timeframe[] = ['1m', '5m', '15m', '30m', '1h', '4h', '1d'];
-export const DEFAULT_TIMEFRAME: Timeframe = '1h';
+// The chart opens on the daily candles, as the mockup does: months of history at a glance.
+export const DEFAULT_TIMEFRAME: Timeframe = '1d';
 
 // For search params: anything that is not a known timeframe becomes the default.
 export function parseTimeframe(value: unknown): Timeframe {

@@ -267,8 +267,9 @@ async def search_instruments(  # noqa: PLR0913 (a query parameter each, and the 
 ) -> InstrumentSearchOut:
     """Searches the instruments of both markets: every Binance spot pair that is trading and
     every active tradable US stock and ETF at Alpaca (without OTC). Each item carries its last
-    price, 24 h change and 24 h volume in USD, refreshed every few minutes, and its last 10 daily
-    candles (`spark`), refreshed once a day (null without them).
+    price, 24 h change and 24 h volume in USD, refreshed every few minutes, its last 10 daily
+    candles (`spark`), refreshed once a day (null without them), and the open time of its first
+    candle (`available_from`, null while not known yet).
 
     Ranking: the top pair of a crypto base asset equal to the query (`btc` finds `BTCUSDT`
     first), exact symbol, the other pairs of that base asset, symbol prefix, prefix of a word
@@ -285,8 +286,10 @@ async def search_instruments(  # noqa: PLR0913 (a query parameter each, and the 
         found = await service.search(q, market, limit, offset, exchange=exchange, sort=sort)
     return InstrumentSearchOut(
         items=[
-            InstrumentItemOut.of_item(item, stats, spark)
-            for item, stats, spark in zip(found.items, found.stats, found.sparks, strict=True)
+            InstrumentItemOut.of_item(item, stats, spark, first)
+            for item, stats, spark, first in zip(
+                found.items, found.stats, found.sparks, found.firsts, strict=True
+            )
         ],
         count=len(found.items),
         total=found.total,
