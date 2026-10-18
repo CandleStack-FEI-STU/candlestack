@@ -100,6 +100,21 @@ def test_zscore_of_fewer_predictions_than_the_window_is_flat() -> None:
     assert zscores([0.1, 0.2, 0.3], 4) == [0.0, 0.0, 0.0]
 
 
+@pytest.mark.parametrize("window", [2, 3, 10])
+def test_zscore_is_flat_on_a_window_whose_spread_is_only_rounding(window: int) -> None:
+    # The rolling mean carries about 1e-10 of rounding from the large predictions forward,
+    # while the std of the 0.3 ± 1 ulp stretch is about 4e-17: without the scale check the
+    # quotient reached 1.6e7, while a sample z-score never exceeds (window - 1) / sqrt(window).
+    rng = random.Random(0)
+    ulps = [0.3, math.nextafter(0.3, 1.0), math.nextafter(math.nextafter(0.3, 1.0), 1.0)]
+    values = [rng.gauss(0, 1e6) for _ in range(3000)] + [ulps[i % 3] for i in range(30)]
+
+    result = zscores(values, window)
+
+    assert result[3000 + window - 1 :] == [0.0] * (30 - window + 1)
+    assert max(map(abs, result)) <= (window - 1) / math.sqrt(window)
+
+
 def test_zscore_gives_a_plain_zero() -> None:
     # Rows 2 and 5 are at the mean 0.0 of their window: -0.0 - 0.0 is -0.0, and dividing by the
     # std would keep its sign.
@@ -150,6 +165,16 @@ def test_rank_feeds_threshold_as_the_top_and_bottom_of_the_window() -> None:
 
 def test_rank_of_fewer_predictions_than_the_window_is_flat() -> None:
     assert ranks([0.1, 0.2, 0.3], 4) == [0.0, 0.0, 0.0]
+
+
+@pytest.mark.parametrize("window", [50, 99, 104])
+def test_rank_of_the_largest_and_the_smallest_is_exactly_one(window: int) -> None:
+    # Dividing by the scalar window - 1 goes through its reciprocal in Polars, which for these
+    # windows gives 0.9999999999999999: threshold at 1.0 would miss the top of the window.
+    rising = pl.Series(range(window), dtype=pl.Float64)
+
+    assert rank(rising, window)[-1] == 1.0
+    assert rank(rising.reverse(), window)[-1] == -1.0
 
 
 def test_rank_gives_a_plain_zero() -> None:
