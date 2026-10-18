@@ -96,8 +96,11 @@ async def test_a_page_shows_what_is_known_and_looks_up_a_few_others(
         "SOLUSDT": None,
         "币安人生USDT": None,
     }
-    # The first three unknown rows of the first page, then the last one.
-    assert asked(klines) == ["BTCUSDT", "ETHBTC", "ETHUSDT", "SOLUSDT", "币安人生USDT"]
+    # The first three unknown rows of the first page (at once, so in any order), then the last one.
+    calls = asked(klines)
+    assert calls[0] == "BTCUSDT"
+    assert sorted(calls[1:4]) == ["ETHBTC", "ETHUSDT", "SOLUSDT"]
+    assert calls[4:] == ["币安人生USDT"]
     assert firsts(second) == {
         **firsts(first),
         "ETHBTC": 1500004800,
@@ -137,7 +140,7 @@ async def test_lookups_running_at_once_are_capped(
     hold.set()
     await service._firsts.wait()
 
-    assert asked(klines) == ["BTCUSDT", "ETHBTC"]
+    assert sorted(asked(klines)) == ["BTCUSDT", "ETHBTC"]
 
 
 async def test_lookups_per_minute_are_a_share_of_the_budget(
