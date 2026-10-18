@@ -257,7 +257,7 @@ $SECRETS" "$(up_calls stage main-0123abc 256mb 288m with-secrets)"
 old_backend=$BACKEND old_frontend=$FRONTEND
 BACKEND=${BACKEND/candlestack-fei-stu/candlestack-tech}
 FRONTEND=${FRONTEND/candlestack-fei-stu/candlestack-tech}
-allowed "stage: up stage with images of candlestack-tech" stage   "up stage main-0123abc $BACKEND $FRONTEND" "$TOKEN
+allowed "stage: up stage with images of candlestack-tech" stage "up stage main-0123abc $BACKEND $FRONTEND" "$TOKEN
 $SECRETS" "$(up_calls stage main-0123abc 256mb 288m with-secrets)"
 BACKEND=$old_backend FRONTEND=$old_frontend
 allowed "stage: up stage with the Sentry DSN" stage "up stage main-0123abc $IMAGES" "$TOKEN
