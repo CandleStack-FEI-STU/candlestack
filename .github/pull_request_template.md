@@ -11,3 +11,4 @@
 - [ ] Tests added or updated at the right level (unit, integration or e2e)
 - [ ] `docs/openapi.json` and the docs updated if the API or its behaviour changed
 - [ ] No secrets, `.env` files or AI attribution in the diff, commits or this description
+- [ ] I license this contribution under the MIT License (see `CONTRIBUTING.md`)
