@@ -203,7 +203,7 @@ def test_the_command_writes_the_run_json_of_the_document(
     record = json.loads((OUT / "run.json").read_text(encoding="utf-8"))
     hashes = {name: record["inputs"][name].pop("sha256") for name in record["inputs"]}
     assert record == {
-        "engine_version": "0.2.0",
+        "engine_version": "0.3.0",
         "inputs": {
             "candles": {"path": "candles.parquet"},
             "predictions": {"path": "predictions.parquet"},
@@ -218,6 +218,7 @@ def test_the_command_writes_the_run_json_of_the_document(
             "long_only": False,
             "fill": "signal_close",
             "stop_loss": 0.05,
+            "drawdown_stop": None,
             "fee_bps": 10.0,
             "slippage_bps": 0.0,
         },

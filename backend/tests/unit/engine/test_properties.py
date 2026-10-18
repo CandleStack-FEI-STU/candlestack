@@ -1,5 +1,6 @@
-"""Properties of the engine on random candles with fixed seeds: it never looks ahead, and
-without stop and costs ``next_open`` trades what ``signal_close`` trades, one row later."""
+"""Properties of the engine on random candles with fixed seeds: it never looks ahead, with and
+without a stop, costs and a drawdown stop; without stop and costs ``next_open`` trades what
+``signal_close`` trades, one row later; and a drawdown stop changes nothing before its halt."""
 
 import math
 import random
@@ -20,13 +21,25 @@ INPUT_SCHEMA = {
 }
 ROWS = 60
 SEEDS = range(20)
+DRAWDOWN_STOP = 0.05  # halts most of the seeds part way, some of them with a position open
+COSTS = {"stop_loss": 0.02, "fee_bps": 5, "slippage_bps": 3}
 SETTINGS = [
     Settings(fill="signal_close"),
-    Settings(fill="signal_close", stop_loss=0.02, fee_bps=5, slippage_bps=3),
+    Settings(fill="signal_close", **COSTS),
+    Settings(fill="signal_close", drawdown_stop=DRAWDOWN_STOP, **COSTS),
     Settings(fill="next_open"),
-    Settings(fill="next_open", stop_loss=0.02, fee_bps=5, slippage_bps=3),
+    Settings(fill="next_open", **COSTS),
+    Settings(fill="next_open", drawdown_stop=DRAWDOWN_STOP, **COSTS),
 ]
-IDS = ["signal_close", "signal_close-costs", "next_open", "next_open-costs"]
+IDS = [
+    "signal_close",
+    "signal_close-costs",
+    "signal_close-drawdown",
+    "next_open",
+    "next_open-costs",
+    "next_open-drawdown",
+]
+DRAWDOWN = [settings for settings in SETTINGS if settings.drawdown_stop is not None]
 
 
 def random_candles(rng: random.Random) -> pl.DataFrame:
@@ -63,7 +76,7 @@ def test_the_random_candles_reach_every_exit_reason() -> None:
         for settings in SETTINGS:
             reasons |= set(backtest(frame, settings).trades["exit_reason"])
 
-    assert reasons == {"signal", "stop", "gap", "end"}
+    assert reasons == {"signal", "stop", "gap", "end", "drawdown"}
 
 
 @pytest.mark.parametrize("settings", SETTINGS, ids=IDS)
@@ -194,3 +207,57 @@ def test_fees_and_slippage_cost_add_up_to_the_cost_of_each_trade(seed: int) -> N
         assert trade["fees"] + trade["slippage_cost"] == pytest.approx(
             without_costs - trade["return"], rel=1e-9
         )
+
+
+def halt_row(equity: list[float], drawdown_stop: float) -> int | None:
+    """The first row whose equity is ``drawdown_stop`` or more below the peak so far, the
+    starting 1.0 included; None when there is none."""
+    peak = 1.0
+    for row, value in enumerate(equity):
+        peak = max(peak, value)
+        if value <= peak * (1 - drawdown_stop):
+            return row
+    return None
+
+
+@pytest.mark.parametrize("settings", DRAWDOWN, ids=["signal_close", "next_open"])
+@pytest.mark.parametrize("seed", SEEDS)
+def test_a_drawdown_stop_halts_at_the_first_equity_at_or_below_the_level_and_not_before(
+    seed: int, settings: Settings
+) -> None:
+    frame = random_candles(random.Random(seed))
+    ts, closes = frame["ts"].to_list(), frame["close"].to_list()
+    without = backtest(frame, settings.model_copy(update={"drawdown_stop": None}))
+    halt = halt_row(without.series["equity"].to_list(), DRAWDOWN_STOP)
+
+    result = backtest(frame, settings)
+
+    if halt is None:
+        assert result.trades.equals(without.trades)
+        assert result.series.equals(without.series)
+        return
+    # Up to the halt nothing differs: the series before it, the trades closed before it and
+    # what was known of the trades opened before it; on the halt row at most an open is left out.
+    assert result.series.head(halt).equals(without.series.head(halt))
+    assert closed_by(result, ts[halt - 1]) == closed_by(without, ts[halt - 1])
+    assert entries_by(result, ts[halt - 1]) == entries_by(without, ts[halt - 1])
+    assert set(entries_by(result, ts[halt])) <= set(entries_by(without, ts[halt]))
+    # On the halt row, the position still open after its fills leaves at its close.
+    still_open = len(entries_by(result, ts[halt])) - len(  # opened by then, not closed by then
+        [trade for trade in closed_by(result, ts[halt]) if trade["exit_reason"] != "drawdown"]
+    )
+    drawdowns = result.trades.filter(pl.col("exit_reason") == "drawdown")
+    assert drawdowns.height == still_open <= 1
+    assert (result.trades["close_ts"] <= ts[halt]).all()
+    if still_open:
+        last = result.trades.row(-1, named=True)
+        assert last["exit_reason"] == "drawdown"
+        assert last["close_ts"] == ts[halt]
+        slippage = settings.slippage_bps * 1e-4
+        assert last["close_price"] == closes[halt] * (1 - last["side"] * slippage)
+    # From the halt row on the run is flat and the equity is the capital, which stays.
+    after = result.series.slice(halt)
+    assert set(after["position"]) == {0.0}
+    assert set(after["equity"]) == {result.series["equity"][halt]}
+    assert result.series["equity"][halt] > 0
+    assert halt_row(result.series["equity"].to_list(), DRAWDOWN_STOP) == halt

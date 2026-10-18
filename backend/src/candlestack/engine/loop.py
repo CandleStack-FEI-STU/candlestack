@@ -21,13 +21,21 @@ The rules, the same for both fills:
    ``side * (price_exit / price_entry - exit / entry)``.
 6. A change on the last row opens nothing (with ``signal_close`` it may still close); a
    ``next_open`` order from the row before still fills at the last open, and the stop is
-   checked on the last row. A position still open is closed at the last close (``end``).
+   checked on the last row. A position still open is closed at the last close (``end``),
+   unless rule 9 closes it on that row.
 7. Capital starts at 1.0 and compounds. A candle's equity is the capital after all its fills
    with the open position marked at its close (its exit costs not paid yet); its position is
    the side held after them, so the last row is flat.
 8. Ruin: a position whose equity, marked at a candle's close, is at or below 0 closes at that
    close (``ruin``), and a trade whose return is at or below -1 leaves nothing. Either way the
    capital becomes 0, no position opens again and every later equity is 0.
+9. Drawdown stop: the peak is the highest equity recorded so far, at least the starting 1.0.
+   A candle whose equity, after its fills, its mark and the ruin check, is at or below
+   ``peak * (1 - drawdown_stop)`` halts the run: a position still open closes at that close
+   (``drawdown``), with its exit costs, and nothing opens again, a ``next_open`` order already
+   decided included. Every later row is flat and its equity is the capital, which stays. With
+   ``signal_close``, a position does not open at the close of a candle whose capital, after a
+   flip's closing leg or a stop, is already at or below the level; the candle halts flat.
 """
 
 from candlestack.engine.inputs import Candles
@@ -48,10 +56,12 @@ class Loop:
         self.candles = candles
         self.next_open = settings.fill == "next_open"
         self.stop_loss = settings.stop_loss
+        self.drawdown_stop = settings.drawdown_stop
         self.fee = settings.fee_bps * _BPS
         self.slippage = settings.slippage_bps * _BPS
         self.capital = 1.0  # after the closed trades
-        self.ruined = False  # rule 8: the capital is 0 and nothing opens again
+        self.peak = 1.0  # rule 9: the highest equity recorded so far
+        self.halted = False  # rules 8 and 9: nothing opens again and every later row is flat
         self.side = 0
         self.signal_row = 0
         self.entry_row = 0
@@ -69,9 +79,10 @@ class Loop:
         # Starting from the first signal makes the first row a warm-up: it cannot be a change.
         previous = candles.signals[0] if candles.signals else 0
         for row, signal in enumerate(candles.signals):
-            if self.ruined:
+            if self.halted:
+                # Flat, a pending order never filled, the equity the capital: 0 after a ruin.
                 self.position.append(0.0)
-                self.equity.append(0.0)
+                self.equity.append(self.capital)
                 continue
             if pending is not None:
                 self._fill(row, row - 1, candles.opens[row], pending)
@@ -82,6 +93,8 @@ class Loop:
                 pending = self._decide(row, signal, last)
             previous = signal
             self._mark(row)
+            if not self.halted:  # after a ruin there is nothing left to check
+                self._check_drawdown(row)
         if self.side:
             self._close(last, candles.closes[last], "end")
             self.position[last] = 0.0
@@ -102,7 +115,10 @@ class Loop:
         flat, then opens one on the signal's side unless the close ruined the capital."""
         if self.side and self.side != signal:
             self._close(row, price, "signal")
-        if signal and not self.side and may_open and not self.ruined:
+        # An open at a close whose capital is already at the drawdown level would close there.
+        if not self.next_open and self._drawn_down(self.capital):
+            return
+        if signal and not self.side and may_open and not self.halted:
             self._open(row, signal_row, price, signal)
 
     def _check_stop(self, row: int, level: float) -> None:
@@ -115,6 +131,23 @@ class Loop:
     def _beyond(self, price: float, level: float) -> bool:
         """Whether ``price`` reached the stop ``level`` of the open position; touching counts."""
         return price <= level if self.side > 0 else price >= level
+
+    def _drawn_down(self, equity: float) -> bool:
+        """Whether ``equity`` is ``drawdown_stop`` or more below the peak; off without one."""
+        stop = self.drawdown_stop
+        return stop is not None and equity <= self.peak * (1.0 - stop)
+
+    def _check_drawdown(self, row: int) -> None:
+        """Halts the run once the equity recorded for ``row`` is drawn down, closing a
+        position still open at the row's close (``drawdown``)."""
+        equity = self.equity[row]
+        self.peak = max(self.peak, equity)
+        if self._drawn_down(equity):
+            if self.side:
+                self._close(row, self.candles.closes[row], "drawdown")
+                self.position[row] = 0.0
+                self.equity[row] = self.capital
+            self.halted = True
 
     def _open(self, row: int, signal_row: int, price: float, side: int) -> None:
         self.side = side
@@ -158,7 +191,7 @@ class Loop:
 
     def _ruin(self) -> None:
         self.capital = 0.0
-        self.ruined = True
+        self.halted = True
 
     def _mark(self, row: int) -> None:
         equity = self.capital

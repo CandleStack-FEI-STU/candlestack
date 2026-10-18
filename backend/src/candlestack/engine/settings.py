@@ -16,6 +16,8 @@ class Settings(BaseModel):
       see the same close.
     - ``stop_loss``: the loss that closes a position, as a fraction of its entry price (0.05 is
       5%); ``None`` for no stop.
+    - ``drawdown_stop``: the fall of the equity from its highest level so far that halts the
+      run, as a fraction of that level (0.2 is 20%); ``None`` for no drawdown stop.
     - ``fee_bps``: the fee of each leg, in basis points of its notional.
     - ``slippage_bps``: how far each fill lands from its price, against the trade, in basis
       points.
@@ -25,5 +27,6 @@ class Settings(BaseModel):
 
     fill: Fill = "next_open"
     stop_loss: Annotated[float, Field(gt=0, lt=1)] | None = None
+    drawdown_stop: Annotated[float, Field(gt=0, lt=1)] | None = None
     fee_bps: float = Field(default=0.0, ge=0, allow_inf_nan=False)
     slippage_bps: float = Field(default=0.0, ge=0, allow_inf_nan=False)
