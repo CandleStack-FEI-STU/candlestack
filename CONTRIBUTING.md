@@ -32,6 +32,13 @@ file adds what is specific to this one.
   the commit: review the changes, `git add` them and commit again. Run them on every file
   with `uvx pre-commit run --all-files`; the `Pre-commit` job in CI does the same.
 
+## License of contributions
+
+The project is licensed under the PolyForm Noncommercial License 1.0.0 (`LICENSE`), and Arsen
+Labovich grants commercial licenses for it. By opening a pull request you license your
+contribution under the MIT License (`LICENSE-MIT`), so it can ship under both. You keep the
+copyright of what you wrote.
+
 ## Merging
 
 What the ruleset of `main` enforces:

@@ -81,3 +81,14 @@ account there and put its publishable key (`pk_...`) into `.env` as `LOGO_DEV_KE
 More: [architecture](docs/architecture.md), [market data](docs/data.md),
 [backtest engine](docs/engine.md), [frontend](frontend/README.md), [contributing](CONTRIBUTING.md),
 [infrastructure](infra/README.md).
+
+## License
+
+CandleStack is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Anyone may
+use, change and share it for a noncommercial purpose, such as personal use, study, research or
+teaching. Commercial use needs a separate license from Arsen Labovich
+(arsen.labovich@gmail.com).
+
+The versions published before October 2026 stay available under the MIT License, and so do the
+parts written by other contributors ([LICENSE-MIT](LICENSE-MIT)). The market data has terms of
+its own: Alpaca's free plan is for personal, noncommercial use whatever this license says.
