@@ -23,7 +23,7 @@ post() {
 post releases/ "$(jq -n --arg version "$version" --arg commit "$GITHUB_SHA" '{
   version: $version,
   projects: ["backend"],
-  refs: [{repository: "CandleStack-FEI-STU/candlestack", commit: $commit}]
+  refs: [{repository: "candlestack-tech/candlestack", commit: $commit}]
 }')"
 post "releases/$(jq -rn --arg version "$version" '$version | @uri')/deploys/" \
   "$(jq -n --arg environment "$environment" '{environment: $environment}')"

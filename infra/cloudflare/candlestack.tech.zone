@@ -47,7 +47,8 @@ app.candlestack.tech.	1	IN	CNAME	8cbd2a1f-f294-4534-bb63-f491bed7a51a.cfargotunn
 *.candlestack.tech.	1	IN	CNAME	8cbd2a1f-f294-4534-bb63-f491bed7a51a.cfargotunnel.com. ; cf_tags=cf-proxied:true
 ssh.candlestack.tech.	1	IN	CNAME	8cbd2a1f-f294-4534-bb63-f491bed7a51a.cfargotunnel.com. ; cf_tags=cf-proxied:true
 stage.candlestack.tech.	1	IN	CNAME	8cbd2a1f-f294-4534-bb63-f491bed7a51a.cfargotunnel.com. ; cf_tags=cf-proxied:true
-www.candlestack.tech.	1	IN	CNAME	candlestack-fei-stu.github.io. ; cf_tags=cf-proxied:false
+www.candlestack.tech.	1	IN	CNAME	candlestack-tech.github.io. ; cf_tags=cf-proxied:false
 
 ;; TXT Records
-_github-pages-challenge-candlestack-fei-stu.candlestack.tech.	1	IN	TXT	"4b039f2489a8c64a5b247e5c01f552"
+_gh-candlestack-tech-o.candlestack.tech.	1	IN	TXT	"b42ddfe632"
+_github-pages-challenge-candlestack-tech.candlestack.tech.	1	IN	TXT	"4b039f2489a8c64a5b247e5c01f552"

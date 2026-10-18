@@ -24,8 +24,8 @@ compresses the responses (zstd or gzip) on the way to Cloudflare.
 
 | Container | Image | Reached as | Memory limit |
 | --- | --- | --- | --- |
-| `backend` | `ghcr.io/candlestack-fei-stu/candlestack/backend` (built from `backend/`) | `<env>-backend:8000` on the edge network (below) | `384m` |
-| `frontend` | `ghcr.io/candlestack-fei-stu/candlestack/frontend` (built from `frontend/`: the app) | `<env>-frontend:8080` on the edge network (below) | `32m` |
+| `backend` | `ghcr.io/candlestack-tech/candlestack/backend` (built from `backend/`) | `<env>-backend:8000` on the edge network (below) | `384m` |
+| `frontend` | `ghcr.io/candlestack-tech/candlestack/frontend` (built from `frontend/`: the app) | `<env>-frontend:8080` on the edge network (below) | `32m` |
 | `redis` | `redis:8-alpine`, pinned by digest | `redis:6379` on the environment's own network only | see below |
 | `postgres` | `postgres:18-alpine`, pinned by digest | `postgres:5432` on the environment's own network only | `128m` |
 | `migrate` | the backend image, `alembic upgrade head` | runs once per deploy, before the backend starts | `160m` |
@@ -151,7 +151,7 @@ running on the VM (Redis, the edge Caddy, the agent's Docker socket proxy) are p
 compose files, and Dependabot proposes their updates; `edge` recreates the edge Caddy when its
 version changes.
 
-stage and https://ops.candlestack.tech (the team status page) are behind Cloudflare Access: members of the `CandleStack-FEI-STU` GitHub organization sign in with GitHub. prod is
+stage and https://ops.candlestack.tech (the team status page) are behind Cloudflare Access: members of the `candlestack-tech` GitHub organization sign in with GitHub. prod is
 public. Any new subdomain is team-only by default (Access application `*.candlestack.tech`).
 
 ### Test backtests
@@ -175,7 +175,7 @@ python -m candlestack.experiments.seed --email <email>` from the repository root
 ## Monitoring
 
 https://ops.candlestack.tech is a Cloudflare Worker in its own repository,
-[CandleStack-FEI-STU/ops](https://github.com/CandleStack-FEI-STU/ops), so it keeps working and
+[candlestack-tech/ops](https://github.com/candlestack-tech/ops), so it keeps working and
 records the outage when this VM is down. Every minute it checks prod and stage from outside and
 reads `https://vm.candlestack.tech/api/snapshot`, served by the server agent (`agent/`): host
 CPU, memory and disk, and the containers. The agent keeps no history

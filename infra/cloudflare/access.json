@@ -81,7 +81,7 @@
               "github-organization": {
                 "id": "332916408",
                 "identity_provider_id": "5990031a-0852-447e-a07f-f9bd774d24eb",
-                "name": "CandleStack-FEI-STU"
+                "name": "candlestack-tech"
               }
             }
           ],
@@ -278,7 +278,7 @@
           "github-organization": {
             "id": "332916408",
             "identity_provider_id": "5990031a-0852-447e-a07f-f9bd774d24eb",
-            "name": "CandleStack-FEI-STU"
+            "name": "candlestack-tech"
           }
         }
       ],

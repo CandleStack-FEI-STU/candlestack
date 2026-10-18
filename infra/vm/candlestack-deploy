@@ -24,7 +24,9 @@ export LC_ALL=C # byte-wise character ranges in the input checks below
 scope=${1:?scope}
 read -r action env version backend frontend _ <<<"${SSH_ORIGINAL_COMMAND:-}"
 repo=/opt/candlestack
-image_re='^ghcr\.io/candlestack-fei-stu/candlestack/[a-z0-9._-]+@sha256:[0-9a-f]{64}$'
+# Both names of the organization while it is renamed to candlestack-tech: the images built
+# before the rename keep the old path (until the old name is dropped here).
+image_re='^ghcr\.io/(candlestack-fei-stu|candlestack-tech)/candlestack/[a-z0-9._-]+@sha256:[0-9a-f]{64}$'
 compose_file=$repo/infra/env/compose.yaml
 # One line "<version> <backend@digest> <frontend@digest>" per "up stage", in the deploy user's
 # home: outside the checkout, which "edge" resets.

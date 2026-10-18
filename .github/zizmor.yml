@@ -4,5 +4,5 @@ rules:
     config:
       policies:
         # The organization's shared workflows are called at @main on purpose.
-        CandleStack-FEI-STU/*: ref-pin
+        candlestack-tech/*: ref-pin
         "*": hash-pin

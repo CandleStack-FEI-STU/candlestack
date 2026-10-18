@@ -17,6 +17,6 @@ concurrency:
 
 jobs:
   pr-hygiene:
-    uses: CandleStack-FEI-STU/.github/.github/workflows/pr-hygiene.yml@main
+    uses: candlestack-tech/.github/.github/workflows/pr-hygiene.yml@main
     permissions:
       pull-requests: read

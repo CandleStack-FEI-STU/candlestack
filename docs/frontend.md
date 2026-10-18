@@ -1,6 +1,6 @@
 # Frontend stack
 
-Tools for the real frontend ([#110](https://github.com/CandleStack-FEI-STU/candlestack/issues/110)).
+Tools for the real frontend ([#110](https://github.com/candlestack-tech/candlestack/issues/110)).
 Limits that shaped the choice:
 
 - prod serves the frontend as static files (Caddy), so the app must build to HTML, JS and CSS;

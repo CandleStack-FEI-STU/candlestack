@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       name:
-        description: Image name under ghcr.io/candlestack-fei-stu/candlestack/
+        description: Image name under ghcr.io/candlestack-tech/candlestack/
         required: true
         type: string
       context:
@@ -36,7 +36,7 @@ jobs:
     outputs:
       image: ${{ steps.ref.outputs.image }}
     env:
-      IMAGE: ghcr.io/candlestack-fei-stu/candlestack/${{ inputs.name }}
+      IMAGE: ghcr.io/candlestack-tech/candlestack/${{ inputs.name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
