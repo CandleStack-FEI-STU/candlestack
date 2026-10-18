@@ -298,6 +298,7 @@ The worked example with `fill="next_open"` and 10 bps of slippage as well
 | `align(candles, predictions, *, model=None, strict=True)` | the candles from the model's first to its last prediction, each with its `prediction`, sorted by `ts`, and an `AlignReport` |
 | `threshold(predictions, limit)` | the signal of each prediction `p`: 1.0 if `p > 0` and `p >= limit`, -1.0 if `p < 0` and `p <= -limit`, else 0.0 |
 | `long_only(signal)` | the signal without shorts: a negative value becomes 0.0, the rest stays |
+| `min_hold(signal, candles)` | the signal with each new position kept for at least `candles` rows: a change of the output to a non-zero value (an entry or a flip) is held through the next `candles - 1` rows whatever the input says, then the input is followed again. A change to 0.0 is not held. `candles` is an int of 1 or more (1 leaves the signal as it is) |
 
 `align` in detail:
 
@@ -328,6 +329,21 @@ not numeric; `threshold` also on a negative or NaN `limit`. For example, with a 
 | --- | --- | --- | --- | --- | --- |
 | `threshold` | 0.0 | 1.0 | 0.0 | -1.0 | 1.0 |
 | `long_only` of that | 0.0 | 1.0 | 0.0 | 0.0 | 1.0 |
+
+`min_hold` is a post-processing step on the signal, before the engine: once its output changes
+to a non-zero value at row r (an entry from flat, or a flip), it stays there through row
+r + candles - 1 whatever the input says, and from row r + candles on it follows the input again,
+where a change may start a new hold. A change to flat is never held, and a non-zero first row
+starts a hold. It takes and returns a Float64 Series like `long_only` (same name, plain 0.0,
+same `ValueError` on a bad value), and is causal: the output up to a row depends only on the
+input up to it (`backend/tests/unit/signals/test_holding.py` checks it on random signals). The
+engine does not know about the hold: its stop loss still closes a held position early (risk
+before holding), and after such a stop it opens again only on the next change of the signal
+(rule 4), not because the held value stays. For example, with 3 candles:
+
+| Input | 1.0 | 0.0 | -1.0 | -1.0 | 1.0 | 0.0 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `min_hold` of that | 1.0 | 1.0 | 1.0 | -1.0 | -1.0 | -1.0 |
 
 One run from code, the steps the command takes:
 
