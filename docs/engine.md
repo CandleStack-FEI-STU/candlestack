@@ -298,6 +298,7 @@ The worked example with `fill="next_open"` and 10 bps of slippage as well
 | `align(candles, predictions, *, model=None, strict=True)` | the candles from the model's first to its last prediction, each with its `prediction`, sorted by `ts`, and an `AlignReport` |
 | `threshold(predictions, limit)` | the signal of each prediction `p`: 1.0 if `p > 0` and `p >= limit`, -1.0 if `p < 0` and `p <= -limit`, else 0.0 |
 | `long_only(signal)` | the signal without shorts: a negative value becomes 0.0, the rest stays |
+| `min_hold(signal, candles)` | the signal with each new position (a change to a non-zero value, after the first row) kept for at least `candles` rows; 1 leaves it as it is |
 
 `align` in detail:
 
@@ -328,6 +329,25 @@ not numeric; `threshold` also on a negative or NaN `limit`. For example, with a 
 | --- | --- | --- | --- | --- | --- |
 | `threshold` | 0.0 | 1.0 | 0.0 | -1.0 | 1.0 |
 | `long_only` of that | 0.0 | 1.0 | 0.0 | 0.0 | 1.0 |
+
+`min_hold` is a post-processing step on the signal, before the engine. Once its output changes
+to a non-zero value at row r (an entry from flat, or a flip), it stays there through row
+r + candles - 1: during the hold the input's changes are ignored, a flat one like any other.
+From row r + candles on it follows the input again, where a change may start a new hold. Going
+flat starts no hold, and neither does the first row: it only sets the starting value (the
+output of row 0 is the input), as the engine's warm-up row (rule 1) opens nothing there either.
+It takes and returns a Float64 Series like `long_only` (same name, plain 0.0, same `ValueError`
+on a bad value), raises `ValueError` when `candles` is not an int of 1 or more, and is causal:
+the output up to a row depends only on the input up to it
+(`backend/tests/unit/signals/test_holding.py` checks it on random signals, and that the output
+differs from the input only inside a hold). The engine does not know about the hold: its stop
+loss still closes a held position early (risk before holding). The hold ignores the input after
+that stop as well, so the run stays flat at least until the hold ends, and rule 4 then opens a
+position only on the next change of the signal. For example, with 3 candles:
+
+| Input | 0.0 | 1.0 | 0.0 | -1.0 | -1.0 | 1.0 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `min_hold` of that | 0.0 | 1.0 | 1.0 | 1.0 | -1.0 | -1.0 |
 
 One run from code, the steps the command takes:
 

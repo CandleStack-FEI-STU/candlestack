@@ -5,6 +5,7 @@ from the submodules.
 """
 
 from candlestack.signals.alignment import AlignReport, align, relabel
+from candlestack.signals.holding import min_hold
 from candlestack.signals.rules import long_only, threshold
 
-__all__ = ["AlignReport", "align", "long_only", "relabel", "threshold"]
+__all__ = ["AlignReport", "align", "long_only", "min_hold", "relabel", "threshold"]
