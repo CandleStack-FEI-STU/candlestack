@@ -105,8 +105,8 @@ SETTINGS = [
     Settings(fill="next_open", stop_loss=0.05, fee_bps=5, slippage_bps=2),
 ]
 IDS = ["signal_close", "next_open"]
-# The same two runs with a 2% drawdown stop: it closes the long of row 12 on row 14, before the
-# stop would on row 15, and the run stays flat from there.
+# The same two runs with a 2% drawdown stop: it closes the long decided on row 12 on row 14,
+# before the stop would on row 15, and the run stays flat from there.
 DRAWDOWN_SETTINGS = [settings.model_copy(update={"drawdown_stop": 0.02}) for settings in SETTINGS]
 
 

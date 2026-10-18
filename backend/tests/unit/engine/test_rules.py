@@ -688,3 +688,55 @@ def test_a_candle_that_ruins_the_run_is_a_ruin_not_a_drawdown() -> None:
         position=[0, 0, -1, 0, 0, 0],
         equity=[1, 1, 0.5, 0, 0, 0],
     )
+
+
+def test_a_flip_at_a_close_already_at_the_drawdown_level_only_closes_and_halts_flat() -> None:
+    frame = candles(
+        (100, 100, 100, 100, 0),
+        (100, 100, 100, 100, 1),  # long at 100 x 1.0005 = 100.05 (fee 0.001 of the capital)
+        (100, 101, 74, 75, -1),  # flip at the close, 75: out at 74.9625; the capital is below
+        (75, 76, 60, 60, -1),  # 0.8, so no short opens and the run halts flat on row 2
+        (60, 61, 59, 59, -1),
+    )
+    growth = 74.9625 / 100.05
+    fees = 0.001 * (1 + growth)
+    result = growth - 1 - fees
+
+    check(
+        backtest(
+            frame, CLOSE.model_copy(update={"drawdown_stop": 0.2, "fee_bps": 10, "slippage_bps": 5})
+        ),
+        [
+            trade(
+                1,
+                1,
+                2,
+                1,
+                100.05,
+                74.9625,
+                "signal",
+                result,
+                fees=fees,
+                slippage_cost=0.75 - growth,
+            )
+        ],
+        position=[0, 1, 0, 0, 0],
+        equity=[1, 100 / 100.05 - 0.001, 1 + result, 1 + result, 1 + result],
+    )
+
+
+@pytest.mark.parametrize("settings", [CLOSE, NEXT], ids=["signal_close", "next_open"])
+def test_a_drawdown_on_the_last_row_closes_by_drawdown_not_end(settings: Settings) -> None:
+    frame = candles(
+        (100, 100, 100, 100, 0),
+        (100, 100, 100, 100, 1),  # long at 100: at the close, or at the next open
+        (100, 101, 74, 75, 1),  # the last row: 0.75 is 20% or more below the peak
+    )
+    open_row = 1 if settings is CLOSE else 2
+
+    check(
+        backtest(frame, settings.model_copy(update={"drawdown_stop": 0.2})),
+        [trade(1, open_row, 2, 1, 100, 75, "drawdown", -0.25)],
+        position=[0, 1 if settings is CLOSE else 0, 0],
+        equity=[1, 1, 0.75],
+    )

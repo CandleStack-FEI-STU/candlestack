@@ -47,9 +47,8 @@ Not modelled in this version:
 
 - position sizing: one position at a time, always the whole capital; a fractional signal is
   refused ("position sizing is not supported yet");
-- leverage, margin and liquidation: the limits are ruin (rule 8), once a position or a trade
-  has lost the whole capital, the capital is 0 and the run stays flat, and the drawdown stop
-  (rule 9), off by default;
+- leverage, margin and liquidation: the limits are ruin (rule 8: once the whole capital is
+  lost it is 0 and the run stays flat) and the drawdown stop (rule 9, off by default);
 - volume and liquidity: every order fills in full at its price; `volume` is ignored;
 - borrowing costs, financing, dividends and several instruments in one run.
 
@@ -173,7 +172,7 @@ The rules, the same for both fills:
 6. **The last row.** A change on the last row opens nothing: with `signal_close` it may still
    close a position (reason `signal`), with `next_open` its order is never filled. A position
    still open after the last row is closed at the last close (reason `end`), with its exit fee
-   and slippage. A `next_open` order from the row before the last still fills at the last open;
+   and slippage, unless rule 9 closes it on that row. A `next_open` order from the row before the last still fills at the last open;
    its stop is checked on the last row like on any entry candle (only a touch counts there), so
    it can still exit by `stop`, and otherwise it ends at the last close.
 7. **Equity.** Capital starts at 1.0, is always fully invested and compounds: after each trade
@@ -207,6 +206,9 @@ The rules, the same for both fills:
    - After the halt nothing opens again: a `next_open` order already decided is dropped, later
      changes of the signal do nothing, every later row is flat and its `equity` stays the
      capital (not 0, unlike a ruin).
+   - With `signal_close`, a position does not open at the close of a candle whose capital,
+     after a flip's closing leg or a stop, is already at or below the level; the candle halts
+     flat. It would only be closed again at the same close, paying both legs for nothing.
    - Ruin comes first: a candle that ruins the run (rule 8) is a `ruin`, not a `drawdown`.
 
 | `exit_reason` | When | Exit price before slippage |

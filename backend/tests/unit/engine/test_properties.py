@@ -237,13 +237,14 @@ def test_a_drawdown_stop_halts_at_the_first_equity_at_or_below_the_level_and_not
         assert result.series.equals(without.series)
         return
     # Up to the halt nothing differs: the series before it, the trades closed before it and
-    # what was known of the trades opened by it.
+    # what was known of the trades opened before it; on the halt row at most an open is left out.
     assert result.series.head(halt).equals(without.series.head(halt))
     assert closed_by(result, ts[halt - 1]) == closed_by(without, ts[halt - 1])
-    assert entries_by(result, ts[halt]) == entries_by(without, ts[halt])
+    assert entries_by(result, ts[halt - 1]) == entries_by(without, ts[halt - 1])
+    assert set(entries_by(result, ts[halt])) <= set(entries_by(without, ts[halt]))
     # On the halt row, the position still open after its fills leaves at its close.
-    still_open = len(entries_by(without, ts[halt])) - len(
-        [trade for trade in closed_by(without, ts[halt]) if trade["exit_reason"] != "end"]
+    still_open = len(entries_by(result, ts[halt])) - len(  # opened by then, not closed by then
+        [trade for trade in closed_by(result, ts[halt]) if trade["exit_reason"] != "drawdown"]
     )
     drawdowns = result.trades.filter(pl.col("exit_reason") == "drawdown")
     assert drawdowns.height == still_open <= 1
@@ -258,4 +259,5 @@ def test_a_drawdown_stop_halts_at_the_first_equity_at_or_below_the_level_and_not
     after = result.series.slice(halt)
     assert set(after["position"]) == {0.0}
     assert set(after["equity"]) == {result.series["equity"][halt]}
-    assert 0 < result.series["equity"][halt] <= without.series["equity"][halt]
+    assert result.series["equity"][halt] > 0
+    assert halt_row(result.series["equity"].to_list(), DRAWDOWN_STOP) == halt
