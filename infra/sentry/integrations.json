@@ -4,7 +4,7 @@
       {
         "defaultBranch": "main",
         "project": "backend",
-        "repoName": "CandleStack-FEI-STU/candlestack",
+        "repoName": "candlestack-tech/candlestack",
         "sourceRoot": "backend/src/candlestack/",
         "stackRoot": "candlestack/"
       }
@@ -21,7 +21,7 @@
     "name": "CandleStack-FEI-STU",
     "provider": "github",
     "repositories": [
-      "CandleStack-FEI-STU/candlestack"
+      "candlestack-tech/candlestack"
     ],
     "status": "active"
   }
