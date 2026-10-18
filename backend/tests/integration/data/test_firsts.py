@@ -190,26 +190,48 @@ async def test_a_source_that_cannot_be_asked_pauses_its_lookups(
     assert firsts(await crypto_page(service))["BTCUSDT"] == 1502942400
 
 
-async def test_invalid_data_is_logged_and_does_not_pause(
+@pytest.mark.parametrize(
+    ("answer", "warning"),
+    [
+        (httpx.Response(200, content=b"not json"), "Binance sent"),
+        (httpx.Response(400, json={"code": -1121}), "Binance rejected our request with HTTP 400"),
+    ],
+    ids=["invalid data", "refused"],
+)
+async def test_an_instrument_its_source_fails_on_pauses_only_its_lookups(
     service: DataService,
     upstream,
+    redis: Redis,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
+    answer: httpx.Response,
+    warning: str,
 ):
     monkeypatch.setattr(firsts_module, "WARM_PER_PAGE", 1)
     upstream.exchange_info()
     klines = upstream.router.get(
         f"{upstream.BINANCE_API}/api/v3/klines", params={"startTime": "0"}
-    ).respond(200, content=b"not json")
+    ).mock(return_value=answer)
 
     with caplog.at_level(logging.WARNING):
         for _ in range(2):
             await crypto_page(service)
             await service._firsts.wait()
 
-    # The second lookup got the error Redis keeps for a few seconds, without asking Binance.
-    assert len(klines.calls) == 1
-    assert caplog.text.count("First candle of crypto:BTCUSDT not looked up: Binance sent") == 2
+    # The second page skipped BTCUSDT and looked up the next pair: the market goes on.
+    assert asked(klines) == ["BTCUSDT", "ETHBTC"]
+    assert caplog.text.count(f"First candle of crypto:BTCUSDT not looked up: {warning}") == 1
+    assert caplog.text.count(f"First candle of crypto:ETHBTC not looked up: {warning}") == 1
+
+    # An hour later BTCUSDT is asked again; ETHBTC's pause is over too and is dropped.
+    later = time.monotonic() + firsts_module.INSTRUMENT_PAUSE_SECONDS + 1
+    monkeypatch.setattr(firsts_module, "_monotonic", lambda: later)
+    await redis.delete("data:fail:v1:first:crypto:BTCUSDT")
+    await crypto_page(service)
+    await service._firsts.wait()
+
+    assert asked(klines) == ["BTCUSDT", "ETHBTC", "BTCUSDT"]
+    assert list(service._firsts._instrument_paused_until) == [BTC]
 
 
 async def test_an_unexpected_failure_is_for_a_developer(

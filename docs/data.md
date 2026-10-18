@@ -123,24 +123,25 @@ Values in the examples of this document are illustrative.
 ### First candles in the list
 
 Each item of the list also carries `available_from`, the open time of its first candle in UTC
-epoch seconds, as in the instrument detail (a later addition for the list's "Data since"
-column, #199; a client that does not know the field ignores it). It is `null` while the backend does not know it yet, and for an instrument without any
-candle yet. Finding it costs one source request per instrument (Binance `klines`, weight 2;
-one Alpaca request), so the list never asks a source for it while it answers:
+epoch seconds, as in the instrument detail. It is `null` while the backend does not know it
+yet, and for an instrument without any candle yet. Finding it costs one source request per
+instrument (Binance `klines`, weight 2; one Alpaca request), so the list never asks a source for
+it while it answers:
 
 - The first candles of the page come from Redis (`data:vN:first:<market>:<symbol>`, the keys the
   instrument detail fills) in one `MGET`.
 - Up to 5 instruments of the page that Redis does not know yet, its first rows first, are
-  looked up in the background after the answer, so a later request has them; one already
-  being looked up by this process is skipped, and the single-flight lock stops two processes
-  from asking for the same one. A process runs at most 10 such lookups at once, and all
+  looked up in the background without delaying the answer, so a later request has them; one
+  already being looked up by this process is skipped, and the single-flight lock stops two
+  processes from asking for the same one. A process runs at most 10 such lookups at once, and all
   processes together at most 60 a minute for crypto and 6 a minute for stocks
   (`data:rl:first-warm:<market>`, a tenth of the smallest `ALPACA_RATE_LIMIT`); each also
   counts against the source's own budget, so the charts keep the rest.
 - When a lookup finds the source unavailable (down, our budget spent, no Alpaca keys), the
   lookups of that market stop for a minute (or the `Retry-After`, when longer), with one
-  warning; invalid data from the source is a warning too. Without Redis nothing is looked up,
-  as nothing could be kept.
+  warning. When the source refuses one instrument (HTTP 4xx, e.g. a pair delisted since the
+  catalog was read) or sends invalid data for it, only that instrument is not looked up for an
+  hour, with one warning. Without Redis nothing is looked up, as nothing could be kept.
 
 ## Stats
 

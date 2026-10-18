@@ -32,13 +32,18 @@ FIRST_NONE_TTL = 3600
 WARM_PER_PAGE = 5
 # Lookups in the background of one process at once, at most; the others wait for a later page.
 WARM_RUNNING_MAX = 10
-# Lookups in the background per minute and market in all processes: Binance 60 (120 of its 6000
-# weight), Alpaca 6 (a tenth of the smallest ALPACA_RATE_LIMIT), so the charts keep the rest.
+# Lookups in the background per minute and market in all processes: Binance 60 (weight 120 of
+# the default BINANCE_WEIGHT_LIMIT of 1000), Alpaca 6 (a tenth of the smallest
+# ALPACA_RATE_LIMIT), so the charts keep the rest.
 WARM_RATE_KEY = "data:rl:first-warm"
 WARM_PER_MINUTE = {Market.CRYPTO: 60, Market.STOCK: 6}
 # How long a market's lookups in the background stop after its source could not be asked (down,
 # its budget spent, no keys): one warning per pause instead of one per page.
 WARM_PAUSE_SECONDS = 60
+# How long one instrument is not looked up in the background after its source refused it (a pair
+# delisted since the catalog was read) or sent invalid data for it: its own problem, so the other
+# instruments of its market go on, and one warning an hour instead of one per page.
+INSTRUMENT_PAUSE_SECONDS = 3600
 
 # Patched by tests to move the clock.
 _monotonic = time.monotonic
@@ -57,6 +62,7 @@ class Firsts:
         self._limiter = limiter
         self._running: dict[InstrumentId, asyncio.Task[None]] = {}
         self._paused_until: dict[Market, float] = {}
+        self._instrument_paused_until: dict[InstrumentId, float] = {}
 
     async def first(self, instrument: Instrument) -> int | None:
         """Open time of the instrument's first candle, ``None`` when it has none; from Redis or
@@ -88,8 +94,10 @@ class Firsts:
         for instrument in missing:
             if started == WARM_PER_PAGE or len(self._running) >= WARM_RUNNING_MAX:
                 return
-            if instrument.id in self._running or now < self._paused_until.get(
-                instrument.market, 0.0
+            if (
+                instrument.id in self._running
+                or now < self._paused_until.get(instrument.market, 0.0)
+                or now < self._instrument_paused_until.get(instrument.id, 0.0)
             ):
                 continue
             task = asyncio.create_task(self._lookup(instrument))
@@ -105,14 +113,26 @@ class Firsts:
                 return
             await self.first(instrument)
         except SourceUnavailable as exc:
-            self._paused_until[market] = _monotonic() + max(
-                WARM_PAUSE_SECONDS, exc.retry_after or 0
-            )
+            if exc.rejected:
+                self._pause_instrument(instrument.id)
+            else:
+                self._paused_until[market] = _monotonic() + max(
+                    WARM_PAUSE_SECONDS, exc.retry_after or 0
+                )
             logger.warning("First candle of %s not looked up: %s", instrument.id, exc.detail)
         except DataIntegrityError as exc:
+            self._pause_instrument(instrument.id)
             logger.warning("First candle of %s not looked up: %s", instrument.id, exc.detail)
         except Exception:
             logger.exception("Looking up the first candle of %s failed", instrument.id)
+
+    def _pause_instrument(self, instrument_id: InstrumentId) -> None:
+        now = _monotonic()
+        # Dropping the pauses that are over keeps only the instruments that failed this hour.
+        self._instrument_paused_until = {
+            key: until for key, until in self._instrument_paused_until.items() if until > now
+        }
+        self._instrument_paused_until[instrument_id] = now + INSTRUMENT_PAUSE_SECONDS
 
     async def wait(self) -> None:
         """Waits for the lookups running in the background."""
