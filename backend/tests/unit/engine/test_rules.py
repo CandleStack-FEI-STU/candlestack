@@ -526,3 +526,165 @@ def test_a_flip_whose_close_loses_the_whole_capital_opens_nothing() -> None:
         position=[0, -1, -1, 0, 0, 0],
         equity=[1, 1, 0.8, 0, 0, 0],
     )
+
+
+DRAWDOWN = CLOSE.model_copy(update={"drawdown_stop": 0.25})
+
+
+@pytest.mark.parametrize(("close", "halted"), [(75, True), (75.5, False)], ids=["75", "75.5"])
+def test_an_equity_at_the_drawdown_level_closes_the_long_at_the_close_and_halts(
+    close: float, halted: bool
+) -> None:
+    frame = candles(
+        (100, 100, 100, 100, 0),
+        (100, 101, 99, 100, 1),  # long at 100
+        (100, 101, 89, 90, 1),  # 0.9: 10% below the peak, 1.0
+        (90, 91, 74, close, 1),  # at 75 the equity, 0.75, is 25% below the peak: out at the close
+        (75, 81, 74, 80, 1),  # halted: flat, the equity stays 0.75
+        (80, 82, 79, 81, 0),  # go flat: nothing to close
+    )
+
+    result = backtest(frame, DRAWDOWN)
+
+    if halted:
+        check(
+            result,
+            [trade(1, 1, 3, 1, 100, 75, "drawdown", -0.25)],
+            position=[0, 1, 1, 0, 0, 0],
+            equity=[1, 1, 0.9, 0.75, 0.75, 0.75],
+        )
+    else:
+        check(
+            result,
+            [trade(1, 1, 5, 1, 100, 81, "signal", -0.19)],
+            position=[0, 1, 1, 1, 1, 0],
+            equity=[1, 1, 0.9, 0.755, 0.8, 0.81],
+        )
+
+
+def test_a_drawdown_closes_a_short_at_the_close_with_signal_close() -> None:
+    frame = candles(
+        (100, 100, 100, 100, 0),
+        (100, 100, 100, 100, -1),  # short at 100
+        (100, 111, 100, 110, -1),  # 0.9
+        (110, 126, 110, 125, -1),  # 0.75: 25% below the peak: bought back at the close, 125
+        (125, 126, 120, 120, -1),  # halted: flat, the equity stays 0.75
+        (120, 121, 110, 110, 0),  # go flat: nothing to close
+    )
+
+    check(
+        backtest(frame, DRAWDOWN),
+        [trade(1, 1, 3, -1, 100, 125, "drawdown", -0.25)],
+        position=[0, -1, -1, 0, 0, 0],
+        equity=[1, 1, 0.9, 0.75, 0.75, 0.75],
+    )
+
+
+def test_a_drawdown_closes_a_long_with_next_open_and_pays_the_exit_fee() -> None:
+    frame = candles(
+        (100, 100, 100, 100, 0),
+        (100, 100, 100, 100, 1),  # go long
+        (100, 101, 99, 100, 1),  # long at the open, 100: fee 0.001 of the capital
+        (100, 101, 79, 80, 1),  # 0.799 is 20% or more below the peak: out at 80 (fee 0.001 x 0.8)
+        (80, 81, 79, 85, 1),  # halted: flat, the equity stays the capital after the trade
+        (85, 86, 84, 85, 1),
+    )
+
+    check(
+        backtest(frame, NEXT.model_copy(update={"drawdown_stop": 0.2, "fee_bps": 10})),
+        [trade(1, 2, 3, 1, 100, 80, "drawdown", -0.2 - 0.0018, fees=0.0018)],
+        position=[0, 0, 1, 0, 0, 0],
+        equity=[1, 1, 0.999, 1 - 0.2018, 1 - 0.2018, 1 - 0.2018],
+    )
+
+
+def test_a_drawdown_closes_a_short_with_next_open_and_its_exit_slips() -> None:
+    frame = candles(
+        (100, 100, 100, 100, 0),
+        (100, 100, 100, 100, -1),  # go short
+        (100, 101, 99, 100, -1),  # short at the open, 100 x 0.99 = 99
+        (100, 121, 100, 120, -1),  # 2 - 120 / 99 is below 0.8: bought back at 120 x 1.01 = 121.2
+        (120, 121, 119, 120, -1),  # halted: flat, the equity stays the capital after the trade
+        (120, 121, 119, 120, 0),
+    )
+    result = 1 - 121.2 / 99
+
+    check(
+        backtest(frame, NEXT.model_copy(update={"drawdown_stop": 0.2, "slippage_bps": 100})),
+        # Without slippage: in at 100, out at 120, -0.2; so slippage cost 121.2 / 99 - 1.2.
+        [trade(1, 2, 3, -1, 99, 121.2, "drawdown", result, slippage_cost=121.2 / 99 - 1.2)],
+        position=[0, 0, -1, 0, 0, 0],
+        equity=[1, 1, 2 - 100 / 99, 1 + result, 1 + result, 1 + result],
+    )
+
+
+def test_a_drawdown_reached_by_a_stop_halts_the_flat_run_without_a_trade() -> None:
+    frame = candles(
+        (100, 100, 100, 100, 0),
+        (100, 100, 100, 100, 1),  # go long
+        (100, 101, 99, 100, 1),  # long at the open, 100, stop 75
+        (90, 91, 70, 80, 1),  # out at 75: the capital, 0.75, is 25% below the peak: halted
+        (80, 85, 79, 84, -1),  # go short: nothing opens
+        (84, 85, 70, 70, -1),
+        (70, 71, 60, 60, -1),
+    )
+
+    check(
+        backtest(frame, NEXT.model_copy(update={"stop_loss": 0.25, "drawdown_stop": 0.2})),
+        [trade(1, 2, 3, 1, 100, 75, "stop", -0.25, stop=75)],
+        position=[0, 0, 1, 0, 0, 0, 0],
+        equity=[1, 1, 1, 0.75, 0.75, 0.75, 0.75],
+    )
+
+
+def test_a_halt_drops_the_order_left_for_the_next_open() -> None:
+    frame = candles(
+        (100, 100, 100, 100, 0),
+        (100, 100, 100, 100, 1),  # go long
+        (100, 101, 99, 100, 1),  # long at the open, 100
+        (100, 101, 74, 75, -1),  # go short: an order for the next open; 0.75 is at the level
+        (75, 76, 59, 60, -1),  # the order is dropped: flat, the equity stays 0.75
+        (60, 61, 59, 59, -1),
+    )
+
+    check(
+        backtest(frame, NEXT.model_copy(update={"drawdown_stop": 0.25})),
+        [trade(1, 2, 3, 1, 100, 75, "drawdown", -0.25)],
+        position=[0, 0, 1, 0, 0, 0],
+        equity=[1, 1, 1, 0.75, 0.75, 0.75],
+    )
+
+
+def test_the_drawdown_is_measured_from_the_peak_not_from_the_start() -> None:
+    frame = candles(
+        (100, 100, 100, 100, 0),
+        (100, 100, 100, 100, 1),  # long at 100
+        (100, 126, 100, 125, 1),  # 1.25: the peak
+        (125, 126, 98, 99, 1),  # 0.99: 20% or more below 1.25, though above the start: out at 99
+        (99, 100, 98, 99, 1),  # halted: flat, the equity stays 0.99
+    )
+
+    check(
+        backtest(frame, CLOSE.model_copy(update={"drawdown_stop": 0.2})),
+        [trade(1, 1, 3, 1, 100, 99, "drawdown", -0.01)],
+        position=[0, 1, 1, 0, 0],
+        equity=[1, 1, 1.25, 0.99, 0.99],
+    )
+
+
+def test_a_candle_that_ruins_the_run_is_a_ruin_not_a_drawdown() -> None:
+    frame = candles(
+        (10, 10, 10, 10, 0),
+        (10, 10, 10, 10, -1),  # go short
+        (10, 16, 10, 15, -1),  # short at 10: worth 0.5 at the close, above the level, 0.4
+        (15, 22, 15, 20, -1),  # the price doubles: worth 0 at the close, below the level too
+        (20, 21, 19, 21, 1),  # go long: nothing opens
+        (21, 22, 20, 22, 1),
+    )
+
+    check(
+        backtest(frame, NEXT.model_copy(update={"drawdown_stop": 0.6})),
+        [trade(1, 2, 3, -1, 10, 20, "ruin", -1.0)],
+        position=[0, 0, -1, 0, 0, 0],
+        equity=[1, 1, 0.5, 0, 0, 0],
+    )

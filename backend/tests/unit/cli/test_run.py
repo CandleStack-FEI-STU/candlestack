@@ -252,6 +252,7 @@ def test_a_run_writes_its_settings_engine_version_input_hashes_and_align_report(
             "long_only": False,
             "fill": "next_open",
             "stop_loss": None,
+            "drawdown_stop": None,
             "fee_bps": 0.0,
             "slippage_bps": 0.0,
         },

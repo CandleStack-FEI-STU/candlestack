@@ -15,9 +15,11 @@ from candlestack.engine import ENGINE_VERSION, Settings, backtest
 # The sha256 of output_json() for each ENGINE_VERSION. Keep the old entries: they record what
 # each version produced.
 OUTPUT_SHA256 = {
-    # 0.1.0 on the 40-candle example of its time; 0.2.0 extended the example.
+    # 0.1.0 on the 40-candle example of its time; 0.2.0 extended the example; 0.3.0 added the
+    # two runs with a drawdown stop.
     "0.1.0": "c5fe0ee75777b3d191cdbad159ff1de43e83766eff772bb7409a723bdc9261c9",
     "0.2.0": "d6ca5c67715702cd7cfafadcf9ab8a361b3083be7ffbb5b9c0d99129df3401b0",
+    "0.3.0": "454c3c7c0aa7431e7b15e3aa125781f29367f331ad93c677e50f69be94c1c9d8",
 }
 
 INPUT_SCHEMA = {
@@ -103,6 +105,9 @@ SETTINGS = [
     Settings(fill="next_open", stop_loss=0.05, fee_bps=5, slippage_bps=2),
 ]
 IDS = ["signal_close", "next_open"]
+# The same two runs with a 2% drawdown stop: it closes the long of row 12 on row 14, before the
+# stop would on row 15, and the run stays flat from there.
+DRAWDOWN_SETTINGS = [settings.model_copy(update={"drawdown_stop": 0.02}) for settings in SETTINGS]
 
 
 def as_json(frame: pl.DataFrame) -> dict[str, Any]:
@@ -113,16 +118,16 @@ def as_json(frame: pl.DataFrame) -> dict[str, Any]:
 
 
 def output_json() -> str:
-    """The trades and series of both runs of EXAMPLE: column names and types, and the rows with
-    each float written as its shortest repr, which reads back exactly. The values come from
-    IEEE 754 arithmetic in Python, so the text is the same on every platform.
+    """The trades and series of the four runs of EXAMPLE: column names and types, and the rows
+    with each float written as its shortest repr, which reads back exactly. The values come
+    from IEEE 754 arithmetic in Python, so the text is the same on every platform.
 
     Not the Parquet bytes: they also depend on how Polars writes the file (compression,
     encodings, statistics), which a Polars update may change while the output stays the same,
     and the test would then ask for a new ENGINE_VERSION without a change to the engine.
     """
     runs = []
-    for settings in SETTINGS:
+    for settings in [*SETTINGS, *DRAWDOWN_SETTINGS]:
         result = backtest(EXAMPLE, settings)
         runs.append({"trades": as_json(result.trades), "series": as_json(result.series)})
     return json.dumps(runs)
@@ -168,6 +173,23 @@ def test_with_next_open_the_example_fills_before_the_stop_and_stops_on_an_entry_
 
     assert len(beyond) == 1  # closed by its order at an open beyond its stop: no gap (rule 2)
     assert on_entry.height == 1  # stopped on its entry candle, by a touch (rule 4)
+
+
+@pytest.mark.parametrize("settings", DRAWDOWN_SETTINGS, ids=IDS)
+def test_with_a_drawdown_stop_the_example_halts_on_the_long_before_its_stop(
+    settings: Settings,
+) -> None:
+    result = backtest(EXAMPLE, settings)
+    last = result.trades.row(-1, named=True)
+    halt = EXAMPLE["ts"].to_list().index(last["close_ts"])
+
+    assert result.trades["exit_reason"].to_list() == ["signal", "signal", "drawdown"]
+    assert last["side"] == 1
+    assert -0.05 < last["return"] < 0  # the stop, 5%, would have cost more
+    assert halt == 14
+    assert set(result.series["position"][halt:]) == {0.0}
+    assert set(result.series["equity"][halt:]) == {result.series["equity"][halt]}
+    assert result.series["equity"][halt] > 0
 
 
 def test_the_output_on_the_example_is_the_one_recorded_for_this_engine_version() -> None:
