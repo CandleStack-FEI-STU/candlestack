@@ -522,7 +522,8 @@ files, rename their time column to `ts`, `relabel` both with `--labels close`, `
 (strict unless `--allow-gaps`), the post-processing in the order of [Signals](#signals)
 (calibration, `ema`, one rule, `long_only`, `confirm`, `min_hold`; by default only
 `threshold`), `backtest`, `stats`. The order of the steps is in one place in the code,
-`make_signal` in `cli/run.py`, which `run-all` uses too.
+`prepare` and `decide` (together `make_signal`) in `cli/post_processing.py`, which `run-all`
+uses too.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -689,13 +690,14 @@ uv run candlestack-bt run-all --data <folder> --ts-column unix --labels close --
 
 A value may not repeat within a list. The combinations of a stock are the models (in the order
 of `--models`, or by name) × the thresholds × the stop losses, each in the order given. The
-example above with the predictions calibrated and the signal confirmed, the hysteresis rule
-opening at each of the thresholds and closing at 0.02:
+example above with the predictions calibrated by rank (so the limits are places in [-1, 1])
+and the signal confirmed, the hysteresis rule opening at each of the thresholds and closing
+at 0.3:
 
 ```sh
 uv run candlestack-bt run-all --data <folder> --ts-column unix --labels close --timeframe 30m \
   --allow-gaps --calibrate rank --calibration-window 500 --rule hysteresis \
-  --thresholds 0.05,0.1 --exit 0.02 --confirm 2 --stop-losses none,0.05 --jobs 4 --out runs/all
+  --thresholds 0.5,0.8 --exit 0.3 --confirm 2 --stop-losses none,0.05 --jobs 4 --out runs/all
 ```
 
 What it writes to `--out`:

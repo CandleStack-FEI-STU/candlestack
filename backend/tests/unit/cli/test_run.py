@@ -808,6 +808,13 @@ TOGETHER = "--calibrate and --calibration-window go together"
             ),
         ),
         (
+            ["--rule", "hysteresis", "--exit", "0.1"],
+            (
+                "--exit must be at most --threshold, the limit a position opens at: got "
+                "--exit 0.1 and --threshold (default 0)"
+            ),
+        ),
+        (
             ["--rule", "kmeans", "--k", "3", "--kmeans-window", "5", "--refit-every", "1"],
             "--kmeans-window must be at least 2 * --k (6), got 5",
         ),
