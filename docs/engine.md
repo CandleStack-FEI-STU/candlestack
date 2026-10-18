@@ -302,6 +302,9 @@ The worked example with `fill="next_open"` and 10 bps of slippage as well
 | `zscore(predictions, window)` | each prediction in standard deviations from the mean of the `window` predictions ending at it (itself included, sample std); 0.0 before the first full window and on a window without spread |
 | `rank(predictions, window)` | where each prediction ranks among the `window` predictions ending at it, in [-1, 1]: the largest 1.0, the smallest -1.0, 0.0 with as many below as above; 0.0 before the first full window |
 | `kmeans(predictions, k, window, refit_every)` | the signal of each prediction from its group among `k` groups (2 to 5) of the `window` predictions before the latest refit row: the lowest group gives -1.0, the highest 1.0, the others 0.0 |
+| `ema(predictions, span)` | the exponential moving average of the predictions with `alpha = 2 / (span + 1)`: the first value is the first prediction, then `e[t] = alpha * p[t] + (1 - alpha) * e[t-1]`; a span of 1 gives the predictions back. Keeps the name |
+| `hysteresis(predictions, enter, exit)` | a `signal` with two limits, a state machine that starts flat: flat goes long when `p > 0` and `p >= enter`, short when `p < 0` and `p <= -enter`; long stays long while `p > 0` and `p >= exit`, otherwise it goes short when `p < 0` and `p <= -enter`, else flat; short mirrors long. With `exit` equal to `enter` it is `threshold` |
+| `confirm(signal, candles)` | the signal with a value counted only once it has held for `candles` rows in a row; until then the last counted value stays. The first row counts at once; 1 candle gives the signal back. Keeps the name |
 
 `align` in detail:
 
@@ -353,6 +356,30 @@ and `threshold` at 1.0, which on a z-score means one standard deviation:
 | `zscore` | 0.0 | 0.0 | 0.0 | 1.0 | 0.58 |
 | `rank` | 0.0 | 0.0 | 0.0 | 1.0 | 0.5 |
 | `threshold` of either | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
+
+`ema`, `hysteresis` and `confirm` post-process the same way: a Polars Series in, a Float64
+Series out, a plain 0.0, never -0.0. They raise `ValueError` on a missing or NaN value or a
+column that is not numeric, on a `span` or `candles` that is not an int of 1 or more (a bool is
+not one), and on limits that are not finite with `0 <= exit <= enter`. `ema` also refuses an
+infinite prediction, which would make every average after it inf or NaN (`threshold` and
+`hysteresis` take one as any number). Each is one pass forward: a value at row t comes from
+the rows up to t only, and `test_values_after_a_row_change_nothing_up_to_it` in
+`backend/tests/unit/signals/test_filters.py` proves it the way the engine's test does, by
+replacing every value after a row with other random values. The steps go in this order: the
+predictions, calibration (`zscore` or `rank`) when the scales differ, `ema` to smooth them,
+one rule that makes the signal (`threshold`, `hysteresis` or `kmeans`), `long_only`,
+`confirm`, then `min_hold`. Calibration and smoothing come before the rule because the rule
+reads the level of the prediction; `confirm` comes after `long_only` because it counts rows of
+the signal the engine will trade on, and `min_hold` last, so the hold starts at the entry the
+engine sees. For example, with a span of 3 (`alpha` 0.5), `threshold` at 0.05 and 2 candles
+to confirm, the long opens one row late and closes one row late:
+
+| Prediction | 0.0 | 0.2 | 0.2 | -0.2 | -0.2 | -0.2 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `ema`, span 3 | 0.0 | 0.1 | 0.15 | -0.025 | -0.1125 | -0.15625 |
+| `threshold` at 0.05 | 0.0 | 1.0 | 1.0 | 0.0 | -1.0 | -1.0 |
+| `long_only` of that | 0.0 | 1.0 | 1.0 | 0.0 | 0.0 | 0.0 |
+| `confirm`, 2 candles | 0.0 | 0.0 | 1.0 | 1.0 | 0.0 | 0.0 |
 
 `min_hold` is a post-processing step on the signal, before the engine. Once its output changes
 to a non-zero value at row r (an entry from flat, or a flip), it stays there through row
@@ -692,6 +719,11 @@ fixed seeds, both fills, with and without a stop and costs):
 `test_rules.py` adds the order within a candle by hand:
 `test_next_open_fills_the_order_before_it_checks_the_stop` and
 `test_the_stop_comes_before_the_signal_of_the_same_candle`.
+
+The post-processing in `signals` (`ema`, `hysteresis`, `confirm`) is proved the same way:
+`test_values_after_a_row_change_nothing_up_to_it` in `backend/tests/unit/signals/test_filters.py`
+replaces every value after a row with other random values and checks that the output up to
+that row stays the same.
 
 ## ENGINE_VERSION
 
