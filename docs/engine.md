@@ -381,7 +381,8 @@ f-window to f-1, never p[f] itself), and refits happen at rows `window`, `window
 refit_every`, and so on. The first `window` rows have no fit yet and give 0.0, the warm-up.
 A window whose values are all equal has no groups: every row using that fit gives 0.0. The
 arguments are ints: `k` in 2..5, `window` at least `2 * k`, `refit_every` at least 1; the
-predictions are checked like `threshold`. For example, with `k=3`, `window=6` and
+predictions are checked like `threshold`, and an infinite one is refused too. For example,
+with `k=3`, `window=6` and
 `refit_every=100`, the first six predictions 1, 5, 9, 9, 1, 5 form the groups around 1, 5 and
 9, and the rows after them use that fit:
 

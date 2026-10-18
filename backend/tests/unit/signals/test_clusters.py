@@ -78,11 +78,39 @@ def test_kmeans_with_two_groups_has_no_flat_rows_after_the_warm_up() -> None:
     assert set(result[20:]) == {-1.0, 1.0}
 
 
+def test_kmeans_gives_a_value_at_the_midpoint_inside_the_fit_to_the_lower_group() -> None:
+    # Start centers 2 and 6: the 4 at their midpoint joins 0 and 2, so the centers end at 2
+    # and 6 (midpoint 4) rather than at 1 and 5 (midpoint 3), and 3.5 is low, not high.
+    assert signal([6.0, 2.0, 0.0, 4.0, 3.5], 2, 4)[4] == -1.0
+
+
 def test_kmeans_keeps_an_empty_group_at_its_center() -> None:
-    # Start centers 100 and 100 (the sorted values at index 1 and 3): every value goes to the
-    # lower one, whose mean is 77.5, and the empty upper group keeps 100. The next round splits
-    # 10 from the three 100s, so the midpoint ends at 55.
-    assert signal([10.0, 100.0, 100.0, 100.0, 55.0, 55.1], 2, 4)[4:] == [-1.0, 1.0]
+    # Start centers 8 and 8 (the sorted values at index 1 and 3): every value is as near to
+    # one as to the other and goes to the lower one, whose mean is 7.5, while the empty upper
+    # group keeps 8. The next round splits 6 from the three 8s, so the midpoint ends at 7.
+    assert signal([8.0, 6.0, 8.0, 8.0, 5.0], 2, 4)[4] == -1.0
+
+
+def test_kmeans_leaves_the_upper_of_two_equal_centers_empty() -> None:
+    # Start centers 5 and 5: with every value in the lower group its mean is 4.875, and the
+    # next rounds split 0 from the rest, so the centers end at 0 and about 5.57 and 4.0 is
+    # high. Had the values above 5 gone to the upper center, it would have ended at 9 with
+    # the lower one at about 4.29, and 4.0 would be low.
+    assert signal([0.0, 5.0, 5.0, 5.0, 5.0, 5.0, 5.0, 9.0, 4.0], 2, 8)[8] == 1.0
+
+
+def test_kmeans_starts_the_centers_at_the_quantiles() -> None:
+    # The sorted window is 1, 4, 4, 5 and the start centers are its values at index 1 and 3
+    # (4 and 5), which end at 3 and 5, midpoint 4. Starting at index 0 and 2 (1 and 4) would
+    # end at 1 and about 4.33, midpoint about 2.67, and 3.0 would be high.
+    assert signal([4.0, 1.0, 4.0, 5.0, 3.0], 2, 4)[4] == -1.0
+
+
+def test_kmeans_takes_the_floor_of_the_start_index() -> None:
+    # Five values and two centers: the indexes are floor(1.25) = 1 and floor(3.75) = 3 of the
+    # sorted 0, 2, 4, 4, 9, so the centers start at 2 and 4 and end at 1 and about 5.67.
+    # Rounding to 1 and 4 would start at 2 and 9 and end at 2.5 and 9, calling 5.0 low.
+    assert signal([2.0, 4.0, 9.0, 4.0, 0.0, 5.0], 2, 5)[5] == 1.0
 
 
 def test_kmeans_returns_a_float64_signal() -> None:
@@ -146,21 +174,81 @@ def test_kmeans_rejects_a_missing_or_nan_prediction(values: list[float | None]) 
         kmeans(pl.Series(values, dtype=pl.Float64), 2, 4, 1)
 
 
+@pytest.mark.parametrize("value", [math.inf, -math.inf])
+def test_kmeans_rejects_an_infinite_prediction(value: float) -> None:
+    with pytest.raises(ValueError, match="A prediction is infinite"):
+        kmeans(pl.Series([0.1, value]), 2, 4, 1)
+
+
 def test_kmeans_rejects_predictions_that_are_not_numbers() -> None:
     with pytest.raises(ValueError, match="Predictions must be numbers, not String"):
         kmeans(pl.Series(["0.1"]), 2, 4, 1)
 
 
 # Properties on random predictions with fixed seeds: the signal up to a row never depends on
-# the predictions after it, and every value is -1, 0 or 1.
+# the predictions after it, every value is -1, 0 or 1, and the fast fit on the sorted window
+# gives what a plain one does, value by value.
 
 ROWS = 120
 WINDOW = 20
 REFIT_EVERY = 7
 
 
-def random_predictions(rng: random.Random) -> list[float]:
+def random_predictions(rng: random.Random, *, discrete: bool = False) -> list[float]:
+    """Normal predictions, or a few repeated integer values, which make equal centers and
+    exact ties common."""
+    if discrete:
+        return [float(rng.randint(0, 4)) for _ in range(ROWS)]
     return [rng.gauss(0, 1) for _ in range(ROWS)]
+
+
+def plain_nearest(value: float, centers: list[float]) -> int:
+    """The index of the nearest of all centers, the lower index on a tie."""
+    return min(range(len(centers)), key=lambda i: (abs(value - centers[i]), i))
+
+
+def plain_fit(values: list[float], k: int) -> list[float] | None:
+    """The centers by the rules spelled out one value at a time: a plain mean per group, an
+    empty group keeping its center, sorted, until the groups stop changing or 100 rounds."""
+    ordered = sorted(values)
+    if ordered[0] == ordered[-1]:
+        return None
+    centers = [ordered[(2 * i + 1) * len(ordered) // (2 * k)] for i in range(k)]
+    groups: list[int] = []
+    for _ in range(100):
+        new_groups = [plain_nearest(value, centers) for value in ordered]
+        if new_groups == groups:
+            break
+        groups = new_groups
+        members = [[v for v, g in zip(ordered, groups, strict=True) if g == i] for i in range(k)]
+        centers = sorted(
+            sum(own) / len(own) if own else center
+            for center, own in zip(centers, members, strict=True)
+        )
+    return centers
+
+
+def plain_kmeans(values: list[float], k: int, window: int, refit_every: int) -> list[float]:
+    result = [0.0] * len(values)
+    centers = None
+    for t in range(window, len(values)):
+        if (t - window) % refit_every == 0:
+            centers = plain_fit(values[t - window : t], k)
+        if centers is not None:
+            group = plain_nearest(values[t], centers)
+            result[t] = -1.0 if group == 0 else 1.0 if group == k - 1 else 0.0
+    return result
+
+
+@pytest.mark.parametrize("discrete", [False, True], ids=["continuous", "discrete"])
+@pytest.mark.parametrize("k", [2, 3, 5])
+@pytest.mark.parametrize("seed", range(10))
+def test_kmeans_gives_what_the_plain_rules_give(seed: int, k: int, *, discrete: bool) -> None:
+    rng = random.Random(seed)
+    values = random_predictions(rng, discrete=discrete)
+    window, refit_every = rng.randint(2 * k, 24), rng.randint(1, 9)
+
+    assert signal(values, k, window, refit_every) == plain_kmeans(values, k, window, refit_every)
 
 
 @pytest.mark.parametrize("k", [2, 3, 5])
