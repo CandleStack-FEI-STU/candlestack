@@ -7,12 +7,16 @@ from the submodules.
 from candlestack.signals.alignment import AlignReport, align, relabel
 from candlestack.signals.calibration import rank, zscore
 from candlestack.signals.clusters import kmeans
+from candlestack.signals.filters import confirm, ema, hysteresis
 from candlestack.signals.holding import min_hold
 from candlestack.signals.rules import long_only, threshold
 
 __all__ = [
     "AlignReport",
     "align",
+    "confirm",
+    "ema",
+    "hysteresis",
     "kmeans",
     "long_only",
     "min_hold",
