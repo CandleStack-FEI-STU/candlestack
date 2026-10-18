@@ -2,26 +2,27 @@
 
 The steps are the public functions of the backtest modules, so a run from code gives the same
 numbers: read both Parquet files, name their time column ``ts``, ``relabel`` both when they are
-labelled by the candle's close, ``align`` (strict unless ``--allow-gaps``), ``threshold`` (and
-``long_only``), ``backtest``, ``stats``. The run writes four files to ``--out``:
+labelled by the candle's close, ``align`` (strict unless ``--allow-gaps``), the post-processing
+of the predictions into the signal (``make_signal``: calibration, ``ema``, one rule, ``long_only``,
+``confirm``, ``min_hold``, in that order, each off unless asked for), ``backtest``, ``stats``.
+The run writes four files to ``--out``:
 
 - ``trades.parquet``: the engine's trades;
 - ``series.parquet``: the engine's series with its ``drawdown``;
 - ``stats.json``: the statistics, None as null;
-- ``run.json``: the settings, the engine version, the SHA-256 of both input files and the
-  align report;
+- ``run.json``: the settings, the post-processing, the engine version, the SHA-256 of both
+  input files and the align report;
 
 and prints a short summary of the statistics.
 
 ``check_time_labels``, ``read_input`` and ``aligned`` are public in this module so that other
-commands read and align files the same way.
+commands read and align files the same way; the post-processing is ``cli/post_processing.py``.
 """
 
 import argparse
 import dataclasses
 import hashlib
 import json
-import math
 import re
 import sys
 from pathlib import Path
@@ -29,9 +30,20 @@ from typing import Any
 
 import polars as pl
 
+from candlestack.cli.options import _fraction, _non_negative
+from candlestack.cli.post_processing import (
+    PostProcessing,
+    add_drawdown_stop,
+    add_post_processing,
+    check_post_processing,
+    describe,
+    make_signal,
+    post_processing,
+    rule_limit,
+)
 from candlestack.engine import Result, Settings, backtest
 from candlestack.metrics import drawdown, stats
-from candlestack.signals import AlignReport, align, long_only, relabel, threshold
+from candlestack.signals import AlignReport, align, relabel
 
 Stats = dict[str, float | int | None]
 
@@ -45,6 +57,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     _add_files(parser)
     _add_time_labels(parser)
     _add_signals(parser)
+    add_post_processing(parser, grid=False)
     _add_engine(parser)
 
 
@@ -109,15 +122,6 @@ def _add_signals(parser: argparse.ArgumentParser) -> None:
         help="drop predictions without a candle and let candles without a prediction repeat "
         "the previous one, instead of refusing both; run.json counts them",
     )
-    signals.add_argument(
-        "--threshold",
-        type=_non_negative,
-        default=0.0,
-        metavar="LIMIT",
-        help="long at a prediction of LIMIT or more, short at -LIMIT or less, else flat "
-        "(default: 0)",
-    )
-    signals.add_argument("--long-only", action="store_true", help="flat instead of short")
 
 
 def _add_engine(parser: argparse.ArgumentParser) -> None:
@@ -136,6 +140,7 @@ def _add_engine(parser: argparse.ArgumentParser) -> None:
         help="close a position once it loses this fraction of its entry price, 0.05 for 5%% "
         "(default: no stop)",
     )
+    add_drawdown_stop(engine)
     engine.add_argument(
         "--fee-bps",
         type=_non_negative,
@@ -160,6 +165,7 @@ def run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     returns 2, without a traceback and without writing any file.
     """
     check_time_labels(args, parser)
+    check_post_processing(args, parser, grid=False)
     try:
         values = _run(args)
     # The engine's InvalidInput is a ValueError; a Polars error is data no step checks for.
@@ -175,9 +181,11 @@ def _run(args: argparse.Namespace) -> Stats:
     settings = Settings(
         fill=args.fill,
         stop_loss=args.stop_loss,
+        drawdown_stop=args.drawdown_stop,
         fee_bps=args.fee_bps,
         slippage_bps=args.slippage_bps,
     )
+    post = post_processing(args, threshold=rule_limit(args.rule, args.threshold))
     candles = read_input(args.candles, "candles", args.ts_column, _PRICES)
     model = [] if args.model is None else ["model"]
     predictions = read_input(
@@ -191,12 +199,9 @@ def _run(args: argparse.Namespace) -> Stats:
         allow_gaps=args.allow_gaps,
         source=args.predictions,
     )
-    signal = threshold(frame["prediction"], args.threshold)
-    if args.long_only:
-        signal = long_only(signal)
-    result = backtest(frame.with_columns(signal), settings)
+    result = backtest(frame.with_columns(make_signal(frame["prediction"], post)), settings)
     values = stats(result.trades, result.series, frame)
-    _write(args.out, result, values, _record(args, settings, result, report))
+    _write(args.out, result, values, _record(args, settings, result, report, post=post))
     return values
 
 
@@ -274,7 +279,12 @@ def read_input(path: Path, what: str, ts_column: str, columns: list[str]) -> pl.
 
 
 def _record(
-    args: argparse.Namespace, settings: Settings, result: Result, report: AlignReport
+    args: argparse.Namespace,
+    settings: Settings,
+    result: Result,
+    report: AlignReport,
+    *,
+    post: PostProcessing,
 ) -> dict[str, Any]:
     """What ``run.json`` holds: enough to repeat the run and to tell whether its inputs
     changed."""
@@ -290,10 +300,11 @@ def _record(
             "timeframe_seconds": args.timeframe,
             "model": args.model,
             "allow_gaps": args.allow_gaps,
-            "threshold": args.threshold,
-            "long_only": args.long_only,
+            "threshold": post.threshold,
+            "long_only": post.long_only,
             **settings.model_dump(),
         },
+        "post_processing": describe(post),
         "align": dataclasses.asdict(report),
     }
 
@@ -342,29 +353,3 @@ def _timeframe(text: str) -> int:
     if match is None:
         raise argparse.ArgumentTypeError(f"not a candle length like 30m, 1h or 1d: {text!r}")
     return int(match[1]) * _UNIT_SECONDS[match[2]]
-
-
-def _non_negative(text: str) -> float:
-    """A finite number of 0 or more (an argparse type)."""
-    value = _number(text)
-    if value < 0:
-        raise argparse.ArgumentTypeError(f"must be 0 or more, got {text}")
-    return value
-
-
-def _fraction(text: str) -> float:
-    """A number between 0 and 1, both excluded (an argparse type)."""
-    value = _number(text)
-    if not 0 < value < 1:
-        raise argparse.ArgumentTypeError(f"must be between 0 and 1 (0.05 is 5%), got {text}")
-    return value
-
-
-def _number(text: str) -> float:
-    try:
-        value = float(text)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"not a number: {text!r}") from None
-    if not math.isfinite(value):
-        raise argparse.ArgumentTypeError(f"not a finite number: {text!r}")
-    return value

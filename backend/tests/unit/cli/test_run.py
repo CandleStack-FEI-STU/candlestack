@@ -14,7 +14,18 @@ from polars.testing import assert_frame_equal
 from candlestack.cli import main
 from candlestack.engine import ENGINE_VERSION, Result, Settings, backtest
 from candlestack.metrics import drawdown, stats
-from candlestack.signals import align, long_only, relabel, threshold
+from candlestack.signals import (
+    align,
+    confirm,
+    ema,
+    hysteresis,
+    kmeans,
+    long_only,
+    min_hold,
+    relabel,
+    threshold,
+    zscore,
+)
 
 HALF_HOUR = 1800
 DAY = 86_400
@@ -210,6 +221,14 @@ def test_the_supervisors_files_give_the_numbers_of_the_calls_from_code(
         ["--stop-loss", "0.005"],
         ["--fee-bps", "10"],
         ["--slippage-bps", "10"],
+        ["--calibrate", "zscore", "--calibration-window", "4"],
+        ["--calibrate", "rank", "--calibration-window", "4"],
+        ["--ema", "3"],
+        ["--rule", "hysteresis", "--threshold", "0.1", "--exit", "0.02"],
+        ["--rule", "kmeans", "--k", "2", "--kmeans-window", "4", "--refit-every", "1"],
+        ["--confirm", "2"],
+        ["--min-hold", "6"],
+        ["--drawdown-stop", "0.01"],
     ],
 )
 def test_each_option_reaches_its_step(
@@ -222,6 +241,101 @@ def test_each_option_reaches_its_step(
 
     defaults = pl.read_parquet(tmp_path / "defaults" / "trades.parquet")
     assert not pl.read_parquet(tmp_path / "changed" / "trades.parquet").equals(defaults)
+
+
+# The post-processing: each step is its function from signals, in the documented order
+
+
+@pytest.mark.parametrize(
+    ("options", "rule"),
+    [
+        pytest.param(
+            ["--threshold", "0.1"],
+            lambda p: threshold(p, 0.1),
+            id="threshold",
+        ),
+        pytest.param(
+            ["--rule", "hysteresis", "--threshold", "0.1", "--exit", "0.02"],
+            lambda p: hysteresis(p, 0.1, 0.02),
+            id="hysteresis",
+        ),
+        pytest.param(
+            ["--rule", "kmeans", "--k", "3", "--kmeans-window", "6", "--refit-every", "2"],
+            lambda p: kmeans(p, 3, 6, 2),
+            id="kmeans",
+        ),
+    ],
+)
+def test_each_rule_gives_the_numbers_of_its_function(
+    plain: tuple[Path, Path], tmp_path: Path, options: list[str], rule
+) -> None:
+    out = tmp_path / "out"
+
+    assert run(*plain, out, *options) == 0
+
+    frame, _ = align(pl.read_parquet(plain[0]), pl.read_parquet(plain[1]))
+    result = backtest(frame.with_columns(rule(frame["prediction"])), Settings())
+    assert result.trades.height >= 2
+    assert_written(out, result, stats(result.trades, result.series, frame))
+
+
+def test_the_steps_go_in_the_documented_order(plain: tuple[Path, Path], tmp_path: Path) -> None:
+    # Calibration, ema, the rule, long_only, confirm, min_hold; each from signals.
+    out = tmp_path / "out"
+    steps = ["--calibrate", "zscore", "--calibration-window", "4", "--ema", "2"]
+    rule = ["--threshold", "0.5", "--long-only", "--confirm", "2", "--min-hold", "3"]
+
+    assert run(*plain, out, *steps, *rule, "--drawdown-stop", "0.02") == 0
+
+    frame, _ = align(pl.read_parquet(plain[0]), pl.read_parquet(plain[1]))
+    predictions = ema(zscore(frame["prediction"], 4), 2)
+    signal = min_hold(confirm(long_only(threshold(predictions, 0.5)), 2), 3)
+    result = backtest(frame.with_columns(signal), Settings(drawdown_stop=0.02))
+    assert result.trades.height >= 1
+    assert result.trades["side"].to_list() == [1] * result.trades.height
+    assert_written(out, result, stats(result.trades, result.series, frame))
+
+
+def test_confirm_comes_before_min_hold(tmp_path: Path) -> None:
+    # A long of one row: confirmed over 2 rows it never counts, so there is nothing to hold.
+    # Held first, it would last 3 rows and be confirmed: the other order would trade.
+    opens = OPENS[:8]
+    values = pl.DataFrame({"ts": opens, "prediction": [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]})
+    out = tmp_path / "out"
+
+    code = run(
+        write(candles(opens), tmp_path / "c.parquet"),
+        write(values, tmp_path / "p.parquet"),
+        out,
+        "--confirm",
+        "2",
+        "--min-hold",
+        "3",
+    )
+
+    assert code == 0
+    series = pl.read_parquet(out / "series.parquet")
+    assert series["signal"].to_list() == [0.0] * 8
+    assert pl.read_parquet(out / "trades.parquet").is_empty()
+    other_order = confirm(min_hold(threshold(values["prediction"], 0.0), 3), 2)
+    assert other_order.to_list() == [0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0]
+
+
+def test_what_a_step_refuses_is_a_message(
+    plain: tuple[Path, Path], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # ema refuses an infinite prediction, which threshold alone would take.
+    infinite = pl.read_parquet(plain[1]).with_columns(
+        prediction=pl.when(pl.int_range(pl.len()) == 3)
+        .then(float("inf"))
+        .otherwise("prediction")
+        .cast(pl.Float32)
+    )
+    out = tmp_path / "out"
+
+    code = run(plain[0], write(infinite, tmp_path / "inf.parquet"), out, "--ema", "2")
+
+    assert_refused(code, capsys, out, "A prediction is infinite")
 
 
 # What the run writes and prints
@@ -256,7 +370,58 @@ def test_a_run_writes_its_settings_engine_version_input_hashes_and_align_report(
             "fee_bps": 0.0,
             "slippage_bps": 0.0,
         },
+        "post_processing": {
+            "calibrate": None,
+            "ema": None,
+            "rule": {"name": "threshold", "limit": 0.0},
+            "long_only": False,
+            "confirm": None,
+            "min_hold": None,
+        },
         "align": {"predictions_without_candle": 0, "candles_without_prediction": 0},
+    }
+
+
+def test_run_json_lists_the_post_processing_in_its_order(
+    plain: tuple[Path, Path], tmp_path: Path
+) -> None:
+    out = tmp_path / "out"
+    steps = ["--calibrate", "rank", "--calibration-window", "5", "--ema", "3", "--long-only"]
+    rule = ["--rule", "hysteresis", "--threshold", "0.1", "--exit", "0.05"]
+    held = ["--confirm", "2", "--min-hold", "4", "--drawdown-stop", "0.2"]
+
+    assert run(*plain, out, *steps, *rule, *held) == 0
+
+    record = json.loads((out / "run.json").read_text(encoding="utf-8"))
+    assert list(record) == ["engine_version", "inputs", "settings", "post_processing", "align"]
+    assert record["settings"]["threshold"] == 0.1
+    assert record["settings"]["long_only"] is True
+    assert record["settings"]["drawdown_stop"] == 0.2
+    assert record["post_processing"] == {
+        "calibrate": {"name": "rank", "window": 5},
+        "ema": {"span": 3},
+        "rule": {"name": "hysteresis", "enter": 0.1, "exit": 0.05},
+        "long_only": True,
+        "confirm": {"candles": 2},
+        "min_hold": {"candles": 4},
+    }
+    steps_in_order = ["calibrate", "ema", "rule", "long_only", "confirm", "min_hold"]
+    assert list(record["post_processing"]) == steps_in_order
+
+
+def test_the_kmeans_rule_has_no_threshold(plain: tuple[Path, Path], tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    rule = ["--rule", "kmeans", "--k", "2", "--kmeans-window", "4", "--refit-every", "3"]
+
+    assert run(*plain, out, *rule) == 0
+
+    record = json.loads((out / "run.json").read_text(encoding="utf-8"))
+    assert record["settings"]["threshold"] is None
+    assert record["post_processing"]["rule"] == {
+        "name": "kmeans",
+        "k": 2,
+        "window": 4,
+        "refit_every": 3,
     }
 
 
@@ -582,6 +747,18 @@ LENGTH = "not a candle length like 30m, 1h or 1d:"
         (["--fill", "close"], "argument --fill: invalid choice: 'close'"),
         (["--labels", "end"], "argument --labels: invalid choice: 'end'"),
         (["--bogus"], "unrecognized arguments: --bogus"),
+        (["--calibrate", "minmax"], "argument --calibrate: invalid choice: 'minmax'"),
+        (["--calibration-window", "1"], "argument --calibration-window: must be 2 or more, got 1"),
+        (["--ema", "0"], "argument --ema: must be 1 or more, got 0"),
+        (["--ema", "2.5"], "argument --ema: not a whole number: '2.5'"),
+        (["--rule", "sign"], "argument --rule: invalid choice: 'sign'"),
+        (["--exit", "-0.1"], "argument --exit: must be 0 or more, got -0.1"),
+        (["--k", "6"], "argument --k: invalid choice: '6'"),
+        (["--kmeans-window", "1"], "argument --kmeans-window: must be 2 or more, got 1"),
+        (["--refit-every", "0"], "argument --refit-every: must be 1 or more, got 0"),
+        (["--confirm", "0"], "argument --confirm: must be 1 or more, got 0"),
+        (["--min-hold", "x"], "argument --min-hold: not a whole number: 'x'"),
+        (["--drawdown-stop", "1"], f"argument --drawdown-stop: {BETWEEN} 1"),
     ],
 )
 def test_bad_options_are_usage_errors(
@@ -598,6 +775,65 @@ def test_bad_options_are_usage_errors(
 
     assert exit_info.value.code == 2
     assert message in capsys.readouterr().err
+    assert not out.exists()
+
+
+KMEANS = ["--rule", "kmeans", "--k", "2", "--kmeans-window", "4", "--refit-every", "1"]
+TOGETHER = "--calibrate and --calibration-window go together"
+
+
+@pytest.mark.parametrize(
+    ("options", "message"),
+    [
+        (["--calibrate", "zscore"], TOGETHER),
+        (["--calibration-window", "5"], TOGETHER),
+        (["--exit", "0.1"], "--exit goes only with --rule hysteresis"),
+        (["--k", "2"], "--k goes only with --rule kmeans"),
+        (["--rule", "hysteresis", "--kmeans-window", "4"], "--kmeans-window goes only with"),
+        (["--rule", "hysteresis"], "--rule hysteresis needs --exit"),
+        (["--rule", "kmeans"], "--rule kmeans needs --k, --kmeans-window and --refit-every"),
+        (
+            ["--rule", "kmeans", "--k", "2", "--kmeans-window", "4"],
+            "--rule kmeans needs --refit-every",
+        ),
+        (
+            [*KMEANS, "--threshold", "0.1"],
+            "--threshold goes only with --rule threshold or hysteresis",
+        ),
+        (
+            ["--rule", "hysteresis", "--threshold", "0.05", "--exit", "0.1"],
+            (
+                "--exit must be at most --threshold, the limit a position opens at: got "
+                "--exit 0.1 and --threshold 0.05"
+            ),
+        ),
+        (
+            ["--rule", "hysteresis", "--exit", "0.1"],
+            (
+                "--exit must be at most --threshold, the limit a position opens at: got "
+                "--exit 0.1 and --threshold (default 0)"
+            ),
+        ),
+        (
+            ["--rule", "kmeans", "--k", "3", "--kmeans-window", "5", "--refit-every", "1"],
+            "--kmeans-window must be at least 2 * --k (6), got 5",
+        ),
+    ],
+)
+def test_a_wrong_mix_of_post_processing_options_is_a_usage_error(
+    plain: tuple[Path, Path],
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    options: list[str],
+    message: str,
+) -> None:
+    out = tmp_path / "out"
+
+    with pytest.raises(SystemExit) as exit_info:
+        run(*plain, out, *options)
+
+    assert exit_info.value.code == 2
+    assert f"candlestack-bt run: error: {message}" in capsys.readouterr().err
     assert not out.exists()
 
 

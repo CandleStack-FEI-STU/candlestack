@@ -222,6 +222,14 @@ def test_the_command_writes_the_run_json_of_the_document(
             "fee_bps": 10.0,
             "slippage_bps": 0.0,
         },
+        "post_processing": {
+            "calibrate": None,
+            "ema": None,
+            "rule": {"name": "threshold", "limit": 0.05},
+            "long_only": False,
+            "confirm": None,
+            "min_hold": None,
+        },
         "align": {"predictions_without_candle": 0, "candles_without_prediction": 0},
     }
     # The document shortens the hashes to their first 8 digits. They hash the bytes Polars

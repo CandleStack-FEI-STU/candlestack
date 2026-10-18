@@ -102,26 +102,49 @@ def run(folder: Path, out: Path, *options: str) -> int:
     )
 
 
-def assert_run_gives(
-    data: Path, out: Path, keys: tuple[str, str, float, float | None], options: list[str]
-) -> None:
-    """Runs ``run`` on one combination of ``run-all`` into ``out``."""
+Keys = tuple[str, str, float | None, float | None]
+
+
+def assert_run_gives(data: Path, out: Path, keys: Keys, options: list[str]) -> None:
+    """Runs ``run`` on one combination of ``run-all`` into ``out`` (a limit of None is the
+    kmeans rule, which has none)."""
     name, model, limit, stop = keys
+    limit_option = [] if limit is None else ["--threshold", str(limit)]
     stop_option = [] if stop is None else ["--stop-loss", str(stop)]
     assert run(
-        data / name, out, *LABELS, "--model", model, "--threshold", str(limit), *stop_option,
-        *options,
+        data / name, out, *LABELS, "--model", model, *limit_option, *stop_option, *options
     ) == 0  # fmt: skip
 
 
-def combination(keys: tuple[str, str, float, float | None]) -> pl.Expr:
+def combination(keys: Keys) -> pl.Expr:
     """Selects the rows of one combination."""
     name, model, limit, stop = keys
     selected = (pl.col("stock") == name) & (pl.col("model") == model)
-    selected &= pl.col("threshold") == limit
+    selected &= pl.col("threshold").is_null() if limit is None else pl.col("threshold") == limit
     return selected & (
         pl.col("stop_loss").is_null() if stop is None else pl.col("stop_loss") == stop
     )
+
+
+def assert_combinations_give_runs(
+    data: Path, out: Path, tmp_path: Path, combinations: list[Keys], options: list[str]
+) -> None:
+    """Each combination's row of ``stats.parquet`` and rows of ``trades.parquet`` are what
+    ``run`` writes with the same options."""
+    stats_frame = pl.read_parquet(out / "stats.parquet")
+    trades = pl.read_parquet(out / "trades.parquet")
+    assert stats_frame.select(KEYS).rows() == combinations
+    for index, keys in enumerate(combinations):
+        single = tmp_path / f"run{index}"
+        assert_run_gives(data, single, keys, options)
+        row = stats_frame.row(index, named=True)
+        written = json.loads((single / "stats.json").read_text(encoding="utf-8"))
+        assert {name: row[name] for name in written} == written
+        assert_frame_equal(
+            trades.filter(combination(keys)).drop(KEYS),
+            pl.read_parquet(single / "trades.parquet"),
+            check_exact=True,
+        )
 
 
 # The combinations and run
@@ -165,6 +188,83 @@ def test_each_combination_gives_the_trades_and_stats_of_run(data: Path, tmp_path
             check_exact=True,
         )
     assert trades.height >= 20
+
+
+def test_the_post_processing_and_the_drawdown_stop_reach_every_combination_as_in_run(
+    data: Path, tmp_path: Path
+) -> None:
+    steps = ["--calibrate", "rank", "--calibration-window", "4", "--ema", "2", "--long-only"]
+    held = ["--confirm", "2", "--min-hold", "2", "--drawdown-stop", "0.03"]
+    out = tmp_path / "all"
+
+    code = run_all(data, out, *LABELS, *steps, *held, "--thresholds", "0,0.3", "--stop-losses",
+                   "none,0.02")  # fmt: skip
+
+    assert code == 0
+    combinations: list[Keys] = [
+        (name, model, limit, stop)
+        for name in ["AAPL", "MSFT"]
+        for model in ["A", "B"]
+        for limit in [0.0, 0.3]
+        for stop in [None, 0.02]
+    ]
+    assert_combinations_give_runs(data, out, tmp_path, combinations, [*steps, *held])
+    trades = pl.read_parquet(out / "trades.parquet")
+    assert trades.height >= 8
+    assert "drawdown" in trades["exit_reason"].to_list()
+    record = json.loads((out / "run.json").read_text(encoding="utf-8"))
+    assert record["settings"]["drawdown_stop"] == 0.03
+    assert record["post_processing"] == {
+        "calibrate": {"name": "rank", "window": 4},
+        "ema": {"span": 2},
+        "rule": {"name": "threshold", "limit": [0.0, 0.3]},
+        "long_only": True,
+        "confirm": {"candles": 2},
+        "min_hold": {"candles": 2},
+    }
+
+
+def test_hysteresis_takes_the_thresholds_as_its_entry_limits(data: Path, tmp_path: Path) -> None:
+    rule = ["--rule", "hysteresis", "--exit", "0.02"]
+    out = tmp_path / "all"
+
+    assert run_all(data, out, *LABELS, *rule, "--thresholds", "0.05,0.1") == 0
+
+    combinations: list[Keys] = [
+        (name, model, limit, None)
+        for name in ["AAPL", "MSFT"]
+        for model in ["A", "B"]
+        for limit in [0.05, 0.1]
+    ]
+    assert_combinations_give_runs(data, out, tmp_path, combinations, rule)
+    record = json.loads((out / "run.json").read_text(encoding="utf-8"))
+    assert record["settings"]["thresholds"] == [0.05, 0.1]
+    assert record["post_processing"]["rule"] == {
+        "name": "hysteresis",
+        "enter": [0.05, 0.1],
+        "exit": 0.02,
+    }
+
+
+def test_kmeans_has_no_threshold(data: Path, tmp_path: Path) -> None:
+    rule = ["--rule", "kmeans", "--k", "2", "--kmeans-window", "4", "--refit-every", "2"]
+    out = tmp_path / "all"
+
+    assert run_all(data, out, *LABELS, *rule) == 0
+
+    combinations: list[Keys] = [
+        (name, model, None, None) for name in ["AAPL", "MSFT"] for model in ["A", "B"]
+    ]
+    assert_combinations_give_runs(data, out, tmp_path, combinations, rule)
+    assert pl.read_parquet(out / "stats.parquet").schema["threshold"] == pl.Float64
+    record = json.loads((out / "run.json").read_text(encoding="utf-8"))
+    assert record["settings"]["thresholds"] == [None]
+    assert record["post_processing"]["rule"] == {
+        "name": "kmeans",
+        "k": 2,
+        "window": 4,
+        "refit_every": 2,
+    }
 
 
 def test_slippage_cost_and_ruin_reach_the_trades_as_in_run(data: Path, tmp_path: Path) -> None:
@@ -216,7 +316,7 @@ def test_models_picks_the_models_in_its_order(data: Path, tmp_path: Path) -> Non
 
 
 def test_the_output_does_not_depend_on_jobs(data: Path, tmp_path: Path) -> None:
-    options = [*LABELS, "--thresholds", "0,0.1", "--stop-losses", "0.01,none"]
+    options = [*LABELS, "--thresholds", "0,0.1", "--stop-losses", "0.01,none", "--ema", "2"]
     assert run_all(data, tmp_path / "one", *options) == 0
 
     assert run_all(data, tmp_path / "two", *options, "--jobs", "2") == 0
@@ -271,8 +371,17 @@ def test_run_json_holds_the_settings_models_hashes_and_align_reports(
             "long_only": False,
             "fill": "next_open",
             "stop_losses": [0.05, None],
+            "drawdown_stop": None,
             "fee_bps": 2.0,
             "slippage_bps": 0.0,
+        },
+        "post_processing": {
+            "calibrate": None,
+            "ema": None,
+            "rule": {"name": "threshold", "limit": [0.1, 0.0]},
+            "long_only": False,
+            "confirm": None,
+            "min_hold": None,
         },
         "models": ["A", "B"],
         "stocks": [
@@ -518,6 +627,9 @@ def assert_usage_error(
     assert message in capsys.readouterr().err
 
 
+KMEANS = ["--k", "2", "--kmeans-window", "4", "--refit-every", "1"]
+
+
 @pytest.mark.parametrize(
     ("options", "message"),
     [
@@ -532,6 +644,21 @@ def assert_usage_error(
         (["--fee-bps", "-1"], "argument --fee-bps: must be 0 or more, got -1"),
         (["--labels", "close"], "error: --labels close needs --timeframe"),
         (["--timeframe", "30m"], "error: --timeframe goes only with --labels close"),
+        (["--calibrate", "zscore"], "error: --calibrate and --calibration-window go together"),
+        (["--ema", "0"], "argument --ema: must be 1 or more, got 0"),
+        (["--drawdown-stop", "0"], "argument --drawdown-stop: must be between 0 and 1"),
+        (["--rule", "hysteresis"], "error: --rule hysteresis needs --exit"),
+        (
+            ["--rule", "hysteresis", "--thresholds", "0.1,0.05", "--exit", "0.07"],
+            (
+                "error: --exit must be at most --thresholds, the limit a position opens at: "
+                "got --exit 0.07 and --thresholds 0.05"
+            ),
+        ),
+        (
+            ["--rule", "kmeans", "--thresholds", "0", *KMEANS],
+            "error: --thresholds goes only with --rule threshold or hysteresis",
+        ),
     ],
 )
 def test_bad_options_are_usage_errors(

@@ -3,13 +3,15 @@
 The data folder holds one folder per stock with ``candles.parquet`` and ``predictions.parquet``
 (with a ``model`` column). Each combination runs the steps of ``run`` with the same functions,
 so it gives the numbers ``run`` gives with the same options. A stock is read and relabelled
-once and aligned once per model; each threshold then makes one signal and each stop loss one
-backtest. The run writes three files to ``--out``:
+once and aligned once per model; the post-processing before the rule (calibration, ``ema``) is
+done once per model too, then each threshold makes one signal and each stop loss one backtest.
+The other post-processing options and the drawdown stop are the same for every combination.
+The run writes three files to ``--out``:
 
 - ``stats.parquet``: one row per combination: the keys, the settings and the statistics;
 - ``trades.parquet``: the engine's trades of every combination, after its keys;
-- ``run.json``: the settings, the engine version, the models found, each stock's input hashes
-  and align reports, and the stocks that failed;
+- ``run.json``: the settings, the post-processing, the engine version, the models found, each
+  stock's input hashes and align reports, and the stocks that failed;
 
 and prints a short summary. A stock whose files the steps refuse, or a model of a stock whose
 predictions they refuse, is reported and skipped; the others still run. ``--jobs`` runs stocks
@@ -23,7 +25,7 @@ import functools
 import multiprocessing
 import os
 import sys
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,11 +33,21 @@ from typing import Any, Literal
 
 import polars as pl
 
+from candlestack.cli.options import _at_least, _fraction, _list, _non_negative
+from candlestack.cli.post_processing import (
+    PostProcessing,
+    add_drawdown_stop,
+    add_post_processing,
+    check_post_processing,
+    decide,
+    describe,
+    post_processing,
+    prepare,
+    rule_limit,
+)
 from candlestack.cli.run import (
     _PRICES,
     _add_time_labels,
-    _fraction,
-    _non_negative,
     _sha256,
     _write_json,
     aligned,
@@ -44,7 +56,7 @@ from candlestack.cli.run import (
 )
 from candlestack.engine import ENGINE_VERSION, Settings, backtest
 from candlestack.metrics import stats
-from candlestack.signals import long_only, relabel, threshold
+from candlestack.signals import relabel
 
 # Read by Polars when it starts, so it reaches the worker processes through their environment.
 _THREADS = "POLARS_MAX_THREADS"
@@ -63,10 +75,11 @@ class _Options:
     timeframe_seconds: int | None  # None: the files are labelled by the candle's open
     allow_gaps: bool
     models: tuple[str, ...] | None  # None: every model of each stock
-    thresholds: tuple[float, ...]
+    post: PostProcessing  # with the rule's limit None: each threshold fills it in
+    thresholds: tuple[float | None, ...]  # (None,) with the kmeans rule, which has no limit
     stop_losses: tuple[float | None, ...]
-    long_only: bool
     fill: Literal["next_open", "signal_close"]
+    drawdown_stop: float | None
     fee_bps: float
     slippage_bps: float
 
@@ -124,14 +137,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         metavar="NAMES",
         help="comma-separated models to backtest, or all (default: all models of each stock)",
     )
-    signals.add_argument(
-        "--thresholds",
-        type=_list(_non_negative),
-        default=(0.0,),
-        metavar="LIMITS",
-        help="comma-separated thresholds, each as run's --threshold (default: 0)",
-    )
-    signals.add_argument("--long-only", action="store_true", help="flat instead of short")
+    add_post_processing(parser, grid=True)
     _add_engine(parser)
 
 
@@ -152,6 +158,7 @@ def _add_engine(parser: argparse.ArgumentParser) -> None:
         help="comma-separated stop losses, each as run's --stop-loss or none for no stop "
         "(default: none)",
     )
+    add_drawdown_stop(engine)
     engine.add_argument(
         "--fee-bps",
         type=_non_negative,
@@ -168,7 +175,7 @@ def _add_engine(parser: argparse.ArgumentParser) -> None:
     )
     engine.add_argument(
         "--jobs",
-        type=_positive_int,
+        type=_at_least(1),
         default=1,
         metavar="N",
         help="run N stocks at a time in their own processes (default: 1, in this process)",
@@ -184,6 +191,7 @@ def run_all(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     and the exit code is 1; otherwise it is 0.
     """
     check_time_labels(args, parser)
+    check_post_processing(args, parser, grid=True)
     if not args.data.is_dir():
         parser.error(f"--data: no folder at {args.data}")
     folders = sorted(
@@ -214,15 +222,18 @@ def run_all(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 
 
 def _options(args: argparse.Namespace) -> _Options:
+    # Without --thresholds the one limit is run's default, or none for the kmeans rule.
+    thresholds = (rule_limit(args.rule, None),) if args.thresholds is None else args.thresholds
     return _Options(
         ts_column=args.ts_column,
         timeframe_seconds=args.timeframe,
         allow_gaps=args.allow_gaps,
         models=args.models,
-        thresholds=args.thresholds,
+        post=post_processing(args, threshold=None),
+        thresholds=thresholds,
         stop_losses=args.stop_losses,
-        long_only=args.long_only,
         fill=args.fill,
+        drawdown_stop=args.drawdown_stop,
         fee_bps=args.fee_bps,
         slippage_bps=args.slippage_bps,
     )
@@ -346,15 +357,15 @@ def _model_runs(
     """``run``'s steps after ``align`` for each threshold and stop loss: their keys,
     statistics and trades."""
     runs = []
+    prepared = prepare(frame["prediction"], options.post)
     for limit in options.thresholds:
-        signal = threshold(frame["prediction"], limit)
-        if options.long_only:
-            signal = long_only(signal)
-        signed = frame.with_columns(signal)
+        post = dataclasses.replace(options.post, threshold=limit)
+        signed = frame.with_columns(decide(prepared, post))
         for stop_loss in options.stop_losses:
             settings = Settings(
                 fill=options.fill,
                 stop_loss=stop_loss,
+                drawdown_stop=options.drawdown_stop,
                 fee_bps=options.fee_bps,
                 slippage_bps=options.slippage_bps,
             )
@@ -367,7 +378,7 @@ def _model_runs(
 def _settings(options: _Options) -> dict[str, Any]:
     """The settings every combination shares, as columns of ``stats.parquet``."""
     return {
-        "long_only": options.long_only,
+        "long_only": options.post.long_only,
         "fill": options.fill,
         "fee_bps": options.fee_bps,
         "slippage_bps": options.slippage_bps,
@@ -416,16 +427,28 @@ def _record(
             "allow_gaps": options.allow_gaps,
             "models": None if options.models is None else list(options.models),
             "thresholds": list(options.thresholds),
-            "long_only": options.long_only,
+            "long_only": options.post.long_only,
             "fill": options.fill,
             "stop_losses": list(options.stop_losses),
+            "drawdown_stop": options.drawdown_stop,
             "fee_bps": options.fee_bps,
             "slippage_bps": options.slippage_bps,
         },
+        "post_processing": _post_processing(options),
         "models": _models_found(ran),
         "stocks": [outcome.record for outcome in ran],
         "failed": [dataclasses.asdict(failure) for failure in failed],
     }
+
+
+def _post_processing(options: _Options) -> dict[str, Any]:
+    """``run``'s ``post_processing``, with the list of ``--thresholds`` as the rule's limit:
+    each run takes one of them (the ``threshold`` key of its rows)."""
+    record = describe(options.post)
+    if options.post.rule != "kmeans":
+        name = "enter" if options.post.rule == "hysteresis" else "limit"
+        record["rule"][name] = list(options.thresholds)
+    return record
 
 
 def _models_found(ran: list[_Ran]) -> list[str]:
@@ -451,18 +474,6 @@ def _height(frame: pl.DataFrame | None) -> int:
     return 0 if frame is None else frame.height
 
 
-def _list[T](item: Callable[[str], T]) -> Callable[[str], tuple[T, ...]]:
-    """An argparse type: comma-separated values, each of the type ``item``, none repeated."""
-
-    def parse(text: str) -> tuple[T, ...]:
-        values = tuple(item(part.strip()) for part in text.split(","))
-        if len(set(values)) < len(values):
-            raise argparse.ArgumentTypeError(f"a value repeats: {text!r}")
-        return values
-
-    return parse
-
-
 def _models(text: str) -> tuple[str, ...] | None:
     """``all`` or comma-separated model names (an argparse type)."""
     return None if text == "all" else _list(_model)(text)
@@ -477,14 +488,3 @@ def _model(text: str) -> str:
 def _stop_loss(text: str) -> float | None:
     """``none`` or a stop loss as for run's ``--stop-loss`` (an argparse type)."""
     return None if text == "none" else _fraction(text)
-
-
-def _positive_int(text: str) -> int:
-    """A whole number of 1 or more (an argparse type)."""
-    try:
-        value = int(text)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"not a whole number: {text!r}") from None
-    if value < 1:
-        raise argparse.ArgumentTypeError(f"must be 1 or more, got {text}")
-    return value
