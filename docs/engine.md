@@ -301,6 +301,7 @@ The worked example with `fill="next_open"` and 10 bps of slippage as well
 | `min_hold(signal, candles)` | the signal with each new position (a change to a non-zero value, after the first row) kept for at least `candles` rows; 1 leaves it as it is |
 | `zscore(predictions, window)` | each prediction in standard deviations from the mean of the `window` predictions ending at it (itself included, sample std); 0.0 before the first full window and on a window without spread |
 | `rank(predictions, window)` | where each prediction ranks among the `window` predictions ending at it, in [-1, 1]: the largest 1.0, the smallest -1.0, 0.0 with as many below as above; 0.0 before the first full window |
+| `kmeans(predictions, k, window, refit_every)` | the signal of each prediction from its group among `k` groups (2 to 5) of the `window` predictions before the latest refit row: the lowest group gives -1.0, the highest 1.0, the others 0.0 |
 
 `align` in detail:
 
@@ -371,6 +372,25 @@ position only on the next change of the signal. For example, with 3 candles:
 | Input | 0.0 | 1.0 | 0.0 | -1.0 | -1.0 | 1.0 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `min_hold` of that | 0.0 | 1.0 | 1.0 | 1.0 | -1.0 | -1.0 |
+
+`kmeans` needs no limit: it sorts the predictions into `k` groups by value (one-dimensional
+k-means, deterministic) and trades the extremes, long in the highest group and short in the
+lowest; with `k=2` there is no flat group. The groups are fitted only on the past: the fit used
+at row t was made at the latest refit row f <= t on the `window` predictions before f (rows
+f-window to f-1, never p[f] itself), and refits happen at rows `window`, `window +
+refit_every`, and so on. The first `window` rows have no fit yet and give 0.0, the warm-up.
+A window whose values are all equal has no groups: every row using that fit gives 0.0. The
+arguments are ints: `k` in 2..5, `window` at least `2 * k`, `refit_every` at least 1; the
+predictions are checked like `threshold`, and an infinite one is refused too. For example,
+with `k=3`, `window=6` and
+`refit_every=100`, the first six predictions 1, 5, 9, 9, 1, 5 form the groups around 1, 5 and
+9, and the rows after them use that fit:
+
+| Prediction | 1 | 5 | 9 | 9 | 1 | 5 | 0.5 | 4.0 | 9.5 | 3.0 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `kmeans` | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | -1.0 | 0.0 | 1.0 | -1.0 |
+
+(3.0 is exactly between the centers 1 and 5, and a tie goes to the lower group.)
 
 One run from code, the steps the command takes:
 
