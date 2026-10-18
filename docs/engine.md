@@ -299,6 +299,8 @@ The worked example with `fill="next_open"` and 10 bps of slippage as well
 | `threshold(predictions, limit)` | the signal of each prediction `p`: 1.0 if `p > 0` and `p >= limit`, -1.0 if `p < 0` and `p <= -limit`, else 0.0 |
 | `long_only(signal)` | the signal without shorts: a negative value becomes 0.0, the rest stays |
 | `min_hold(signal, candles)` | the signal with each new position (a change to a non-zero value, after the first row) kept for at least `candles` rows; 1 leaves it as it is |
+| `zscore(predictions, window)` | each prediction in standard deviations from the mean of the `window` predictions ending at it (itself included, sample std); 0.0 before the first full window and on a window without spread |
+| `rank(predictions, window)` | where each prediction ranks among the `window` predictions ending at it, in [-1, 1]: the largest 1.0, the smallest -1.0, the median 0.0; 0.0 before the first full window |
 
 `align` in detail:
 
@@ -329,6 +331,26 @@ not numeric; `threshold` also on a negative or NaN `limit`. For example, with a 
 | --- | --- | --- | --- | --- | --- |
 | `threshold` | 0.0 | 1.0 | 0.0 | -1.0 | 1.0 |
 | `long_only` of that | 0.0 | 1.0 | 0.0 | 0.0 | 1.0 |
+
+Calibration (`zscore`, `rank`) comes before `threshold` when models predict on different
+scales: the supervisor's predictions stay within about ±0.4, another model's may reach ±5, so
+one limit does not fit both. Each function rescales a prediction from the `window` predictions
+ending at it (rows t-window+1..t, the prediction itself included: it is known at t) and from
+nothing later, so it adds no look-ahead; `test_predictions_after_a_row_change_nothing_up_to_it`
+in `backend/tests/unit/signals/test_calibration.py` shows it on random predictions. The first
+window-1 rows have no full window yet and give 0.0 (flat), as does a `zscore` window whose
+predictions are all equal (std 0). `rank` counts the other window-1 predictions: `below` smaller
+than p[t] and `equal` equal to it, r = (below + equal / 2) / (window - 1), and gives 2r - 1, so
+tied predictions share the middle of their places. Both take a Series and return a Float64
+Series with the input's name and a plain 0.0, and raise `ValueError` on a missing or NaN value,
+a column that is not numeric or a `window` that is not an int of 2 or more. With a window of 3,
+and `threshold` at 1.0, which on a z-score means one standard deviation:
+
+| Prediction | -0.25 | 0.25 | 0.0 | 0.5 | 0.5 |
+| --- | --- | --- | --- | --- | --- |
+| `zscore` | 0.0 | 0.0 | 0.0 | 1.0 | 0.58 |
+| `rank` | 0.0 | 0.0 | 0.0 | 1.0 | 0.5 |
+| `threshold` of either | 0.0 | 0.0 | 0.0 | 1.0 | 0.0 |
 
 `min_hold` is a post-processing step on the signal, before the engine. Once its output changes
 to a non-zero value at row r (an entry from flat, or a flip), it stays there through row
