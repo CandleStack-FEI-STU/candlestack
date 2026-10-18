@@ -54,7 +54,7 @@ DESCRIPTION = (
     "Times in responses are UTC epoch seconds; requests also accept ISO 8601. "
     "Errors are RFC 9457 problem details (`application/problem+json`).\n\n"
     "[Website](https://candlestack.tech) · "
-    "[Source code](https://github.com/CandleStack-FEI-STU/candlestack) · "
+    "[Source code](https://github.com/candlestack-tech/candlestack) · "
     "[Status](https://ops.candlestack.tech)"
 )
 OPENAPI_URL = "/api/v1/openapi.json"

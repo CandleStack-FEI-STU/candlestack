@@ -48,7 +48,7 @@ runcmd:
   - curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /usr/share/keyrings/cloudflare-main.gpg
   - echo 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main' > /etc/apt/sources.list.d/cloudflared.list
   - apt-get update && apt-get install -y cloudflared
-  - git clone --depth 1 --branch __GIT_REF__ https://github.com/CandleStack-FEI-STU/candlestack.git /opt/candlestack
+  - git clone --depth 1 --branch __GIT_REF__ https://github.com/candlestack-tech/candlestack.git /opt/candlestack
   # deploy: used by GitHub Actions over SSH; its keys can only run infra/vm/candlestack-deploy.
   - useradd --create-home --shell /bin/bash --groups docker --password '*' deploy
   - install -d -o deploy -g deploy -m 700 /home/deploy/.ssh

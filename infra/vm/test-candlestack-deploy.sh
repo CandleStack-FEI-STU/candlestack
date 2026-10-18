@@ -253,6 +253,13 @@ $SECRETS" "$(release_git v0.3.0-rc.1 6 | sed 's/ --unshallow//')
 $(up_calls prod v0.3.0-rc.1 256mb 288m with-secrets)"
 allowed "stage: up stage" stage "up stage main-0123abc $IMAGES" "$TOKEN
 $SECRETS" "$(up_calls stage main-0123abc 256mb 288m with-secrets)"
+# The organization's new name, while both are accepted.
+old_backend=$BACKEND old_frontend=$FRONTEND
+BACKEND=${BACKEND/candlestack-fei-stu/candlestack-tech}
+FRONTEND=${FRONTEND/candlestack-fei-stu/candlestack-tech}
+allowed "stage: up stage with images of candlestack-tech" stage "up stage main-0123abc $BACKEND $FRONTEND" "$TOKEN
+$SECRETS" "$(up_calls stage main-0123abc 256mb 288m with-secrets)"
+BACKEND=$old_backend FRONTEND=$old_frontend
 allowed "stage: up stage with the Sentry DSN" stage "up stage main-0123abc $IMAGES" "$TOKEN
 $SECRETS
 SENTRY_DSN=$DSN" "$(up_calls stage main-0123abc 256mb 288m with-secrets with-dsn)"

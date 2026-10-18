@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   no-ai-signs:
-    uses: CandleStack-FEI-STU/.github/.github/workflows/no-ai-signs.yml@main
+    uses: candlestack-tech/.github/.github/workflows/no-ai-signs.yml@main
     permissions:
       contents: read
 

@@ -10,8 +10,17 @@
   },
   {
     "comment": null,
+    "content": "\"b42ddfe632\"",
+    "name": "_gh-candlestack-tech-o.candlestack.tech",
+    "proxied": false,
+    "tags": [],
+    "ttl": 1,
+    "type": "TXT"
+  },
+  {
+    "comment": null,
     "content": "\"4b039f2489a8c64a5b247e5c01f552\"",
-    "name": "_github-pages-challenge-candlestack-fei-stu.candlestack.tech",
+    "name": "_github-pages-challenge-candlestack-tech.candlestack.tech",
     "proxied": false,
     "tags": [],
     "ttl": 1,
@@ -127,7 +136,7 @@
   },
   {
     "comment": null,
-    "content": "candlestack-fei-stu.github.io",
+    "content": "candlestack-tech.github.io",
     "name": "www.candlestack.tech",
     "proxied": false,
     "tags": [],

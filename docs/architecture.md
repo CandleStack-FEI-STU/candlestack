@@ -43,8 +43,8 @@ flowchart LR
 
 | Container | Image | Notes |
 | --- | --- | --- |
-| `backend` | `ghcr.io/candlestack-fei-stu/candlestack/backend` | calls Binance and Alpaca; gets the environment's Alpaca keys at deploy time; keeps the uploaded model files in the volume `models` (`/data/models`, its only writable path) |
-| `frontend` | `ghcr.io/candlestack-fei-stu/candlestack/frontend` | the web app, static files served by Caddy |
+| `backend` | `ghcr.io/candlestack-tech/candlestack/backend` | calls Binance and Alpaca; gets the environment's Alpaca keys at deploy time; keeps the uploaded model files in the volume `models` (`/data/models`, its only writable path) |
+| `frontend` | `ghcr.io/candlestack-tech/candlestack/frontend` | the web app, static files served by Caddy |
 | `redis` | `redis:8-alpine` | private network of the environment, no persistence, `allkeys-lru` |
 | `postgres` | `postgres:18-alpine` | private network of the environment, data in a volume; migrated by a one-shot `migrate` container (the backend image, `alembic upgrade head`) before the backend starts; prod and stage dump it every night (`backup`) |
 | `models-backup` | `offen/docker-volume-backup` | archives the `models` volume (read-only) every night at 00:30 UTC into the volume `model_backups`, keeps 7 days; no network |

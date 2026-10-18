@@ -4,7 +4,7 @@ Every INTERVAL seconds the agent samples host CPU, memory and disk (from /proc) 
 containers (through a read-only Docker socket proxy). GET /api/snapshot returns the latest
 sample.
 
-The ops Worker (github.com/CandleStack-FEI-STU/ops) fetches the snapshot every minute through
+The ops Worker (github.com/candlestack-tech/ops) fetches the snapshot every minute through
 Cloudflare Access and keeps all history, so the status page stays up when this server is
 down. The agent stores nothing and holds no secrets. Its JSON is a contract with that repo
 (schema 2, README "Agent contract"): change both together.

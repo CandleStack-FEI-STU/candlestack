@@ -1,6 +1,6 @@
 # GitHub settings
 
-A snapshot of how the organization CandleStack-FEI-STU and its five repositories are configured,
+A snapshot of how the organization candlestack-tech and its five repositories are configured,
 exported from the GitHub API on 2026-09-26. GitHub stays the source of truth: these files record
 what was set up by hand, so it can be reviewed, compared after a change and set up again.
 

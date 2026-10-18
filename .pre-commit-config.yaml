@@ -81,7 +81,7 @@ repos:
     hooks:
       - id: hadolint
 
-  - repo: https://github.com/CandleStack-FEI-STU/.github
+  - repo: https://github.com/candlestack-tech/.github
     rev: a71b7bcef1ffdfd0c0e4d1b293e12e8850a6fd80
     hooks:
       - id: comments

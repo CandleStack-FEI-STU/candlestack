@@ -29,7 +29,7 @@ and set up again. What the backend sends and why: [docs/architecture.md](../../d
   - the organization, its plan (Sponsored Team through the GitHub Student Developer Pack until
     2027-09-26, then the free Developer plan unless renewed) and the EU region, which cannot
     change later;
-  - approving the Sentry GitHub App on the organization CandleStack-FEI-STU (read and write
+  - approving the Sentry GitHub App on the organization candlestack-tech (read and write
     access to `candlestack` only);
   - spike protection, on for `backend` (Settings > Spike Protection);
   - per-key rate limits, which need the Business plan: the backend limits itself to 100 error

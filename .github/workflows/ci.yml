@@ -17,7 +17,7 @@ jobs:
   # other jobs do not wait for: editing the pull request's title or description re-runs only
   # this check (no-ai-signs-edited.yml), so the rest must already have run.
   no-ai-signs:
-    uses: CandleStack-FEI-STU/.github/.github/workflows/no-ai-signs.yml@main
+    uses: candlestack-tech/.github/.github/workflows/no-ai-signs.yml@main
     permissions:
       contents: read
 
@@ -25,14 +25,14 @@ jobs:
   # editing the description re-runs only this check (linked-issue-edited.yml).
   linked-issue:
     if: github.event_name == 'pull_request'
-    uses: CandleStack-FEI-STU/.github/.github/workflows/linked-issue.yml@main
+    uses: candlestack-tech/.github/.github/workflows/linked-issue.yml@main
 
   # The title and branch follow the conventions; a warning when the pull request is large.
   # Required and independent like no-ai-signs: editing the title re-runs only this check
   # (pr-hygiene-edited.yml), so `ci` does not wait for it.
   pr-hygiene:
     if: github.event_name == 'pull_request'
-    uses: CandleStack-FEI-STU/.github/.github/workflows/pr-hygiene.yml@main
+    uses: candlestack-tech/.github/.github/workflows/pr-hygiene.yml@main
     permissions:
       pull-requests: read
 

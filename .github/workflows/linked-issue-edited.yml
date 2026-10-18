@@ -17,4 +17,4 @@ concurrency:
 
 jobs:
   linked-issue:
-    uses: CandleStack-FEI-STU/.github/.github/workflows/linked-issue.yml@main
+    uses: candlestack-tech/.github/.github/workflows/linked-issue.yml@main

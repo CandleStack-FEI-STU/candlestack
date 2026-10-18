@@ -1,6 +1,6 @@
 # Contributing
 
-The [Definition of Ready and of Done](https://github.com/CandleStack-FEI-STU/.github/blob/main/CONTRIBUTING.md#definition-of-ready)
+The [Definition of Ready and of Done](https://github.com/candlestack-tech/.github/blob/main/CONTRIBUTING.md#definition-of-ready)
 and the issue forms (Task, Bug, Spike) are shared by every repository of the organization. This
 file adds what is specific to this one.
 
