@@ -1,5 +1,6 @@
 """``min_hold`` by hand, and its properties on random signals with fixed seeds: it never looks
-ahead, every run it starts is at least ``candles`` long, and with one candle it changes nothing."""
+ahead, it differs from the input only inside a hold, every run it starts is at least ``candles``
+long, and with one candle it changes nothing."""
 
 import math
 import random
@@ -29,41 +30,45 @@ def random_signal(rng: random.Random) -> list[float]:
     return values
 
 
+def hold_starts(result: list[float]) -> list[int]:
+    """The rows where the output changes to a non-zero value, the first row aside."""
+    return [row for row in range(1, len(result)) if result[row] and result[row] != result[row - 1]]
+
+
 # by hand
 
 
 def test_min_hold_keeps_an_entry_whatever_the_input_says() -> None:
-    assert held([1.0, 0.0, -1.0, 1.0, 0.0], 3) == [1.0, 1.0, 1.0, 1.0, 0.0]
+    assert held([0.0, 1.0, 0.0, -1.0, 1.0, 0.0], 3) == [0.0, 1.0, 1.0, 1.0, 1.0, 0.0]
 
 
 def test_min_hold_keeps_a_flip_whatever_the_input_says() -> None:
     assert held([1.0, 1.0, 1.0, -1.0, 1.0, 0.0, 0.0], 3) == [1.0, 1.0, 1.0, -1.0, -1.0, -1.0, 0.0]
 
 
-def test_min_hold_does_not_hold_a_change_to_flat() -> None:
+def test_min_hold_starts_no_hold_when_going_flat() -> None:
     assert held([1.0, 1.0, 1.0, 0.0, 1.0, 0.0], 2) == [1.0, 1.0, 1.0, 0.0, 1.0, 1.0]
 
 
 def test_min_hold_follows_the_input_again_after_the_hold() -> None:
     # The input flipped during the hold: once it ends, the flip is taken and starts a new hold.
-    assert held([1.0, -1.0, -1.0, -1.0], 2) == [1.0, 1.0, -1.0, -1.0]
+    assert held([0.0, 1.0, -1.0, -1.0, -1.0], 2) == [0.0, 1.0, 1.0, -1.0, -1.0]
 
 
 def test_min_hold_starts_a_new_hold_at_each_change_to_a_position() -> None:
-    assert held([1.0, 0.0, 0.0, 1.0, 0.0], 2) == [1.0, 1.0, 0.0, 1.0, 1.0]
+    assert held([0.0, 1.0, 0.0, 0.0, 1.0, 0.0], 2) == [0.0, 1.0, 1.0, 0.0, 1.0, 1.0]
 
 
 def test_min_hold_does_not_extend_a_position_the_input_keeps() -> None:
     # Only a change starts a hold: a signal that stays at +1 is not held again when it ends.
-    assert held([1.0, 1.0, 1.0, 0.0], 2) == [1.0, 1.0, 1.0, 0.0]
+    assert held([0.0, 1.0, 1.0, 1.0, 0.0], 2) == [0.0, 1.0, 1.0, 1.0, 0.0]
 
 
-def test_min_hold_starts_a_hold_on_a_non_zero_first_row() -> None:
-    assert held([-1.0, 1.0, 1.0], 2) == [-1.0, -1.0, 1.0]
-
-
-def test_min_hold_leaves_a_flat_first_row_alone() -> None:
-    assert held([0.0, 0.0, 1.0, 0.0], 2) == [0.0, 0.0, 1.0, 1.0]
+def test_min_hold_starts_no_hold_on_the_first_row() -> None:
+    # The first row is the engine's warm-up row and opens nothing: a hold there would only
+    # swallow the first real entry. It sets the starting value, and the entry on row 2 is held.
+    assert held([1.0, 0.0, 1.0, 1.0, 1.0, 0.0], 3) == [1.0, 0.0, 1.0, 1.0, 1.0, 0.0]
+    assert held([-1.0, 1.0, 0.0], 2) == [-1.0, 1.0, 1.0]
 
 
 def test_min_hold_stops_with_the_series() -> None:
@@ -75,15 +80,15 @@ def test_min_hold_with_one_candle_is_the_signal() -> None:
 
 
 def test_min_hold_holds_any_non_zero_value() -> None:
-    assert held([0.5, 0.0, 2.0, 0.0], 2) == [0.5, 0.5, 2.0, 2.0]
+    assert held([0.0, 0.5, 0.0, 2.0, 0.0], 2) == [0.0, 0.5, 0.5, 2.0, 2.0]
 
 
 def test_min_hold_keeps_the_name_and_returns_float64() -> None:
-    result = min_hold(pl.Series("signal", [1, 0, -1], dtype=pl.Int8), 2)
+    result = min_hold(pl.Series("signal", [0, -1, 0], dtype=pl.Int8), 2)
 
     assert result.name == "signal"
     assert result.dtype == pl.Float64
-    assert result.to_list() == [1.0, 1.0, -1.0]
+    assert result.to_list() == [0.0, -1.0, -1.0]
 
 
 def test_min_hold_gives_a_plain_zero() -> None:
@@ -136,16 +141,25 @@ def test_data_after_a_row_changes_nothing_up_to_it(seed: int, candles: int) -> N
 
 @pytest.mark.parametrize("candles", CANDLES)
 @pytest.mark.parametrize("seed", SEEDS)
+def test_the_output_differs_from_the_input_only_inside_a_hold(seed: int, candles: int) -> None:
+    values = random_signal(random.Random(seed))
+    result = held(values, candles)
+
+    starts = hold_starts(result)
+    for row, (value, expected) in enumerate(zip(result, values, strict=True)):
+        if value != expected:
+            # Strictly after a start: on the start row itself the output is the input's change.
+            assert any(0 < row - start < candles for start in starts), row
+
+
+@pytest.mark.parametrize("candles", CANDLES)
+@pytest.mark.parametrize("seed", SEEDS)
 def test_every_run_that_starts_at_a_change_is_at_least_candles_long(
     seed: int, candles: int
 ) -> None:
     result = held(random_signal(random.Random(seed)), candles)
 
-    starts = [
-        row
-        for row, value in enumerate(result)
-        if value != 0 and (row == 0 or value != result[row - 1])
-    ]
+    starts = hold_starts(result)
     assert starts
     for row in starts:
         run = result[row:]

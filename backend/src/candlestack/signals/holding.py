@@ -9,10 +9,12 @@ def min_hold(signal: pl.Series, candles: int) -> pl.Series:
     """The signal with each new position kept for at least ``candles`` rows.
 
     Once the output changes to a non-zero value at row r (an entry from flat, or a flip from
-    +1 to -1 or back), it stays at that value through row r + candles - 1 whatever the input
-    says; from row r + candles on it follows the input again, and a change there may start a new
-    hold. A change to 0.0 is never held, and a non-zero first row starts a hold. With ``candles``
-    1 the signal comes back as it is. Like ``threshold``, it gives a plain 0.0, never -0.0.
+    +1 to -1 or back), it stays at that value through row r + candles - 1: during the hold the
+    input's changes are ignored, a flat one like any other. From row r + candles on it follows
+    the input again, and a change there may start a new hold. Going flat starts no hold, and
+    neither does the first row: it only sets the starting value, as the engine's warm-up row
+    (rule 1) opens nothing there either. With ``candles`` 1 the signal comes back as it is.
+    Like ``threshold``, it gives a plain 0.0, never -0.0.
 
     The output up to a row depends only on the input up to it: a plain loop forward, so it
     cannot look ahead.
@@ -31,7 +33,7 @@ def min_hold(signal: pl.Series, candles: int) -> pl.Series:
             current = previous
         else:
             current = 0.0 if value == 0 else value  # -0.0 is flat too
-            if current and current != previous:  # a position, and a change: a new hold
+            if row and current and current != previous:  # a change to a position: a new hold
                 until = row + candles
         held.append(current)
         previous = current
