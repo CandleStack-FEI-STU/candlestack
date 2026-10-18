@@ -10,14 +10,14 @@ rules: [architecture.md](architecture.md). Candles: [data.md](data.md).
 
 ```mermaid
 flowchart LR
-    files["candles + predictions"] --> signals["signals<br/>relabel, align, threshold, long_only"]
+    files["candles + predictions"] --> signals["signals<br/>relabel, align, zscore, rank, ema,<br/>threshold, hysteresis, kmeans,<br/>long_only, confirm, min_hold"]
     signals -->|"ts, open, high, low, close, signal"| engine["engine<br/>backtest"]
     engine -->|"trades, series"| metrics["metrics<br/>stats, drawdown"]
 ```
 
 | Module | Public names | Job |
 | --- | --- | --- |
-| `signals` | `relabel`, `align`, `AlignReport`, `threshold`, `long_only` | put predictions next to their candles and turn them into a signal of -1, 0 or +1 |
+| `signals` | `relabel`, `align`, `AlignReport`, `zscore`, `rank`, `ema`, `threshold`, `hysteresis`, `kmeans`, `long_only`, `confirm`, `min_hold` | put predictions next to their candles and turn them into a signal of -1, 0 or +1 |
 | `engine` | `backtest`, `Settings`, `Result`, `InvalidInput`, `ENGINE_VERSION` | the loop: candles and a signal in, trades and an equity series out |
 | `metrics` | `stats`, `drawdown` | the statistics of one run and its drawdown curve |
 | `cli` | `main` (the `candlestack-bt` command) | read files, call the three modules above in order, write the results |
@@ -32,7 +32,7 @@ What is outside the engine on purpose:
 
 | Concern | Where | Why |
 | --- | --- | --- |
-| how a prediction becomes long, short or flat (thresholds, long only; later smoothing, holding period) | `signals` | a new idea is a new signal function; the loop and its results stay the same |
+| how a prediction becomes long, short or flat (calibration, smoothing, thresholds, hysteresis, k-means, long only, confirmation, holding period) | `signals` | a new idea is a new signal function; the loop and its results stay the same |
 | time labels and missing candles or predictions | `signals` (`relabel`, `align`) | the engine takes the rows as given; it only checks that `ts` increases |
 | statistics, drawdown curve, annualization | `metrics` | a new statistic needs no new engine version |
 | files, hashes of the inputs, the summary | `cli` | the engine reads and writes no files |
@@ -519,7 +519,10 @@ command prints the help).
 
 The steps are the public functions above, so a run from code gives the same numbers: read both
 files, rename their time column to `ts`, `relabel` both with `--labels close`, `align`
-(strict unless `--allow-gaps`), `threshold` (and `long_only`), `backtest`, `stats`.
+(strict unless `--allow-gaps`), the post-processing in the order of [Signals](#signals)
+(calibration, `ema`, one rule, `long_only`, `confirm`, `min_hold`; by default only
+`threshold`), `backtest`, `stats`. The order of the steps is in one place in the code,
+`make_signal` in `cli/run.py`, which `run-all` uses too.
 
 | Option | Default | Meaning |
 | --- | --- | --- |
@@ -531,12 +534,36 @@ files, rename their time column to `ts`, `relabel` both with `--labels close`, `
 | `--timeframe LENGTH` | none | the length of a candle: a number and `m`, `h` or `d` (`30m`, `1h`, `1d`); needed with `--labels close`, refused with `--labels open` |
 | `--model NAME` | none | backtest only this model's predictions (column `model`); needed when the file holds several models |
 | `--allow-gaps` | off | `align(strict=False)`: a prediction without a candle is dropped and a candle without a prediction repeats the previous one; `run.json` counts both. Off, either stops the run |
-| `--threshold LIMIT` | `0` | long at a prediction of LIMIT or more, short at -LIMIT or less, else flat |
+| `--calibrate zscore\|rank` | off | `zscore` or `rank` over the `--calibration-window` predictions ending at each one; the two go together |
+| `--calibration-window N` | none | the window of `--calibrate`, 2 or more |
+| `--ema SPAN` | off | `ema` with this span, 1 or more |
+| `--rule threshold\|hysteresis\|kmeans` | `threshold` | the rule that makes the signal; an option of another rule is refused |
+| `--threshold LIMIT` | `0` | `threshold`: long at a prediction of LIMIT or more, short at -LIMIT or less, else flat; with `--rule hysteresis` the `enter` limit; refused with `--rule kmeans` |
+| `--exit LIMIT` | none | `hysteresis`: the `exit` limit, at most `--threshold`; needed with `--rule hysteresis` |
+| `--k 2..5`, `--kmeans-window N`, `--refit-every N` | none | `kmeans(k, window, refit_every)`, the window at least `2 * k`; all three needed with `--rule kmeans` |
 | `--long-only` | off | flat instead of short |
+| `--confirm CANDLES` | off | `confirm` with this many candles |
+| `--min-hold CANDLES` | off | `min_hold` with this many candles |
 | `--fill next_open\|signal_close` | `next_open` | `Settings.fill` |
 | `--stop-loss FRACTION` | no stop | `Settings.stop_loss`, between 0 and 1 (0.05 is 5%) |
+| `--drawdown-stop FRACTION` | no drawdown stop | `Settings.drawdown_stop`, between 0 and 1 (0.2 is 20%) |
 | `--fee-bps BPS` | `0` | `Settings.fee_bps` |
 | `--slippage-bps BPS` | `0` | `Settings.slippage_bps` |
+
+The post-processing options are off unless given, so a run without them makes the same files
+as before they existed, `run.json` aside. A step's argument out of its range (`--ema 0`,
+`--k 6`) or a mix that makes no sense (`--calibrate` without `--calibration-window`, `--exit`
+without `--rule hysteresis`, `--rule kmeans` without `--k`, an `--exit` above `--threshold`, a
+`--kmeans-window` under `2 * --k`) is a usage error. For example, z-scores over 500
+predictions, smoothed over 5, hysteresis at one standard deviation that closes at half of one,
+long only, confirmed over 2 candles and held for 10, with a 20% drawdown stop:
+
+```sh
+uv run candlestack-bt run --candles candles.parquet --predictions predictions.parquet \
+  --calibrate zscore --calibration-window 500 --ema 5 \
+  --rule hysteresis --threshold 1 --exit 0.5 --long-only --confirm 2 --min-hold 10 \
+  --drawdown-stop 0.2 --out runs/calibrated
+```
 
 What it writes to `--out`:
 
@@ -545,14 +572,14 @@ What it writes to `--out`:
 | `trades.parquet` | the engine's `trades` |
 | `series.parquet` | the engine's `series` with a `drawdown` column |
 | `stats.json` | the statistics, None as `null`, in the order of [Metrics](#metrics) |
-| `run.json` | `engine_version`; `inputs`: path and SHA-256 of both files; `settings`: the time label and signal options and the `Settings` fields; `align`: the `AlignReport` |
+| `run.json` | `engine_version`; `inputs`: path and SHA-256 of both files; `settings`: the time label options, `model`, `allow_gaps`, `threshold` (the rule's limit, null with `kmeans`), `long_only` and the `Settings` fields; `post_processing`: each step in the order applied, with the arguments of its function, null when off (the rule under `rule` with its `name`); `align`: the `AlignReport` |
 
 Exit codes:
 
 | Code | When |
 | --- | --- |
 | 0 | the run wrote its four files |
-| 2 | a wrong option or a wrong mix of options (`--labels close` without `--timeframe`, `--timeframe` with `--labels open`): the usage and the reason |
+| 2 | a wrong option or a wrong mix of options (`--labels close` without `--timeframe`, `--timeframe` with `--labels open`, a post-processing mix listed above): the usage and the reason |
 | 2 | a missing or unreadable file, a missing or mistyped column, a missing or NaN prediction, a prediction without a candle or a candle without a prediction (without `--allow-gaps`), or any other data a step (or Polars) refuses: one line, `candlestack-bt run: error: <reason>`, never a traceback |
 
 On exit code 2 it writes no file. The same files and options write the same bytes again.
@@ -598,9 +625,23 @@ Its `run.json` (hashes shortened):
     "fee_bps": 10.0,
     "slippage_bps": 0.0
   },
+  "post_processing": {
+    "calibrate": null,
+    "ema": null,
+    "rule": {"name": "threshold", "limit": 0.05},
+    "long_only": false,
+    "confirm": null,
+    "min_hold": null
+  },
   "align": {"predictions_without_candle": 0, "candles_without_prediction": 0}
 }
 ```
+
+The command above, with every step on, records them as
+`"calibrate": {"name": "zscore", "window": 500}`, `"ema": {"span": 5}`,
+`"rule": {"name": "hysteresis", "enter": 1.0, "exit": 0.5}`, `"long_only": true`,
+`"confirm": {"candles": 2}` and `"min_hold": {"candles": 10}`; the k-means rule is
+`"rule": {"name": "kmeans", "k": 3, "window": 500, "refit_every": 100}`.
 
 Files labelled by the candle's close in a `unix` column, with several models:
 `--ts-column unix --labels close --timeframe 30m --model <name>`.
@@ -611,7 +652,8 @@ Files labelled by the candle's close in a `unix` column, with several models:
 one command, like the supervisor's `all_stats`. Each combination runs the steps of `run` with
 the same functions, so it gives the trades and statistics `run` gives with the same options. A
 stock's files are read and relabelled once and aligned once per model (`align` strict unless
-`--allow-gaps`).
+`--allow-gaps`); the post-processing before the rule (calibration, `ema`) runs once per model
+too, as only the rule reads the threshold.
 
 ```text
 <--data>/
@@ -636,16 +678,25 @@ uv run candlestack-bt run-all --data <folder> --ts-column unix --labels close --
 | `--ts-column`, `--labels`, `--timeframe` | as in `run` | the time labels of all files |
 | `--allow-gaps` | off | as in `run`, for every stock and model; `run.json` counts the gaps in each align report |
 | `--models NAMES` | `all` | comma-separated models (column `model`), or `all`: every model of each stock, by name |
-| `--thresholds LIMITS` | `0` | comma-separated thresholds, each as `run`'s `--threshold` |
-| `--long-only` | off | flat instead of short, for every combination |
+| `--calibrate`, `--calibration-window`, `--ema`, `--rule`, `--exit`, `--k`, `--kmeans-window`, `--refit-every`, `--long-only`, `--confirm`, `--min-hold` | as in `run` | the post-processing, the same for every combination; the same mixes are refused |
+| `--thresholds LIMITS` | `0` | comma-separated thresholds, each as `run`'s `--threshold`: the limits of `threshold`, or the `enter` limits of `hysteresis` (each at least `--exit`); refused with `--rule kmeans`, where the one `threshold` key is null |
 | `--fill next_open\|signal_close` | `next_open` | `Settings.fill`, for every combination |
 | `--stop-losses FRACTIONS` | `none` | comma-separated stop losses, each as `run`'s `--stop-loss`, or `none` for no stop |
+| `--drawdown-stop FRACTION` | no drawdown stop | `Settings.drawdown_stop`, for every combination |
 | `--fee-bps BPS` | `0` | `Settings.fee_bps`, for every combination |
 | `--slippage-bps BPS` | `0` | `Settings.slippage_bps`, for every combination |
 | `--jobs N` | `1` | run N stocks at a time in their own processes; the output does not depend on N |
 
 A value may not repeat within a list. The combinations of a stock are the models (in the order
-of `--models`, or by name) × the thresholds × the stop losses, each in the order given.
+of `--models`, or by name) × the thresholds × the stop losses, each in the order given. The
+example above with the predictions calibrated and the signal confirmed, the hysteresis rule
+opening at each of the thresholds and closing at 0.02:
+
+```sh
+uv run candlestack-bt run-all --data <folder> --ts-column unix --labels close --timeframe 30m \
+  --allow-gaps --calibrate rank --calibration-window 500 --rule hysteresis \
+  --thresholds 0.05,0.1 --exit 0.02 --confirm 2 --stop-losses none,0.05 --jobs 4 --out runs/all
+```
 
 What it writes to `--out`:
 
@@ -653,7 +704,7 @@ What it writes to `--out`:
 | --- | --- |
 | `stats.parquet` | one row per stock × model × threshold × stop loss, stocks by folder name: the keys `stock`, `model`, `threshold`, `stop_loss` (null for no stop); the shared settings `long_only`, `fill`, `fee_bps`, `slippage_bps`; then every statistic of [Metrics](#metrics) in its order, null when `run` writes `null` |
 | `trades.parquet` | the engine's `trades` of every combination (all their columns, `slippage_cost` and the exit reason `ruin` included), in the same order, after the four keys |
-| `run.json` | `engine_version`; `data`; `settings`: the options above but `--jobs`; `models`: the models run, by name; `stocks`: for each stock whose files were read, its name, `inputs` (path and SHA-256 of both files) and `align` (the `AlignReport` of each model that ran); `failed`: each failure as `stock`, `model` (null when the whole stock failed) and `error` |
+| `run.json` | `engine_version`; `data`; `settings`: the time label options, `allow_gaps`, `models`, `thresholds` (`[null]` with `kmeans`), `long_only`, `fill`, `stop_losses`, `drawdown_stop`, `fee_bps`, `slippage_bps`; `post_processing`: as in `run`, but the rule's `limit` (or `enter`) is the list of `--thresholds`, as each run takes one of them; `models`: the models run, by name; `stocks`: for each stock whose files were read, its name, `inputs` (path and SHA-256 of both files) and `align` (the `AlignReport` of each model that ran); `failed`: each failure as `stock`, `model` (null when the whole stock failed) and `error` |
 
 It prints how many stocks ran and failed, how many models ran and failed on a stock, and how
 many runs and trades it wrote.
